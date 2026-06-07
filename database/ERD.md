@@ -107,7 +107,7 @@ erDiagram
     varchar name UK "QR identifier"
     float   x_coord
     float   y_coord
-    enum    type "NAVIGATION|PICKUP|DROPOFF|CHARGE|PARK"
+    enum    type "HALT|PARK"
     boolean is_available
     timestamptz created_at
     timestamptz updated_at
@@ -119,9 +119,9 @@ erDiagram
     varchar name UK
     uuid    source_point_id FK
     uuid    dest_point_id FK
-    enum    direction "ONE_WAY|BIDIRECTIONAL"
-    float   max_velocity
-    float   length
+    integer max_velocity "mm/s forward; 0=vehicle default"
+    integer max_reverse_velocity "mm/s reverse; 0=not allowed"
+    float   length "mm"
     boolean is_available
     timestamptz created_at
     timestamptz updated_at
@@ -131,7 +131,7 @@ erDiagram
     uuid    id PK
     uuid    map_id FK
     varchar name UK
-    enum    type "PICKUP|DROPOFF|CHARGE|PARK"
+    enum    type "PICKUP|DROPOFF|CHARGE"
     varchar approach_direction "NORTH|SOUTH|EAST|WEST"
     boolean is_available
     timestamptz created_at
@@ -287,6 +287,9 @@ erDiagram
 - **`location_points.position_index`** — encode thứ tự lấy hàng (0 = outermost), đây là dữ liệu cốt lõi cho pickup dependency logic của FE-04.
 - **`agv_live_status`** — bảng riêng 1-1 với `agvs`, tách biệt live state (sync liên tục từ openTCS) khỏi AGV profile (thay đổi ít).
 - **`transport_requests.no_assign_reason / no_pickup_reason / no_dropoff_reason`** — hỗ trợ trực tiếp UC-54, UC-57 (hiển thị lý do tắc nghẽn).
+- **`paths.max_reverse_velocity`** — ánh xạ trực tiếp từ openTCS `maxReverseVelocity`. Path luôn có hướng (src→dest); `max_reverse_velocity = 0` nghĩa là AGV không được lùi trên path này. "Hai chiều" trong openTCS là tạo 2 path riêng (A→B và B→A), không phải 1 path bidirectional.
+- **`point_type_enum`** chỉ có `HALT` và `PARK` — khớp với openTCS `Point.Type`. Business role (pickup/dropoff/charge) được derive từ Location mà point thuộc về qua `location_points`, tránh redundancy và inconsistency.
+- **`location_type_enum`** không có `PARK` — parking là point-level concept trong openTCS (`PARK_POSITION`), không phải location.
 - **`block_members.member_id`** — không có FK cứng vì member có thể là point hoặc path, phân biệt qua `member_type`.
 - **`event_logs.payload JSONB`** — flexible để lưu context bất kỳ mà không cần thêm cột.
 - **`dispatch_policies.is_active`** — chỉ một policy active tại một thời điểm (enforce ở application layer).

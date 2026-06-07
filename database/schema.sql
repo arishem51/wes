@@ -21,17 +21,16 @@ CREATE TYPE agv_state_enum AS ENUM (
   'UNAVAILABLE'
 );
 
+-- Matches openTCS Point.Type: HALT_POSITION and PARK_POSITION.
+-- Business roles (pickup/dropoff/charge) are encoded at the Location level, not the Point level.
 CREATE TYPE point_type_enum AS ENUM (
-  'NAVIGATION',
-  'PICKUP',
-  'DROPOFF',
-  'CHARGE',
-  'PARK'
+  'HALT', -- temporary stop to process an order (openTCS: HALT_POSITION)
+  'PARK'  -- long-term idle stop (openTCS: PARK_POSITION)
 );
 
-CREATE TYPE path_direction_enum AS ENUM ('ONE_WAY', 'BIDIRECTIONAL');
 
-CREATE TYPE location_type_enum AS ENUM ('PICKUP', 'DROPOFF', 'CHARGE', 'PARK');
+-- PARK is a Point-level concept in openTCS, not a Location type.
+CREATE TYPE location_type_enum AS ENUM ('PICKUP', 'DROPOFF', 'CHARGE');
 
 CREATE TYPE block_type_enum AS ENUM (
   'SINGLE_VEHICLE',
@@ -196,27 +195,34 @@ CREATE TABLE points (
   name         VARCHAR(100) NOT NULL, -- QR code identifier
   x_coord      DOUBLE PRECISION NOT NULL,
   y_coord      DOUBLE PRECISION NOT NULL,
-  type         point_type_enum NOT NULL DEFAULT 'NAVIGATION',
+  type         point_type_enum NOT NULL DEFAULT 'HALT',
   is_available BOOLEAN NOT NULL DEFAULT TRUE,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (map_id, name)
 );
 
+-- Paths are always directed (src → dest), matching openTCS model.
+-- max_velocity       : forward speed in mm/s (src → dest)
+-- max_reverse_velocity: reverse speed in mm/s (dest → src, AGV reverses); 0 = not allowed
+-- To model two-way travel: either set max_reverse_velocity > 0 (AGV reverses on same path)
+-- or create two separate paths A→B and B→A (AGV always goes forward).
 CREATE TABLE paths (
-  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  map_id          UUID NOT NULL REFERENCES operation_maps(id) ON DELETE CASCADE,
-  name            VARCHAR(100) NOT NULL,
-  source_point_id UUID NOT NULL REFERENCES points(id) ON DELETE CASCADE,
-  dest_point_id   UUID NOT NULL REFERENCES points(id) ON DELETE CASCADE,
-  direction       path_direction_enum NOT NULL DEFAULT 'ONE_WAY',
-  max_velocity    DOUBLE PRECISION,
-  length          DOUBLE PRECISION,
-  is_available    BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  map_id               UUID NOT NULL REFERENCES operation_maps(id) ON DELETE CASCADE,
+  name                 VARCHAR(100) NOT NULL,
+  source_point_id      UUID NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+  dest_point_id        UUID NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+  max_velocity         INTEGER NOT NULL DEFAULT 0, -- mm/s, 0 = use vehicle default
+  max_reverse_velocity INTEGER NOT NULL DEFAULT 0, -- mm/s, 0 = reverse not allowed
+  length               DOUBLE PRECISION,           -- mm
+  is_available         BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (map_id, name),
-  CHECK (source_point_id <> dest_point_id)
+  CHECK (source_point_id <> dest_point_id),
+  CHECK (max_velocity >= 0),
+  CHECK (max_reverse_velocity >= 0)
 );
 
 CREATE TABLE locations (
