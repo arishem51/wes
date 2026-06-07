@@ -64,6 +64,8 @@ CREATE TYPE event_module_enum AS ENUM (
   'SYSTEM'
 );
 
+CREATE TYPE map_status_enum AS ENUM ('DRAFT', 'ACTIVE', 'ARCHIVED');
+
 CREATE TYPE audit_action_enum AS ENUM ('CREATE', 'UPDATE', 'DELETE');
 
 CREATE TYPE audit_entity_type_enum AS ENUM (
@@ -183,7 +185,7 @@ CREATE TABLE operation_maps (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name        VARCHAR(100) NOT NULL,
   version     VARCHAR(20)  NOT NULL,
-  is_active   BOOLEAN NOT NULL DEFAULT FALSE,
+  status      map_status_enum NOT NULL DEFAULT 'DRAFT',
   file_path   TEXT,
   uploaded_by UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -327,9 +329,10 @@ CREATE TABLE event_logs (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   event_type  event_type_enum NOT NULL DEFAULT 'INFO',
   module      event_module_enum NOT NULL,
-  entity_type VARCHAR(50),
-  entity_id   UUID,
-  message     TEXT NOT NULL,
+  entity_type     VARCHAR(50),
+  entity_id       UUID,
+  correlation_id  UUID,
+  message         TEXT NOT NULL,
   payload     JSONB,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_by  UUID REFERENCES users(id) ON DELETE SET NULL
@@ -375,9 +378,10 @@ CREATE INDEX idx_transport_requests_created_at   ON transport_requests(created_a
 CREATE INDEX idx_transport_requests_assigned_agv ON transport_requests(assigned_agv_id);
 
 -- Logs
-CREATE INDEX idx_event_logs_module     ON event_logs(module);
-CREATE INDEX idx_event_logs_created_at ON event_logs(created_at DESC);
-CREATE INDEX idx_event_logs_entity     ON event_logs(entity_type, entity_id);
+CREATE INDEX idx_event_logs_module         ON event_logs(module);
+CREATE INDEX idx_event_logs_created_at     ON event_logs(created_at DESC);
+CREATE INDEX idx_event_logs_entity         ON event_logs(entity_type, entity_id);
+CREATE INDEX idx_event_logs_correlation_id ON event_logs(correlation_id) WHERE correlation_id IS NOT NULL;
 CREATE INDEX idx_audit_logs_entity     ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_logs_performed_at ON audit_logs(performed_at DESC);
 CREATE INDEX idx_audit_logs_performed_by ON audit_logs(performed_by);

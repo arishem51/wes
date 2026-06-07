@@ -95,7 +95,7 @@ erDiagram
     uuid    id PK
     varchar name
     varchar version
-    boolean is_active
+    enum    status "DRAFT|ACTIVE|ARCHIVED"
     text    file_path
     uuid    uploaded_by FK
     timestamptz created_at
@@ -220,6 +220,7 @@ erDiagram
     enum    module "AGV|MAP|TRANSPORT|DISPATCH|AUTH|SYSTEM"
     varchar entity_type
     uuid    entity_id
+    uuid    correlation_id "group related events"
     text    message
     jsonb   payload
     timestamptz created_at
@@ -293,3 +294,5 @@ erDiagram
 - **`block_members.member_id`** — không có FK cứng vì member có thể là point hoặc path, phân biệt qua `member_type`.
 - **`event_logs.payload JSONB`** — flexible để lưu context bất kỳ mà không cần thêm cột.
 - **`dispatch_policies.is_active`** — chỉ một policy active tại một thời điểm (enforce ở application layer).
+- **`operation_maps.status`** — enum `DRAFT|ACTIVE|ARCHIVED` thay cho `is_active BOOLEAN`, hỗ trợ versioning lifecycle của WF-07: upload → DRAFT → validate → ACTIVE (chỉ một map ACTIVE tại một thời điểm) → ARCHIVED khi bị thay thế hoặc rollback.
+- **`event_logs.correlation_id`** — nullable UUID để nhóm các event liên quan thành một chuỗi (e.g. toàn bộ sự kiện của một transport request, hoặc một withdrawal attempt thất bại). Được nhắc đến trong WF-10 như context bắt buộc khi emit event.
