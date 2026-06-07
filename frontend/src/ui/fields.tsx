@@ -1,144 +1,82 @@
 import { useState } from 'react';
-import type { FocusEvent, ReactNode } from 'react';
-import { Icon } from '@/lib/icons';
+import type { ReactNode } from 'react';
+import { Icon } from './icons';
 
 export function Field({
   label,
   error,
-  children,
   hint,
-  required,
+  children,
+  htmlFor,
 }: {
-  label: string;
-  error?: string | number | boolean | null;
-  children: ReactNode;
+  label?: string;
+  error?: string | null | false;
   hint?: string;
-  required?: boolean;
+  children: ReactNode;
+  htmlFor?: string;
 }) {
   return (
-    <label style={{ display: 'block' }}>
-      <span style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 6 }}>
-        {label} {required && <span style={{ color: 'var(--danger)' }}>*</span>}
-      </span>
-      {children}
-      {error ? (
-        <span style={{ display: 'block', fontSize: 12, color: 'var(--danger)', marginTop: 5 }}>{error}</span>
-      ) : hint ? (
-        <span style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>{hint}</span>
-      ) : null}
-    </label>
-  );
-}
-
-interface TextInputProps {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  type?: string;
-  error?: string | number | boolean | null;
-  prefixIcon?: string;
-  mono?: boolean;
-  onBlur?: (e: FocusEvent<HTMLInputElement>) => void;
-  autoFocus?: boolean;
-}
-
-export function TextInput({
-  value,
-  onChange,
-  placeholder,
-  type = 'text',
-  error,
-  prefixIcon,
-  mono,
-  onBlur,
-  autoFocus,
-}: TextInputProps) {
-  const [focus, setFocus] = useState(false);
-  return (
-    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-      {prefixIcon && (
-        <Icon name={prefixIcon} size={16} style={{ position: 'absolute', left: 11, color: 'var(--text-muted)' }} />
+    <div className="field">
+      {label && (
+        <label className="field-label" htmlFor={htmlFor}>
+          {label}
+        </label>
       )}
-      <input
-        value={value}
-        type={type}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocus(true)}
-        onBlur={(e) => {
-          setFocus(false);
-          onBlur && onBlur(e);
-        }}
-        style={{
-          width: '100%',
-          boxSizing: 'border-box',
-          fontFamily: mono ? 'var(--mono)' : 'inherit',
-          fontSize: 14,
-          padding: prefixIcon ? '9px 12px 9px 34px' : '9px 12px',
-          borderRadius: 'var(--radius-sm)',
-          color: 'var(--text)',
-          background: 'var(--surface)',
-          border: `1px solid ${error ? 'var(--danger)' : focus ? 'var(--accent)' : 'var(--border)'}`,
-          boxShadow: focus ? `0 0 0 3px ${error ? 'var(--danger-tint)' : 'var(--accent-ring)'}` : 'none',
-          outline: 'none',
-          transition: 'border-color .14s, box-shadow .14s',
-        }}
-      />
+      {children}
+      {error ? <div className="field-error">{error}</div> : hint ? <div className="field-hint">{hint}</div> : null}
     </div>
   );
 }
 
-export function Select({
+export function TextInput({
+  id,
   value,
   onChange,
-  options,
+  placeholder,
+  type = 'text',
+  icon,
+  error,
+  onBlur,
+  autoFocus,
+  disabled,
 }: {
+  id?: string;
   value: string;
   onChange: (v: string) => void;
-  options: { value: string; label: string }[];
+  placeholder?: string;
+  type?: string;
+  icon?: string;
+  error?: string | null | false;
+  onBlur?: () => void;
+  autoFocus?: boolean;
+  disabled?: boolean;
 }) {
-  const [focus, setFocus] = useState(false);
+  const [show, setShow] = useState(false);
+  const isPw = type === 'password';
+  const realType = isPw ? (show ? 'text' : 'password') : type;
   return (
-    <div style={{ position: 'relative' }}>
-      <select
+    <div className={'input-wrap' + (error ? ' has-error' : '') + (disabled ? ' is-disabled' : '')}>
+      {icon && (
+        <span className="input-icon">
+          <Icon name={icon} size={18} />
+        </span>
+      )}
+      <input
+        id={id}
+        type={realType}
         value={value}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocus(true)}
-        onBlur={() => setFocus(false)}
-        style={{
-          width: '100%',
-          appearance: 'none',
-          fontFamily: 'inherit',
-          fontSize: 14,
-          padding: '9px 34px 9px 12px',
-          borderRadius: 'var(--radius-sm)',
-          color: 'var(--text)',
-          background: 'var(--surface)',
-          cursor: 'pointer',
-          border: `1px solid ${focus ? 'var(--accent)' : 'var(--border)'}`,
-          boxShadow: focus ? '0 0 0 3px var(--accent-ring)' : 'none',
-          outline: 'none',
-        }}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <Icon
-        name="chevdown"
-        size={16}
-        style={{
-          position: 'absolute',
-          right: 11,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          color: 'var(--text-muted)',
-          pointerEvents: 'none',
-        }}
+        onBlur={onBlur}
+        style={{ paddingLeft: icon ? 44 : 16, paddingRight: isPw ? 64 : 16 }}
       />
+      {isPw && (
+        <button type="button" className="input-trailing" onClick={() => setShow((s) => !s)} tabIndex={-1}>
+          <Icon name={show ? 'eyeoff' : 'eye'} size={18} />
+        </button>
+      )}
     </div>
   );
 }
