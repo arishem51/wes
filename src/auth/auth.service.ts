@@ -33,10 +33,10 @@ export class AuthService {
 
   private signAccess(user: UserEntity): string {
     const role = this.users.feRoleOf(user);
-    return this.jwt.sign(
-      { sub: user.id, username: user.username, roles: [role] },
-      { expiresIn: this.accessTtl },
-    );
+    const payload = { sub: user.id, username: user.username, roles: [role] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const options: any = { expiresIn: this.accessTtl };
+    return this.jwt.sign(payload, options);
   }
 
   // UC-81
