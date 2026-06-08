@@ -301,7 +301,7 @@ export function UsersAdmin({ t, lang }: { t: TFunc; lang: Lang }) {
 
   return (
     <main className="page-scroll">
-      <div className="page-inner" style={{ maxWidth: 1100 }}>
+      <div className="page-inner um-page">
         <div className="page-head">
           <Eyebrow>{t('um_eyebrow')}</Eyebrow>
           <h1 className="page-title serif">{t('um_title')}</h1>
