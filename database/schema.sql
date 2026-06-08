@@ -89,11 +89,24 @@ CREATE TABLE users (
   email         VARCHAR(255) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   full_name     VARCHAR(100) NOT NULL,
+  phone         VARCHAR(30),                          -- profile (UC-83/84)
+  shift         VARCHAR(100),                         -- ca làm / bộ phận
+  avatar_url    TEXT,                                 -- ảnh đại diện
+  mfa_enabled   BOOLEAN NOT NULL DEFAULT FALSE,       -- xác thực 2 lớp (UC-85 Security)
   is_active     BOOLEAN NOT NULL DEFAULT TRUE,
   is_locked     BOOLEAN NOT NULL DEFAULT FALSE,
+  is_invited    BOOLEAN NOT NULL DEFAULT FALSE,       -- chờ kích hoạt (status=INVITED)
+  lock_reason   TEXT,                                 -- lý do khóa (hiển thị ở admin)
+  last_login_at TIMESTAMPTZ,                          -- mốc đăng nhập gần nhất (denormalized)
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Status hiển thị (UI) được suy ra:
+--   is_locked              -> LOCKED
+--   is_invited             -> INVITED
+--   is_active = TRUE        -> ACTIVE
+--   else                   -> INACTIVE
+-- "online" và "last active" suy ra từ user_sessions (login_at/logout_at).
 
 CREATE TABLE roles (
   id          SMALLSERIAL PRIMARY KEY,
@@ -129,6 +142,25 @@ CREATE TABLE user_sessions (
   user_agent TEXT,
   login_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   logout_at  TIMESTAMPTZ
+);
+
+-- Đặt lại mật khẩu (UC-86 Quên mật khẩu / yêu cầu đặt lại)
+CREATE TABLE password_reset_tokens (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash VARCHAR(255) NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Tùy chọn hiển thị của người dùng (tab Preferences)
+CREATE TABLE user_preferences (
+  user_id              UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  language             VARCHAR(5)  NOT NULL DEFAULT 'vi',   -- 'vi' | 'en'
+  notifications_enabled BOOLEAN    NOT NULL DEFAULT TRUE,   -- thông báo trong ứng dụng
+  sound_enabled        BOOLEAN     NOT NULL DEFAULT FALSE,  -- âm thanh cảnh báo
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- =============================================================================
@@ -357,6 +389,8 @@ CREATE TABLE audit_logs (
 CREATE INDEX idx_refresh_tokens_user_id   ON refresh_tokens(user_id);
 CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
 CREATE INDEX idx_user_sessions_user_id     ON user_sessions(user_id);
+CREATE INDEX idx_password_reset_user_id    ON password_reset_tokens(user_id);
+CREATE INDEX idx_password_reset_expires_at ON password_reset_tokens(expires_at);
 
 -- AGV
 CREATE INDEX idx_agv_status_history_agv_id      ON agv_status_history(agv_id);

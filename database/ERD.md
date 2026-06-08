@@ -11,8 +11,15 @@ erDiagram
     varchar email UK
     varchar password_hash
     varchar full_name
+    varchar phone
+    varchar shift
+    text    avatar_url
+    boolean mfa_enabled
     boolean is_active
     boolean is_locked
+    boolean is_invited
+    text    lock_reason
+    timestamptz last_login_at
     timestamptz created_at
     timestamptz updated_at
   }
@@ -46,6 +53,23 @@ erDiagram
     text    user_agent
     timestamptz login_at
     timestamptz logout_at
+  }
+
+  password_reset_tokens {
+    uuid    id PK
+    uuid    user_id FK
+    varchar token_hash UK
+    timestamptz expires_at
+    timestamptz used_at
+    timestamptz created_at
+  }
+
+  user_preferences {
+    uuid    user_id PK,FK
+    varchar language "vi | en"
+    boolean notifications_enabled
+    boolean sound_enabled
+    timestamptz updated_at
   }
 
   %% ── AGV FLEET ──────────────────────────────────────────────────────────────
@@ -244,6 +268,8 @@ erDiagram
   roles         ||--o{ user_roles        : "assigned to"
   users         ||--o{ refresh_tokens    : "owns"
   users         ||--o{ user_sessions     : "starts"
+  users         ||--o{ password_reset_tokens : "requests"
+  users         ||--|| user_preferences  : "configures"
 
   agvs          ||--|| agv_live_status   : "has live status"
   agvs          ||--o{ agv_status_history : "history"
@@ -276,7 +302,7 @@ erDiagram
 
 | Group | Tables |
 |-------|--------|
-| Auth & Users | `users`, `roles`, `user_roles`, `refresh_tokens`, `user_sessions` |
+| Auth & Users | `users`, `roles`, `user_roles`, `refresh_tokens`, `user_sessions`, `password_reset_tokens`, `user_preferences` |
 | AGV Fleet | `agvs`, `agv_live_status`, `agv_status_history`, `agv_error_history` |
 | Map & Topology | `operation_maps`, `points`, `paths`, `locations`, `location_points`, `blocks`, `block_members` |
 | Transport | `transport_requests` |
@@ -296,3 +322,8 @@ erDiagram
 - **`dispatch_policies.is_active`** — chỉ một policy active tại một thời điểm (enforce ở application layer).
 - **`operation_maps.status`** — enum `DRAFT|ACTIVE|ARCHIVED` thay cho `is_active BOOLEAN`, hỗ trợ versioning lifecycle của WF-07: upload → DRAFT → validate → ACTIVE (chỉ một map ACTIVE tại một thời điểm) → ARCHIVED khi bị thay thế hoặc rollback.
 - **`event_logs.correlation_id`** — nullable UUID để nhóm các event liên quan thành một chuỗi (e.g. toàn bộ sự kiện của một transport request, hoặc một withdrawal attempt thất bại). Được nhắc đến trong WF-10 như context bắt buộc khi emit event.
+- **`users` mở rộng cho FE-07 UI** — bổ sung `phone`, `shift`, `avatar_url` (hồ sơ cá nhân UC-83/84), `mfa_enabled` (công tắc 2 lớp ở tab Security UC-85), `lock_reason` (hiển thị ở màn quản lý admin), `last_login_at` (denormalize mốc đăng nhập gần nhất để khỏi join `user_sessions` mỗi lần liệt kê).
+- **Trạng thái user** — UI hiển thị 4 trạng thái nhưng không thêm enum: suy ra từ cờ boolean theo thứ tự ưu tiên `is_locked → LOCKED`, `is_invited → INVITED`, `is_active → ACTIVE`, còn lại `INACTIVE`. `is_invited` phân biệt "chờ kích hoạt" (vừa mời) với "ngừng hoạt động" (`is_active=false`), vì cả hai đều chưa active.
+- **Một vai trò / user (quy ước app-layer)** — `user_roles` vẫn là M:N để mở rộng sau, nhưng UI FE-07 hiện gán đúng **một** role (ADMIN hoặc OPERATOR) cho mỗi user; application layer enforce một dòng `user_roles` cho mỗi user. Giá trị enum DB là HOA (`ADMIN/OPERATOR`), UI map sang thường.
+- **`password_reset_tokens`** — bảng riêng cho UC-86 (token đặt lại mật khẩu, một lần, có `expires_at` + `used_at`), tách khỏi `refresh_tokens` của phiên đăng nhập.
+- **`user_preferences`** — 1-1 với `users`, lưu `language`, `notifications_enabled`, `sound_enabled` của tab Preferences thay vì để state tạm trên client.
