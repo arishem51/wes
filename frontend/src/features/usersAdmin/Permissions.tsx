@@ -1,5 +1,5 @@
 import { Icon } from '@/ui/icons';
-import { PERMISSIONS } from '@/mocks/adminUsers';
+import { PERMISSIONS } from '@/data/permissions';
 import type { TFunc } from '@/i18n';
 import type { PermGroup, Role } from '@/types/adminUser';
 

@@ -32,6 +32,3 @@ export function toApiError(error: unknown): string {
   }
   return error instanceof Error ? error.message : 'Đã xảy ra lỗi không xác định';
 }
-
-/** Whether the UI should run against in-memory mock data. */
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';

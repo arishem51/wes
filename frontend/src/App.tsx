@@ -9,17 +9,28 @@ import { AppShell, type View } from '@/components/AppShell';
 import type { AccountTab } from '@/features/account/AccountArea';
 import { authApi } from '@/api/auth';
 import { accountApi } from '@/api/account';
-import { DEFAULT_USER } from '@/mocks/account';
 import type { AccountUser, Prefs } from '@/types/account';
 
 type Route = 'login' | 'forgot' | 'app';
+
+// Placeholder until the real profile arrives via login() or getProfile().
+const EMPTY_USER: AccountUser = {
+  name: '',
+  username: '',
+  email: '',
+  phone: '',
+  shift: '',
+  role: 'operator',
+  photo: null,
+  created: new Date().toISOString(),
+};
 
 export default function App() {
   const { lang, setLang, t } = useI18n();
   const { toast } = useToast();
 
   const [route, setRoute] = useState<Route>(() => (authApi.isAuthenticated() ? 'app' : 'login'));
-  const [user, setUser] = useState<AccountUser>(DEFAULT_USER);
+  const [user, setUser] = useState<AccountUser>(EMPTY_USER);
   const [view, setView] = useState<View>('users');
   const [accountTab, setAccountTab] = useState<AccountTab>('profile');
   const [confirmOut, setConfirmOut] = useState(false);
