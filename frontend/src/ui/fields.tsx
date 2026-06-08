@@ -10,7 +10,7 @@ export function Field({
   htmlFor,
 }: {
   label?: string;
-  error?: string | null | false;
+  error?: string | number | boolean | null;
   hint?: string;
   children: ReactNode;
   htmlFor?: string;
@@ -46,7 +46,7 @@ export function TextInput({
   placeholder?: string;
   type?: string;
   icon?: string;
-  error?: string | null | false;
+  error?: string | number | boolean | null;
   onBlur?: () => void;
   autoFocus?: boolean;
   disabled?: boolean;
