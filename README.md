@@ -25,6 +25,57 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Getting Started (FE-07 — Auth, Account & Admin User Management)
+
+### Prerequisites
+- Node.js 20+
+- PostgreSQL 16+ running locally (or via `docker compose up -d`)
+
+### 1. Backend
+
+```bash
+# Install dependencies
+npm install
+
+# Create the database and apply the schema
+#   (Docker:  docker compose up -d   — auto-applies schema.sql)
+createdb wes
+psql -d wes -f database/schema.sql
+
+# (optional) Load test data: 12 users, password "Wes@1234"
+psql -d wes -f database/seed.sql
+
+# Configure environment
+copy .env.example .env        # then edit PGPASSWORD / DATABASE_URL
+
+# Seed the initial admin (quan.tran / Admin@123)
+npm run seed
+
+# Run the API → http://localhost:3000/api
+npm run start:dev
+```
+
+### 2. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev                   # http://localhost:5173
+```
+
+The frontend calls the real backend (proxied `/api` → `:3000`). Sign in with a
+seeded account — e.g. `quan.tran` / `Admin@123`, or any `database/seed.sql`
+account with password `Wes@1234`.
+
+### Default scripts
+
+```bash
+npm run start:dev    # backend, watch mode
+npm run build        # compile (nest build)
+npm run seed         # seed initial admin
+npm run start:prod   # node dist/main
+```
+
 ## Project setup
 
 ```bash

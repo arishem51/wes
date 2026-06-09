@@ -1,0 +1,188 @@
+/* ───────────────────────────────────────────────────────────────────────
+   Sesame — Brand Stylesheet
+   Tokens, type and components shared by the brand guidelines + marketing site.
+   Source of truth: LLTheme (SesameDesign.swift) + the app prototype.
+   ─────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Paper & ink (editorial study surface) ── */
+  --paper:          #FFFDF8;
+  --paper-elevated: #FFFAF0;
+  --paper-edge:     #E6D4B7;
+  --app-bg:         #FFF8ED;
+  --surface:        #FFFFFF;
+  --ink:            #23160F;
+  --ink-2:          #6F5A47;
+  --ink-3:          #8A7A68;
+
+  /* ── Warm Ochre — the primary brand accent ── */
+  --accent:        #925A2A;
+  --accent-deep:   #784318;
+  --accent-mid:    #A8652C;
+  --accent-soft:   #B27A4A;
+  --accent-light:  #FAF0E6;
+  --accent-glow:   rgba(146, 90, 42, 0.14);
+  --accent-grad:   linear-gradient(135deg, #8A4F21 0%, #9A5D28 50%, #A8652C 100%);
+
+  /* ── Expressive "liquid" set — warmth & motifs ── */
+  --terracotta: #D46D55;
+  --peach:      #E89B74;
+  --amber:      #E5B96B;
+  --ivory:      #FBF8F3;
+  --cocoa:      #2A1710;
+
+  /* ── Editorial signals ── */
+  --saffron: #C98224;
+  --sage:    #5F7F5D;
+
+  /* ── Semantic ── */
+  --red:    #C4554D;
+  --green:  #628B66;
+  --blue:   #5C7EA8;
+  --orange: #D4722A;
+
+  /* ── Mastery (Seed → Sprouting → Roasting → Golden) ── */
+  --m-seed:      #9C8C7A;
+  --m-sprouting: #D4722A;
+  --m-roasting:  #5C7EA8;
+  --m-golden:    #628B66;
+
+  /* ── Type ── */
+  --sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --serif: 'Newsreader', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --mono: ui-monospace, 'SF Mono', 'Menlo', monospace;
+
+  /* ── Eyebrow rhythm ── */
+  --eyebrow-tracking: 0.14em;
+
+  /* ── Radii (scaled up from app for marketing scale) ── */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-hero: 28px;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 4px rgba(90,50,10,0.06), 0 4px 16px rgba(90,50,10,0.05);
+  --shadow-md: 0 2px 10px rgba(90,50,10,0.08), 0 12px 32px rgba(90,50,10,0.08);
+  --shadow-lg: 0 6px 22px rgba(90,50,10,0.10), 0 24px 60px rgba(90,50,10,0.12);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: var(--sans);
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── Type primitives ───────────────────────────────────────────────────── */
+.serif { font-family: var(--serif); }
+.sans  { font-family: var(--sans); }
+
+.display {
+  font-family: var(--serif);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.04;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.eyebrow {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--eyebrow-tracking);
+  color: var(--accent-deep);
+}
+.eyebrow.muted { color: var(--ink-3); }
+
+.lede {
+  font-family: var(--serif);
+  font-size: clamp(19px, 2.4vw, 23px);
+  line-height: 1.55;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--sans); font-weight: 700; font-size: 16px;
+  border: none; border-radius: var(--r-lg); cursor: pointer;
+  padding: 0 22px; height: 52px; white-space: nowrap;
+  transition: transform 0.12s ease, opacity 0.15s ease, box-shadow 0.2s ease;
+  text-decoration: none;
+}
+.btn:active { transform: scale(0.98); }
+
+.btn-primary {
+  background: var(--accent-grad); color: #fff;
+  box-shadow: 0 6px 18px var(--accent-glow);
+}
+.btn-primary:hover { box-shadow: 0 8px 24px rgba(146,90,42,0.22); }
+
+.btn-secondary {
+  background: var(--surface); color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--paper-edge);
+}
+.btn-secondary:hover { background: var(--paper-elevated); }
+
+.btn-text {
+  background: none; color: var(--accent); height: auto; padding: 0;
+  font-weight: 600; border-radius: 0;
+}
+
+/* ── Pills ─────────────────────────────────────────────────────────────── */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--sans); font-size: 14px; font-weight: 600;
+  height: 32px; padding: 0 15px; border-radius: 16px; border: none;
+  background: var(--accent-light); color: var(--accent-deep);
+  white-space: nowrap; cursor: pointer;
+}
+.pill.solid { background: var(--accent); color: #fff; box-shadow: 0 2px 8px var(--accent-glow); }
+.pill.ghost { background: transparent; color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--paper-edge); }
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  padding: 22px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(146,90,42,0.06);
+}
+
+/* ── Mastery badge ─────────────────────────────────────────────────────── */
+.mastery {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 700; letter-spacing: 0.01em;
+  padding: 4px 11px; border-radius: 999px;
+}
+.mastery .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.mastery.seed      { color: var(--m-seed);      background: rgba(156,140,122,0.13); }
+.mastery.sprouting { color: var(--m-sprouting); background: rgba(212,114,42,0.12); }
+.mastery.roasting  { color: var(--m-roasting);  background: rgba(92,126,168,0.13); }
+.mastery.golden    { color: var(--m-golden);    background: rgba(98,139,102,0.14); }
+
+/* ── Eyebrow / tag ─────────────────────────────────────────────────────── */
+.tag {
+  display: inline-flex; align-items: center;
+  font-size: 13px; font-weight: 600;
+  padding: 3px 10px; border-radius: 8px;
+  background: var(--accent-light); color: var(--accent-deep);
+}
+
+/* ── Progress bar ──────────────────────────────────────────────────────── */
+.progress { height: 8px; border-radius: 99px; background: rgba(146,90,42,0.14); overflow: hidden; }
+.progress > i { display: block; height: 100%; border-radius: 99px; background: var(--accent-grad); }
+
+/* ── Seed mark glyph (set fill via color) ──────────────────────────────── */
+.seed-glyph { display: inline-block; vertical-align: middle; }
