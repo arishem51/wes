@@ -143,10 +143,33 @@ function LoginRoute({
   onLogin: (user: AccountUser) => void;
 }) {
   const navigate = useNavigate();
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    authApi.clearSession();
+    let alive = true;
+    if (!authApi.isAuthenticated()) {
+      authApi.clearSession();
+      setReady(true);
+      return () => {
+        alive = false;
+      };
+    }
+
+    accountApi.getProfile().then((profile) => {
+      if (!alive) return;
+      onLogin(profile);
+    }).catch(() => {
+      if (!alive) return;
+      authApi.clearSession();
+      setReady(true);
+    });
+
+    return () => {
+      alive = false;
+    };
   }, []);
+
+  if (!ready) return <div style={{ minHeight: '100vh', background: 'var(--ink)' }} />;
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--ink)' }}>
