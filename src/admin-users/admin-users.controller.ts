@@ -52,9 +52,8 @@ export class AdminUsersController {
 
   @Delete(':id')
   @HttpCode(200)
-  async remove(@Param('id') id: string) {
-    await this.admin.remove(id);
-    return { ok: true };
+  remove(@Param('id') id: string) {
+    return this.admin.remove(id);
   }
 
   @Put(':id/role')
@@ -70,6 +69,11 @@ export class AdminUsersController {
   @Post(':id/unlock')
   unlock(@Param('id') id: string) {
     return this.admin.unlock(id);
+  }
+
+  @Post(':id/activate')
+  activate(@Param('id') id: string) {
+    return this.admin.activate(id);
   }
 
   @Post(':id/reset-password')

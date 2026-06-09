@@ -228,11 +228,9 @@ export function ProfilePanel({
 /* ════ SECURITY — UC-85 change password + sessions ════ */
 export function SecurityPanel({
   t,
-  lang,
   toast,
 }: {
   t: TFunc;
-  lang: Lang;
   toast: (s: string) => void;
 }) {
   const [cur, setCur] = useState('');
@@ -318,51 +316,6 @@ export function SecurityPanel({
         </form>
       </Card>
 
-      <Card>
-        <SectionHead title={t('sec_sessions')} desc={t('sec_sessions_d')} />
-        <div className="session-list">
-          <div className="session-row">
-            <span className="session-icon">
-              <Icon name="laptop" size={20} />
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="session-name">
-                Chrome · macOS<span className="session-current">{t('this_device')}</span>
-              </div>
-              <div className="session-meta">
-                192.168.1.24 · {lang === 'vi' ? 'Hà Nội, VN' : 'Hanoi, VN'} · {lang === 'vi' ? 'vừa xong' : 'just now'}
-              </div>
-            </div>
-            <span className="session-dot" />
-          </div>
-          <div className="session-row">
-            <span className="session-icon">
-              <Icon name="phone" size={20} />
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="session-name">Máy quét cầm tay · OPS-03</div>
-              <div className="session-meta">
-                10.0.4.11 · {lang === 'vi' ? 'Kho A' : 'Warehouse A'} · {lang === 'vi' ? '2 giờ trước' : '2h ago'}
-              </div>
-            </div>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="link danger"
-          style={{ marginTop: 16 }}
-          onClick={async () => {
-            try {
-              await accountApi.signOutOthers();
-              toast(t('toast_sessions'));
-            } catch (err) {
-              toast(toApiError(err));
-            }
-          }}
-        >
-          {t('signout_all')}
-        </button>
-      </Card>
     </div>
   );
 }

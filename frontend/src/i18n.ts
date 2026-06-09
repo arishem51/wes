@@ -128,14 +128,6 @@ export const I18N: Record<string, Entry> = {
   err_avatar_size: { vi: 'Ảnh đại diện tối đa 5 MB.', en: 'Avatar image must be 5 MB or smaller.' },
   err_required: { vi: 'Bắt buộc.', en: 'Required.' },
 
-  sec_sessions: { vi: 'Phiên đang hoạt động', en: 'Active sessions' },
-  sec_sessions_d: {
-    vi: 'Các thiết bị đang đăng nhập vào tài khoản của bạn.',
-    en: 'Devices currently signed in to your account.',
-  },
-  this_device: { vi: 'Thiết bị này', en: 'This device' },
-  signout_all: { vi: 'Đăng xuất mọi thiết bị khác', en: 'Sign out all other devices' },
-
   // preferences
   sec_prefs: { vi: 'Hiển thị & ngôn ngữ', en: 'Display & language' },
   sec_prefs_d: { vi: 'Tùy chỉnh trải nghiệm phù hợp với bạn.', en: 'Tune the experience to suit you.' },
@@ -156,7 +148,6 @@ export const I18N: Record<string, Entry> = {
   toast_saved: { vi: 'Đã lưu hồ sơ', en: 'Profile saved' },
   toast_pw: { vi: 'Đã cập nhật mật khẩu', en: 'Password updated' },
   toast_pref: { vi: 'Đã lưu tùy chọn', en: 'Preferences saved' },
-  toast_sessions: { vi: 'Đã đăng xuất các thiết bị khác', en: 'Other devices signed out' },
   toast_photo: { vi: 'Đã đổi ảnh đại diện', en: 'Photo updated' },
 
   show: { vi: 'Hiện', en: 'Show' },
@@ -193,7 +184,8 @@ export const I18N: Record<string, Entry> = {
   act_reset: { vi: 'Đặt lại mật khẩu', en: 'Reset password' },
   act_lock: { vi: 'Khóa tài khoản', en: 'Lock account' },
   act_unlock: { vi: 'Mở khóa', en: 'Unlock' },
-  act_delete: { vi: 'Xóa tài khoản', en: 'Delete account' },
+  act_activate: { vi: 'Kích hoạt lại', en: 'Activate account' },
+  act_delete: { vi: 'Vô hiệu hóa tài khoản', en: 'Deactivate account' },
 
   role_admin_desc: {
     vi: 'Cấu hình & quản trị toàn hệ thống: đội AGV, bản đồ, rule điều phối, người dùng.',
@@ -266,20 +258,27 @@ export const I18N: Record<string, Entry> = {
   lk_reason: { vi: 'Lý do khóa (tùy chọn)', en: 'Reason (optional)' },
   lk_reason_ph: { vi: 'VD: Tạm ngưng theo yêu cầu giám sát ca', en: 'e.g. Suspended per shift supervisor' },
 
-  del_title: { vi: 'Xóa tài khoản người dùng', en: 'Delete user account' },
+  actv_title: { vi: 'Kích hoạt lại tài khoản', en: 'Activate account' },
+  actv_warn: {
+    vi: 'Tài khoản sẽ chuyển về trạng thái hoạt động và có thể đăng nhập lại bằng mật khẩu hiện tại.',
+    en: 'The account will become active and can sign in again with the current password.',
+  },
+
+  del_title: { vi: 'Vô hiệu hóa tài khoản người dùng', en: 'Deactivate user account' },
   del_warn: {
-    vi: 'Hành động này không thể hoàn tác. Tài khoản và quyền truy cập sẽ bị xóa vĩnh viễn.',
-    en: 'This action cannot be undone. The account and its access will be permanently removed.',
+    vi: 'Tài khoản sẽ chuyển sang trạng thái ngừng hoạt động, bị đăng xuất và không thể đăng nhập. Dữ liệu liên quan vẫn được giữ lại.',
+    en: 'The account will become inactive, be signed out, and will not be able to sign in. Related data is kept.',
   },
   del_type: { vi: 'Nhập username để xác nhận:', en: 'Type the username to confirm:' },
-  del_confirm: { vi: 'Xóa vĩnh viễn', en: 'Delete permanently' },
+  del_confirm: { vi: 'Vô hiệu hóa', en: 'Deactivate' },
   del_mismatch: { vi: 'Username không khớp.', en: 'Username does not match.' },
 
   t_created: { vi: 'Đã tạo người dùng', en: 'User created' },
   t_updated: { vi: 'Đã cập nhật người dùng', en: 'User updated' },
-  t_deleted: { vi: 'Đã xóa người dùng', en: 'User deleted' },
+  t_deleted: { vi: 'Đã vô hiệu hóa người dùng', en: 'User deactivated' },
   t_locked: { vi: 'Đã khóa tài khoản', en: 'Account locked' },
   t_unlocked: { vi: 'Đã mở khóa tài khoản', en: 'Account unlocked' },
+  t_activated: { vi: 'Đã kích hoạt lại tài khoản', en: 'Account activated' },
   t_reset: { vi: 'Đã đặt lại mật khẩu', en: 'Password reset' },
   t_role: { vi: 'Đã cập nhật vai trò', en: 'Role updated' },
 

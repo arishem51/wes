@@ -14,6 +14,7 @@ export function SeedMark({ size = 30, color = 'var(--accent)' }: { size?: number
 const PATHS: Record<string, string> = {
   user: 'M12 12a4 4 0 100-8 4 4 0 000 8z M4.5 20a7.5 7.5 0 0115 0',
   lock: 'M5 11h14v9H5z M8 11V7a4 4 0 018 0v4',
+  unlock: 'M5 11h14v9H5z M8 11V7a4 4 0 017.5-1.9 M12 15v2',
   mail: 'M3 5.5h18v13H3z M3 6.5l9 6.5 9-6.5',
   phone: 'M5 4h4l2 5-2.5 1.6a13 13 0 006 6L17 14l5 2v4a2 2 0 01-2 2A17 17 0 013 6a2 2 0 012-2z',
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z',

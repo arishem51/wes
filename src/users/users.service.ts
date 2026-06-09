@@ -200,9 +200,32 @@ export class UsersService implements OnModuleInit {
     return this.findByIdOrFail(id);
   }
 
-  async remove(id: string): Promise<void> {
-    const res = await this.users.delete(id);
-    if (!res.affected) throw new NotFoundException('User not found');
+  async remove(id: string): Promise<UserEntity> {
+    const user = await this.findByIdOrFail(id);
+    user.isActive = false;
+    user.isInvited = false;
+    user.isLocked = false;
+    user.lockReason = null;
+    await this.users.save(user);
+    return this.findByIdOrFail(id);
+  }
+
+  async activate(id: string): Promise<UserEntity> {
+    const user = await this.findByIdOrFail(id);
+    user.isActive = true;
+    user.isInvited = false;
+    user.isLocked = false;
+    user.lockReason = null;
+    await this.users.save(user);
+    return this.findByIdOrFail(id);
+  }
+
+  async activateInvitation(id: string): Promise<void> {
+    const user = await this.findByIdOrFail(id);
+    if (!user.isInvited || user.isLocked) return;
+    user.isActive = true;
+    user.isInvited = false;
+    await this.users.save(user);
   }
 
   async setPassword(id: string, plain: string): Promise<void> {

@@ -1047,63 +1047,6 @@ body {
   margin-top: 2px;
 }
 
-/* sessions */
-.session-list {
-  display: grid;
-  gap: 4px;
-}
-.session-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 2px;
-  border-top: 1px solid rgba(30, 41, 59, 0.08);
-}
-.session-row:first-child {
-  border-top: none;
-}
-.session-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: var(--accent-light);
-  color: var(--accent-deep);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.session-name {
-  font-size: 14.5px;
-  font-weight: 700;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-.session-current {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--green);
-  background: rgba(31, 157, 87, 0.14);
-  padding: 2px 8px;
-  border-radius: 99px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.session-meta {
-  font-size: 12.5px;
-  color: var(--ink-3);
-  margin-top: 2px;
-}
-.session-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--green);
-  flex-shrink: 0;
-}
-
 /* modal / confirm */
 .modal-overlay {
   position: fixed;

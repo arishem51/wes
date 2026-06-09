@@ -50,7 +50,7 @@ export function AccountArea({
         </div>
         <div className="tab-body">
           {tab === 'profile' && <ProfilePanel user={user} setUser={setUser} lang={lang} t={t} toast={toast} />}
-          {tab === 'security' && <SecurityPanel t={t} lang={lang} toast={toast} />}
+          {tab === 'security' && <SecurityPanel t={t} toast={toast} />}
           {tab === 'prefs' && <PreferencesPanel t={t} lang={lang} setLang={setLang} prefs={prefs} setPrefs={setPrefs} toast={toast} />}
         </div>
       </div>

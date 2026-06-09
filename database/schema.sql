@@ -104,7 +104,7 @@ CREATE TABLE users (
 --   is_locked              -> LOCKED
 --   is_invited             -> INVITED
 --   is_active = TRUE        -> ACTIVE
---   else                   -> INACTIVE
+--   else                   -> INACTIVE (soft-deleted/deactivated)
 -- "online" và "last active" suy ra từ user_sessions (login_at/logout_at).
 
 CREATE TABLE roles (

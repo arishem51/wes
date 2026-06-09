@@ -23,9 +23,4 @@ export const accountApi = {
       .post('/account/change-password', { currentPassword, newPassword })
       .then(() => undefined);
   },
-
-  // Sign out all other active sessions.
-  signOutOthers(): Promise<void> {
-    return apiClient.post('/account/sessions/revoke-others').then(() => undefined);
-  },
 };

@@ -302,6 +302,27 @@ export function LockModal({ open, user, locking, onClose, onSubmit, t }: { open:
   );
 }
 
+/* Activate */
+export function ActivateModal({ open, user, onClose, onSubmit, t }: { open: boolean; user: AdminUser | null; onClose: () => void; onSubmit: () => void; t: TFunc }) {
+  if (!user) return null;
+  return (
+    <Modal open={open} onClose={onClose} width={460}>
+      <ModalHead icon="check" title={t('actv_title')} sub={`${user.name} Â· @${user.username}`} />
+      <div className="modal-content">
+        <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>{t('actv_warn')}</p>
+      </div>
+      <div className="modal-foot">
+        <Button variant="secondary" size="sm" onClick={onClose}>
+          {t('cancel')}
+        </Button>
+        <Button size="sm" icon="check" onClick={onSubmit}>
+          {t('act_activate')}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 /* Delete */
 export function DeleteModal({ open, user, onClose, onSubmit, t }: { open: boolean; user: AdminUser | null; onClose: () => void; onSubmit: () => void; t: TFunc }) {
   const [val, setVal] = useState('');

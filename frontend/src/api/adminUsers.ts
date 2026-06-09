@@ -23,8 +23,8 @@ export const adminUsersApi = {
   update(id: string, input: UpdateAdminUserInput): Promise<AdminUser> {
     return apiClient.patch<AdminUser>(`/admin/users/${id}`, input).then((r) => r.data);
   },
-  remove(id: string): Promise<void> {
-    return apiClient.delete(`/admin/users/${id}`).then(() => undefined);
+  remove(id: string): Promise<AdminUser> {
+    return apiClient.delete<AdminUser>(`/admin/users/${id}`).then((r) => r.data);
   },
   setRole(id: string, role: Role): Promise<AdminUser> {
     return apiClient.put<AdminUser>(`/admin/users/${id}/role`, { role }).then((r) => r.data);
@@ -34,6 +34,9 @@ export const adminUsersApi = {
   },
   unlock(id: string): Promise<AdminUser> {
     return apiClient.post<AdminUser>(`/admin/users/${id}/unlock`).then((r) => r.data);
+  },
+  activate(id: string): Promise<AdminUser> {
+    return apiClient.post<AdminUser>(`/admin/users/${id}/activate`).then((r) => r.data);
   },
   resetPassword(id: string): Promise<void> {
     return apiClient.post(`/admin/users/${id}/reset-password`).then(() => undefined);

@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { UsersService, type AdminListParams } from '../users/users.service';
 import { TokenService } from '../auth/token.service';
 import { MailService } from '../mail/mail.service';
@@ -46,8 +46,11 @@ export class AdminUsersService {
     return this.users.adminUserOf(id);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string): Promise<AdminUserDto> {
     await this.users.remove(id);
+    await this.tokens.revokeAllRefreshTokens(id);
+    await this.tokens.endAllSessions(id);
+    return this.users.adminUserOf(id);
   }
 
   async setRole(id: string, role: 'admin' | 'operator', actorId: string): Promise<AdminUserDto> {
@@ -67,9 +70,17 @@ export class AdminUsersService {
     return this.users.adminUserOf(id);
   }
 
+  async activate(id: string): Promise<AdminUserDto> {
+    await this.users.activate(id);
+    return this.users.adminUserOf(id);
+  }
+
   /** Admin-initiated reset: send a reset link to the user's email. */
   async resetPassword(id: string): Promise<void> {
     const user = await this.users.findByIdOrFail(id);
+    if (!user.isActive && !user.isInvited) {
+      throw new BadRequestException('Tai khoan dang ngung hoat dong.');
+    }
     const raw = await this.tokens.createResetToken(user.id);
     await this.mail.sendPasswordReset({
       to: user.email,

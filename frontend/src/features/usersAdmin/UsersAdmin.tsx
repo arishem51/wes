@@ -8,16 +8,17 @@ import { adminUsersApi } from '@/api/adminUsers';
 import { toApiError } from '@/api/client';
 import { relTime, fmtDate } from '@/lib/format';
 import { PermissionList } from './Permissions';
-import { UserFormModal, RolesModal, ResetModal, LockModal, DeleteModal, type UserForm } from './modals';
+import { UserFormModal, RolesModal, ResetModal, LockModal, ActivateModal, DeleteModal, type UserForm } from './modals';
 import type { Lang, TFunc } from '@/i18n';
 import type { AdminUser, AdminUserStatus, Role } from '@/types/adminUser';
 
-type UserAction = 'view' | 'edit' | 'roles' | 'reset' | 'lock' | 'unlock' | 'delete';
+type UserAction = 'view' | 'edit' | 'roles' | 'reset' | 'lock' | 'unlock' | 'activate' | 'delete';
 type ModalState =
   | { type: 'form'; mode: 'create' | 'edit'; user: AdminUser | null }
   | { type: 'roles'; user: AdminUser }
   | { type: 'reset'; user: AdminUser }
   | { type: 'lock'; user: AdminUser; locking: boolean }
+  | { type: 'activate'; user: AdminUser }
   | { type: 'delete'; user: AdminUser }
   | null;
 
@@ -43,6 +44,7 @@ function StatusBadge({ status, t }: { status: AdminUserStatus; t: TFunc }) {
 function RowMenu({ user, onAction, t }: { user: AdminUser; onAction: (a: UserAction, u: AdminUser) => void; t: TFunc }) {
   const [open, setOpen] = useState(false);
   const locked = user.status === 'locked';
+  const inactive = user.status === 'inactive';
   return (
     <div style={{ position: 'relative', display: 'inline-flex' }}>
       <button className="um-rowbtn" onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} aria-label="Actions">
@@ -64,9 +66,9 @@ function RowMenu({ user, onAction, t }: { user: AdminUser; onAction: (a: UserAct
               </button>
             ))}
             <div className="menu-sep" />
-            <button className="menu-item" onClick={() => { setOpen(false); onAction(locked ? 'unlock' : 'lock', user); }}>
-              <Icon name={locked ? 'unlock' : 'lock'} size={17} />
-              {locked ? t('act_unlock') : t('act_lock')}
+            <button className="menu-item" onClick={() => { setOpen(false); onAction(inactive ? 'activate' : locked ? 'unlock' : 'lock', user); }}>
+              <Icon name={inactive ? 'check' : locked ? 'unlock' : 'lock'} size={17} />
+              {inactive ? t('act_activate') : locked ? t('act_unlock') : t('act_lock')}
             </button>
             <button className="menu-item danger" onClick={() => { setOpen(false); onAction('delete', user); }}>
               <Icon name="trash" size={17} />
@@ -113,6 +115,7 @@ function DetailDrawer({
   }, [user]);
   if (!user) return null;
   const locked = user.status === 'locked';
+  const inactive = user.status === 'inactive';
   const Info = ({ icon, label, value, mono }: { icon: string; label: string; value: string; mono?: boolean }) => (
     <div className="um-inforow">
       <span className="um-inforow-ic"><Icon name={icon} size={16} /></span>
@@ -143,7 +146,14 @@ function DetailDrawer({
             <Button variant="secondary" size="sm" icon="edit" onClick={() => onAction('edit', user)}>{t('act_edit')}</Button>
             <Button variant="secondary" size="sm" icon="shield" onClick={() => onAction('roles', user)}>{t('act_roles')}</Button>
             <Button variant="secondary" size="sm" icon="key" onClick={() => onAction('reset', user)}>{t('act_reset')}</Button>
-            <Button variant="secondary" size="sm" icon={locked ? 'unlock' : 'lock'} onClick={() => onAction(locked ? 'unlock' : 'lock', user)}>{locked ? t('act_unlock') : t('act_lock')}</Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={inactive ? 'check' : locked ? 'unlock' : 'lock'}
+              onClick={() => onAction(inactive ? 'activate' : locked ? 'unlock' : 'lock', user)}
+            >
+              {inactive ? t('act_activate') : locked ? t('act_unlock') : t('act_lock')}
+            </Button>
           </div>
           <div className="um-drawer-tabs">
             <button className={'um-drawer-tab' + (tab === 'overview' ? ' active' : '')} onClick={() => setTab('overview')}>{t('d_overview')}</button>
@@ -221,6 +231,9 @@ export function UsersAdmin({ t, lang }: { t: TFunc; lang: Lang }) {
   const syncDetail = (u: AdminUser) => setDetail((d) => (d && d.id === u.id ? u : d));
   const close = () => setModal(null);
   const fail = (e: unknown) => toast(toApiError(e));
+  const revealStatusIfFiltered = (status: AdminUserStatus) => {
+    setStatusF((current) => (current === 'all' || current === status ? current : status));
+  };
 
   function onAction(a: UserAction, u: AdminUser) {
     if (a === 'view') return setDetail(u);
@@ -229,6 +242,7 @@ export function UsersAdmin({ t, lang }: { t: TFunc; lang: Lang }) {
     if (a === 'reset') return setModal({ type: 'reset', user: u });
     if (a === 'lock') return setModal({ type: 'lock', user: u, locking: true });
     if (a === 'unlock') return setModal({ type: 'lock', user: u, locking: false });
+    if (a === 'activate') return setModal({ type: 'activate', user: u });
     if (a === 'delete') return setModal({ type: 'delete', user: u });
   }
 
@@ -278,7 +292,21 @@ export function UsersAdmin({ t, lang }: { t: TFunc; lang: Lang }) {
       const u = locking ? await adminUsersApi.lock(user.id, reason) : await adminUsersApi.unlock(user.id);
       upsert(u);
       syncDetail(u);
+      revealStatusIfFiltered(u.status);
       toast(locking ? t('t_locked') : t('t_unlocked'));
+      close();
+    } catch (e) {
+      fail(e);
+    }
+  }
+  async function submitActivate() {
+    if (modal?.type !== 'activate') return;
+    try {
+      const u = await adminUsersApi.activate(modal.user.id);
+      upsert(u);
+      syncDetail(u);
+      revealStatusIfFiltered(u.status);
+      toast(t('t_activated'));
       close();
     } catch (e) {
       fail(e);
@@ -288,9 +316,10 @@ export function UsersAdmin({ t, lang }: { t: TFunc; lang: Lang }) {
     if (modal?.type !== 'delete') return;
     const u = modal.user;
     try {
-      await adminUsersApi.remove(u.id);
-      setUsers((us) => us.filter((x) => x.id !== u.id));
-      if (detail?.id === u.id) setDetail(null);
+      const deactivated = await adminUsersApi.remove(u.id);
+      upsert(deactivated);
+      syncDetail(deactivated);
+      revealStatusIfFiltered(deactivated.status);
       toast(t('t_deleted'));
       close();
     } catch (e) {
@@ -370,6 +399,7 @@ export function UsersAdmin({ t, lang }: { t: TFunc; lang: Lang }) {
       <RolesModal open={modal?.type === 'roles'} user={modal?.type === 'roles' ? modal.user : null} onClose={close} onSubmit={submitRoles} t={t} />
       <ResetModal open={modal?.type === 'reset'} user={modal?.type === 'reset' ? modal.user : null} onClose={close} onSubmit={submitReset} t={t} />
       <LockModal open={modal?.type === 'lock'} user={modal?.type === 'lock' ? modal.user : null} locking={modal?.type === 'lock' ? modal.locking : false} onClose={close} onSubmit={submitLock} t={t} />
+      <ActivateModal open={modal?.type === 'activate'} user={modal?.type === 'activate' ? modal.user : null} onClose={close} onSubmit={submitActivate} t={t} />
       <DeleteModal open={modal?.type === 'delete'} user={modal?.type === 'delete' ? modal.user : null} onClose={close} onSubmit={submitDelete} t={t} />
     </main>
   );
