@@ -208,3 +208,103 @@ export function ForgotView({ t, lang, onBack }: { t: TFunc; lang: Lang; onBack: 
     </div>
   );
 }
+
+/** UC-86 — Reset password from email token. */
+export function ResetPasswordView({
+  t,
+  lang,
+  token,
+  onBack,
+}: {
+  t: TFunc;
+  lang: Lang;
+  token: string;
+  onBack: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [err, setErr] = useState(token ? '' : t('err_reset_token'));
+  const [done, setDone] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!token) {
+      setErr(t('err_reset_token'));
+      return;
+    }
+    if (password.length < 8) {
+      setErr(t('err_password_short'));
+      return;
+    }
+    if (password !== confirm) {
+      setErr(t('err_password_match'));
+      return;
+    }
+
+    setErr('');
+    setLoading(true);
+    try {
+      await authApi.resetPassword(token, password);
+      setDone(true);
+    } catch (ex) {
+      setErr(toApiError(ex));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="auth-shell">
+      <BrandPanel t={t} lang={lang} />
+      <div className="auth-main">
+        <form className="auth-form" onSubmit={submit}>
+          {!done ? (
+            <>
+              <Eyebrow>{t('reset_eyebrow')}</Eyebrow>
+              <h2 className="auth-title serif">{t('reset_title')}</h2>
+              <p className="auth-lede">{t('reset_lede')}</p>
+
+              {err && (
+                <div className="auth-alert">
+                  <Icon name="x" size={15} stroke={2.4} />
+                  {err}
+                </div>
+              )}
+
+              <div style={{ marginTop: 26, display: 'grid', gap: 18 }}>
+                <Field label={t('reset_new_password')} htmlFor="np">
+                  <TextInput id="np" value={password} onChange={setPassword} placeholder={t('reset_new_password')} icon="lock" type="password" autoFocus />
+                </Field>
+                <Field label={t('reset_confirm_password')} htmlFor="cp">
+                  <TextInput id="cp" value={confirm} onChange={setConfirm} placeholder={t('reset_confirm_password')} icon="lock" type="password" />
+                </Field>
+              </div>
+
+              <Button type="submit" full disabled={loading || !token} iconRight={loading ? null : 'arrow'} style={{ marginTop: 24 }}>
+                {loading ? t('signing_in') : t('reset_password_btn')}
+              </Button>
+              <button type="button" className="link auth-back" onClick={onBack}>
+                <Icon name="chevright" size={15} style={{ transform: 'scaleX(-1)' }} />
+                {t('back_login')}
+              </button>
+            </>
+          ) : (
+            <div className="auth-success">
+              <div className="auth-success-mark">
+                <Icon name="check" size={30} />
+              </div>
+              <h2 className="auth-title serif" style={{ marginTop: 18 }}>
+                {t('reset_done_t')}
+              </h2>
+              <p className="auth-lede">{t('reset_done_b')}</p>
+              <Button full iconRight="arrow" onClick={onBack} style={{ marginTop: 22 }}>
+                {t('back_login')}
+              </Button>
+            </div>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+}

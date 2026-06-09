@@ -1,6 +1,7 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { UsersService, type AdminListParams } from '../users/users.service';
 import { TokenService } from '../auth/token.service';
+import { MailService } from '../mail/mail.service';
 import type { AdminUserDto } from '../users/user.mapper';
 import type {
   CreateAdminUserDto,
@@ -9,11 +10,10 @@ import type {
 
 @Injectable()
 export class AdminUsersService {
-  private readonly logger = new Logger(AdminUsersService.name);
-
   constructor(
     private readonly users: UsersService,
     private readonly tokens: TokenService,
+    private readonly mail: MailService,
   ) {}
 
   list(params: AdminListParams): Promise<AdminUserDto[]> {
@@ -28,6 +28,16 @@ export class AdminUsersService {
       throw new ConflictException('Email đã được sử dụng.');
     }
     const created = await this.users.createUser(dto, actorId);
+    if (dto.sendInvite) {
+      const raw = await this.tokens.createResetToken(created.id);
+      await this.mail.sendPasswordReset({
+        to: created.email,
+        name: created.fullName,
+        link: this.mail.passwordResetUrl(raw),
+        subject: 'Activate your WES Console account',
+        intro: 'An administrator created a WES Console account for you. Use this link to set your password and activate access.',
+      });
+    }
     return this.users.adminUserOf(created.id);
   }
 
@@ -57,10 +67,14 @@ export class AdminUsersService {
     return this.users.adminUserOf(id);
   }
 
-  /** Admin-initiated reset: issue a reset link (logged in dev) for the user. */
+  /** Admin-initiated reset: send a reset link to the user's email. */
   async resetPassword(id: string): Promise<void> {
     const user = await this.users.findByIdOrFail(id);
     const raw = await this.tokens.createResetToken(user.id);
-    this.logger.log(`Admin reset link for ${user.username}: /reset-password?token=${raw}`);
+    await this.mail.sendPasswordReset({
+      to: user.email,
+      name: user.fullName,
+      link: this.mail.passwordResetUrl(raw),
+    });
   }
 }

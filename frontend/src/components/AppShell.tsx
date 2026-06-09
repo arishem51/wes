@@ -24,6 +24,8 @@ const NAV = [
 ];
 
 function Sidebar({ t, lang, user, view, onUsers }: { t: TFunc; lang: Lang; user: AccountUser; view: View; onUsers: () => void }) {
+  const canManageUsers = user.role === 'admin';
+
   return (
     <aside className="side">
       <div className="side-brand">
@@ -36,13 +38,13 @@ function Sidebar({ t, lang, user, view, onUsers }: { t: TFunc; lang: Lang; user:
         </div>
       </div>
       <nav className="side-nav">
-        {NAV.map((grp, gi) => (
+        {NAV.filter((grp) => canManageUsers || grp.section.en !== 'Administration').map((grp, gi) => (
           <div key={gi} className="side-group">
             <div className="side-section">{grp.section[lang]}</div>
             {grp.items.map((it) => {
               const active = it.id === 'users' && view === 'users';
               return (
-                <div key={it.id} className={'side-item' + (active ? ' active' : '')} onClick={it.id === 'users' ? onUsers : undefined}>
+                <div key={it.id} className={'side-item' + (active ? ' active' : '')} onClick={it.id === 'users' && canManageUsers ? onUsers : undefined}>
                   <Icon name={it.icon} size={18} />
                   <span style={{ flex: 1 }}>{it.label[lang]}</span>
                 </div>
@@ -140,12 +142,14 @@ export function AppShell({
   prefs: Prefs;
   setPrefs: (updater: (p: Prefs) => Prefs) => void;
 }) {
-  const crumbSection = view === 'users' ? t('um_eyebrow') : t('nav_account');
-  const crumbCurrent = view === 'users' ? t('um_nav') : t('acct_title');
+  const canManageUsers = user.role === 'admin';
+  const effectiveView: View = canManageUsers ? view : 'account';
+  const crumbSection = effectiveView === 'users' ? t('um_eyebrow') : t('nav_account');
+  const crumbCurrent = effectiveView === 'users' ? t('um_nav') : t('acct_title');
   return (
     <div className="app-frame">
       <div className="app-card">
-        <Sidebar t={t} lang={lang} user={user} view={view} onUsers={() => setView('users')} />
+        <Sidebar t={t} lang={lang} user={user} view={effectiveView} onUsers={() => setView('users')} />
         <div className="app-col">
           <header className="topbar">
             <div className="crumbs">
@@ -170,7 +174,7 @@ export function AppShell({
             </div>
           </header>
 
-          {view === 'users' ? (
+          {effectiveView === 'users' ? (
             <UsersAdmin t={t} lang={lang} />
           ) : (
             <AccountArea

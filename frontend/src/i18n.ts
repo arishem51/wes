@@ -47,6 +47,17 @@ export const I18N: Record<string, Entry> = {
   },
   resend: { vi: 'Gửi lại', en: 'Resend' },
   err_email: { vi: 'Email không hợp lệ.', en: 'Invalid email address.' },
+  reset_eyebrow: { vi: 'Liên kết đặt lại', en: 'Reset link' },
+  reset_title: { vi: 'Tạo mật khẩu mới', en: 'Create a new password' },
+  reset_lede: { vi: 'Nhập mật khẩu mới cho tài khoản WES Console của bạn.', en: 'Enter a new password for your WES Console account.' },
+  reset_new_password: { vi: 'Mật khẩu mới', en: 'New password' },
+  reset_confirm_password: { vi: 'Xác nhận mật khẩu', en: 'Confirm password' },
+  reset_password_btn: { vi: 'Đặt lại mật khẩu', en: 'Reset password' },
+  reset_done_t: { vi: 'Mật khẩu đã được cập nhật', en: 'Password updated' },
+  reset_done_b: { vi: 'Bạn có thể quay lại màn hình đăng nhập và sử dụng mật khẩu mới.', en: 'You can return to sign in and use the new password.' },
+  err_reset_token: { vi: 'Liên kết đặt lại không hợp lệ hoặc đã thiếu token.', en: 'This reset link is invalid or missing its token.' },
+  err_password_short: { vi: 'Mật khẩu phải có ít nhất 8 ký tự.', en: 'Password must be at least 8 characters.' },
+  err_password_match: { vi: 'Hai mật khẩu không khớp.', en: 'Passwords do not match.' },
 
   // app shell
   nav_account: { vi: 'Tài khoản', en: 'Account' },

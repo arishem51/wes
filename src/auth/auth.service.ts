@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { TokenService } from './token.service';
+import { MailService } from '../mail/mail.service';
 import { toAccountUser, type AccountUserDto } from '../users/user.mapper';
 import { UserEntity } from '../users/entities/user.entity';
 
@@ -25,6 +26,7 @@ export class AuthService {
   constructor(
     private readonly users: UsersService,
     private readonly tokens: TokenService,
+    private readonly mail: MailService,
     private readonly jwt: JwtService,
     config: ConfigService,
   ) {
@@ -80,8 +82,18 @@ export class AuthService {
     const user = await this.users.findByEmail(email);
     if (!user) return;
     const raw = await this.tokens.createResetToken(user.id);
-    // Dev: no SMTP — log the link so it can be used manually.
-    this.logger.log(`Password reset link for ${email}: /reset-password?token=${raw}`);
+    const link = this.mail.passwordResetUrl(raw);
+    try {
+      await this.mail.sendPasswordReset({
+        to: user.email,
+        name: user.fullName,
+        link,
+      });
+    } catch (error) {
+      // Keep the public forgot-password endpoint non-enumerating.
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Password reset email failed for ${email}: ${detail}`);
+    }
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {

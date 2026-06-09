@@ -4,14 +4,27 @@ import { Icon } from '@/ui/icons';
 import { Button } from '@/ui/controls';
 import { Modal } from '@/ui/overlay';
 import { useToast } from '@/ui/toast';
-import { LoginView, ForgotView } from '@/features/auth/AuthScreens';
+import { LoginView, ForgotView, ResetPasswordView } from '@/features/auth/AuthScreens';
 import { AppShell, type View } from '@/components/AppShell';
 import type { AccountTab } from '@/features/account/AccountArea';
 import { authApi } from '@/api/auth';
 import { accountApi } from '@/api/account';
 import type { AccountUser, Prefs } from '@/types/account';
 
-type Route = 'login' | 'forgot' | 'app';
+type Route = 'login' | 'forgot' | 'reset' | 'app';
+
+function readResetToken(): string {
+  try {
+    return new URLSearchParams(window.location.search).get('token') ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function initialRoute(): Route {
+  if (window.location.pathname === '/reset-password' && readResetToken()) return 'reset';
+  return authApi.isAuthenticated() ? 'app' : 'login';
+}
 
 // Placeholder until the real profile arrives via login() or getProfile().
 const EMPTY_USER: AccountUser = {
@@ -29,9 +42,10 @@ export default function App() {
   const { lang, setLang, t } = useI18n();
   const { toast } = useToast();
 
-  const [route, setRoute] = useState<Route>(() => (authApi.isAuthenticated() ? 'app' : 'login'));
+  const [route, setRoute] = useState<Route>(initialRoute);
+  const [resetToken, setResetToken] = useState(readResetToken);
   const [user, setUser] = useState<AccountUser>(EMPTY_USER);
-  const [view, setView] = useState<View>('users');
+  const [view, setView] = useState<View>('account');
   const [accountTab, setAccountTab] = useState<AccountTab>('profile');
   const [confirmOut, setConfirmOut] = useState(false);
   const [twoFA, setTwoFA] = useState(false);
@@ -40,12 +54,15 @@ export default function App() {
   // Load the signed-in profile when entering the app.
   useEffect(() => {
     if (route !== 'app') return;
-    accountApi.getProfile().then(setUser).catch(() => undefined);
+    accountApi.getProfile().then((profile) => {
+      setUser(profile);
+      setView(profile.role === 'admin' ? 'users' : 'account');
+    }).catch(() => undefined);
   }, [route]);
 
   function doLogin(loggedIn: AccountUser) {
     setUser(loggedIn);
-    setView('users');
+    setView(loggedIn.role === 'admin' ? 'users' : 'account');
     setRoute('app');
   }
 
@@ -55,10 +72,17 @@ export default function App() {
     setRoute('login');
   }
 
+  function backToLogin() {
+    setResetToken('');
+    window.history.replaceState(null, '', '/');
+    setRoute('login');
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: route === 'app' ? 'var(--app-bg)' : 'var(--ink)' }}>
       {route === 'login' && <LoginView t={t} lang={lang} onLogin={doLogin} onForgot={() => setRoute('forgot')} />}
       {route === 'forgot' && <ForgotView t={t} lang={lang} onBack={() => setRoute('login')} />}
+      {route === 'reset' && <ResetPasswordView t={t} lang={lang} token={resetToken} onBack={backToLogin} />}
       {route === 'app' && (
         <AppShell
           user={user}

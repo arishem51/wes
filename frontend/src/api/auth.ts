@@ -50,4 +50,8 @@ export const authApi = {
   forgotPassword(email: string): Promise<void> {
     return apiClient.post('/auth/forgot-password', { email }).then(() => undefined);
   },
+
+  resetPassword(token: string, newPassword: string): Promise<void> {
+    return apiClient.post('/auth/reset-password', { token, newPassword }).then(() => undefined);
+  },
 };
