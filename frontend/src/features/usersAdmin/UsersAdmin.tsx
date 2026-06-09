@@ -162,7 +162,6 @@ function DetailDrawer({
               <Info icon="mail" label={t('field_email')} value={user.email} mono />
               <Info icon="phone" label={t('field_phone')} value={user.phone} mono />
               <Info icon="clock" label={t('field_shift')} value={user.shift} />
-              <Info icon="shield" label={t('field_mfa')} value={user.mfa ? t('mfa_on') : t('mfa_off')} />
               <Info icon="user" label={t('col_lastactive')} value={relTime(user.lastActive, t)} />
               <Info icon="clock" label={t('field_created')} value={fmtDate(user.created, lang)} />
               <div style={{ marginTop: 22 }}>

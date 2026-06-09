@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Icon } from '@/ui/icons';
 import { Button, Toggle, Segmented } from '@/ui/controls';
 import { Field, TextInput } from '@/ui/fields';
@@ -15,6 +15,47 @@ function pwScore(pw: string): number {
   if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
   if (pw.length >= 12 && /[^A-Za-z0-9]/.test(pw)) s++;
   return s; // 0..4
+}
+
+const AVATAR_SIZE = 256;
+const MAX_AVATAR_FILE_BYTES = 5 * 1024 * 1024;
+
+function avatarDataUrl(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) {
+    return Promise.reject(new Error('err_avatar_type'));
+  }
+  if (file.size > MAX_AVATAR_FILE_BYTES) {
+    return Promise.reject(new Error('err_avatar_size'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = AVATAR_SIZE;
+      canvas.height = AVATAR_SIZE;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('err_avatar_type'));
+        return;
+      }
+
+      const side = Math.min(image.naturalWidth, image.naturalHeight);
+      const sx = (image.naturalWidth - side) / 2;
+      const sy = (image.naturalHeight - side) / 2;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, AVATAR_SIZE, AVATAR_SIZE);
+      ctx.drawImage(image, sx, sy, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+      resolve(canvas.toDataURL('image/jpeg', 0.86));
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('err_avatar_type'));
+    };
+    image.src = url;
+  });
 }
 
 function ViewRow({ icon, label, value, mono }: { icon: string; label: string; value?: string; mono?: boolean }) {
@@ -48,12 +89,27 @@ export function ProfilePanel({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<AccountUser>(user);
   const [saving, setSaving] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
 
   function start() {
     setDraft(user);
     setEditing(true);
   }
   const set = <K extends keyof AccountUser>(k: K, v: AccountUser[K]) => setDraft((d) => ({ ...d, [k]: v }));
+
+  async function changePhoto(file: File | undefined) {
+    if (!file) return;
+    try {
+      const nextPhoto = await avatarDataUrl(file);
+      set('photo', nextPhoto);
+      toast(t('toast_photo'));
+    } catch (err) {
+      const key = err instanceof Error ? err.message : 'err_avatar_type';
+      toast(t(key));
+    } finally {
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -122,7 +178,14 @@ export function ProfilePanel({
             <div className="photo-edit">
               <Avatar name={draft.name} src={draft.photo} size={72} />
               <div className="photo-edit-actions">
-                <Button variant="secondary" size="sm" onClick={() => toast(t('toast_photo'))}>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  style={{ display: 'none' }}
+                  onChange={(event) => void changePhoto(event.currentTarget.files?.[0])}
+                />
+                <Button variant="secondary" size="sm" onClick={() => fileInput.current?.click()}>
                   {t('change_photo')}
                 </Button>
                 <button type="button" className="link danger" onClick={() => set('photo', null)}>
@@ -162,19 +225,15 @@ export function ProfilePanel({
   );
 }
 
-/* ════ SECURITY — UC-85 change password + 2FA + sessions ════ */
+/* ════ SECURITY — UC-85 change password + sessions ════ */
 export function SecurityPanel({
   t,
   lang,
   toast,
-  twoFA,
-  setTwoFA,
 }: {
   t: TFunc;
   lang: Lang;
   toast: (s: string) => void;
-  twoFA: boolean;
-  setTwoFA: (v: boolean) => void;
 }) {
   const [cur, setCur] = useState('');
   const [nw, setNw] = useState('');
@@ -191,6 +250,7 @@ export function SecurityPanel({
     const er: Record<string, string> = {};
     if (!cur) er.cur = t('err_required');
     if (!nw) er.nw = t('err_required');
+    else if (cur && nw === cur) er.nw = t('err_pw_same');
     else if (score < 2) er.nw = t('err_pw_weak');
     if (cf !== nw) er.cf = t('err_pw_match');
     setErrs(er);
@@ -256,26 +316,6 @@ export function SecurityPanel({
             </Button>
           </div>
         </form>
-      </Card>
-
-      <Card>
-        <div className="toggle-row">
-          <div className="toggle-row-text">
-            <h3 className="section-title" style={{ fontSize: 18 }}>
-              {t('sec_2fa')}
-            </h3>
-            <p className="section-desc" style={{ marginTop: 4 }}>
-              {t('sec_2fa_d')}
-            </p>
-          </div>
-          <Toggle
-            checked={twoFA}
-            onChange={(v) => {
-              setTwoFA(v);
-              toast(v ? t('toast_2fa_on') : t('toast_2fa_off'));
-            }}
-          />
-        </div>
       </Card>
 
       <Card>

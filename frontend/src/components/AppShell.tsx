@@ -121,8 +121,6 @@ export function AppShell({
   accountTab,
   setAccountTab,
   toast,
-  twoFA,
-  setTwoFA,
   prefs,
   setPrefs,
 }: {
@@ -137,8 +135,6 @@ export function AppShell({
   accountTab: AccountTab;
   setAccountTab: (tab: AccountTab) => void;
   toast: (s: string) => void;
-  twoFA: boolean;
-  setTwoFA: (v: boolean) => void;
   prefs: Prefs;
   setPrefs: (updater: (p: Prefs) => Prefs) => void;
 }) {
@@ -167,7 +163,6 @@ export function AppShell({
                 t={t}
                 onGoAccount={(tab) => {
                   setAccountTab(tab);
-                  setView('account');
                 }}
                 onSignout={onSignout}
               />
@@ -184,8 +179,6 @@ export function AppShell({
               setLang={setLang}
               t={t}
               toast={toast}
-              twoFA={twoFA}
-              setTwoFA={setTwoFA}
               prefs={prefs}
               setPrefs={setPrefs}
               tab={accountTab}

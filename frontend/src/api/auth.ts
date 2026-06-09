@@ -4,6 +4,15 @@ import type { AccountUser } from '@/types/account';
 const TOKEN_KEY = 'wes.accessToken';
 const AUTH_KEY = 'wes-auth';
 
+function clearStoredAuth(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(AUTH_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Authentication API (FE-07).
  *
@@ -12,11 +21,13 @@ const AUTH_KEY = 'wes-auth';
 export const authApi = {
   isAuthenticated(): boolean {
     try {
-      return localStorage.getItem(AUTH_KEY) === '1';
+      return localStorage.getItem(AUTH_KEY) === '1' && Boolean(localStorage.getItem(TOKEN_KEY));
     } catch {
       return false;
     }
   },
+
+  clearSession: clearStoredAuth,
 
   // UC-81 — sign in.
   async login(username: string, password: string): Promise<AccountUser> {
@@ -37,12 +48,7 @@ export const authApi = {
     try {
       await apiClient.post('/auth/logout');
     } finally {
-      try {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(AUTH_KEY);
-      } catch {
-        /* ignore */
-      }
+      clearStoredAuth();
     }
   },
 

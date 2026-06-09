@@ -122,14 +122,12 @@ export const I18N: Record<string, Entry> = {
   pw_rule_case: { vi: 'Có chữ hoa & chữ thường', en: 'Upper & lower case' },
   err_cur_pw: { vi: 'Mật khẩu hiện tại không đúng.', en: 'Current password is incorrect.' },
   err_pw_match: { vi: 'Mật khẩu xác nhận không khớp.', en: 'Passwords do not match.' },
+  err_pw_same: { vi: 'Mật khẩu mới phải khác mật khẩu hiện tại.', en: 'New password must be different from the current password.' },
   err_pw_weak: { vi: 'Mật khẩu chưa đạt yêu cầu.', en: 'Password does not meet the rules.' },
+  err_avatar_type: { vi: 'Vui lòng chọn ảnh PNG, JPG hoặc WebP.', en: 'Please choose a PNG, JPG or WebP image.' },
+  err_avatar_size: { vi: 'Ảnh đại diện tối đa 5 MB.', en: 'Avatar image must be 5 MB or smaller.' },
   err_required: { vi: 'Bắt buộc.', en: 'Required.' },
 
-  sec_2fa: { vi: 'Xác thực 2 lớp', en: 'Two-factor authentication' },
-  sec_2fa_d: {
-    vi: 'Thêm một lớp bảo vệ khi đăng nhập bằng mã OTP.',
-    en: 'Add an extra layer with a one-time code at sign-in.',
-  },
   sec_sessions: { vi: 'Phiên đang hoạt động', en: 'Active sessions' },
   sec_sessions_d: {
     vi: 'Các thiết bị đang đăng nhập vào tài khoản của bạn.',
@@ -158,8 +156,6 @@ export const I18N: Record<string, Entry> = {
   toast_saved: { vi: 'Đã lưu hồ sơ', en: 'Profile saved' },
   toast_pw: { vi: 'Đã cập nhật mật khẩu', en: 'Password updated' },
   toast_pref: { vi: 'Đã lưu tùy chọn', en: 'Preferences saved' },
-  toast_2fa_on: { vi: 'Đã bật xác thực 2 lớp', en: 'Two-factor enabled' },
-  toast_2fa_off: { vi: 'Đã tắt xác thực 2 lớp', en: 'Two-factor disabled' },
   toast_sessions: { vi: 'Đã đăng xuất các thiết bị khác', en: 'Other devices signed out' },
   toast_photo: { vi: 'Đã đổi ảnh đại diện', en: 'Photo updated' },
 
@@ -212,9 +208,6 @@ export const I18N: Record<string, Entry> = {
   d_overview: { vi: 'Tổng quan', en: 'Overview' },
   d_perms: { vi: 'Quyền truy cập', en: 'Permissions' },
   field_username: { vi: 'Tên đăng nhập', en: 'Username' },
-  field_mfa: { vi: 'Xác thực 2 lớp', en: 'Two-factor' },
-  mfa_on: { vi: 'Đã bật', en: 'Enabled' },
-  mfa_off: { vi: 'Chưa bật', en: 'Disabled' },
   field_created: { vi: 'Ngày tạo', en: 'Created' },
   danger_zone: { vi: 'Vùng nguy hiểm', en: 'Danger zone' },
   online: { vi: 'Trực tuyến', en: 'Online' },

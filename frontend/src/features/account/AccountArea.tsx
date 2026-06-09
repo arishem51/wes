@@ -12,8 +12,6 @@ export function AccountArea({
   setLang,
   t,
   toast,
-  twoFA,
-  setTwoFA,
   prefs,
   setPrefs,
   tab,
@@ -25,8 +23,6 @@ export function AccountArea({
   setLang: (l: Lang) => void;
   t: TFunc;
   toast: (s: string) => void;
-  twoFA: boolean;
-  setTwoFA: (v: boolean) => void;
   prefs: Prefs;
   setPrefs: (updater: (p: Prefs) => Prefs) => void;
   tab: AccountTab;
@@ -54,7 +50,7 @@ export function AccountArea({
         </div>
         <div className="tab-body">
           {tab === 'profile' && <ProfilePanel user={user} setUser={setUser} lang={lang} t={t} toast={toast} />}
-          {tab === 'security' && <SecurityPanel t={t} lang={lang} toast={toast} twoFA={twoFA} setTwoFA={setTwoFA} />}
+          {tab === 'security' && <SecurityPanel t={t} lang={lang} toast={toast} />}
           {tab === 'prefs' && <PreferencesPanel t={t} lang={lang} setLang={setLang} prefs={prefs} setPrefs={setPrefs} toast={toast} />}
         </div>
       </div>

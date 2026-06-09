@@ -16,7 +16,6 @@ export interface AdminUser {
   status: AdminUserStatus;
   phone: string;
   shift: string;
-  mfa: boolean;
   online: boolean;
   lastActive: string | null;
   created: string;

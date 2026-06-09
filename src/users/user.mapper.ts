@@ -24,7 +24,6 @@ export interface AdminUserDto {
   status: UserStatus;
   phone: string;
   shift: string;
-  mfa: boolean;
   online: boolean;
   lastActive: string | null;
   created: string;
@@ -64,7 +63,6 @@ export function toAdminUser(u: UserEntity, role: FeRole, online: boolean): Admin
     status: deriveStatus(u),
     phone: u.phone ?? '',
     shift: u.shift ?? '',
-    mfa: u.mfaEnabled,
     online,
     lastActive: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
     created: u.createdAt.toISOString(),

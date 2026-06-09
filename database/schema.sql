@@ -92,7 +92,6 @@ CREATE TABLE users (
   phone         VARCHAR(30),                          -- profile (UC-83/84)
   shift         VARCHAR(100),                         -- ca làm / bộ phận
   avatar_url    TEXT,                                 -- ảnh đại diện
-  mfa_enabled   BOOLEAN NOT NULL DEFAULT FALSE,       -- xác thực 2 lớp (UC-85 Security)
   is_active     BOOLEAN NOT NULL DEFAULT TRUE,
   is_locked     BOOLEAN NOT NULL DEFAULT FALSE,
   is_invited    BOOLEAN NOT NULL DEFAULT FALSE,       -- chờ kích hoạt (status=INVITED)

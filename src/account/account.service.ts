@@ -27,6 +27,9 @@ export class AccountService {
     const user = await this.users.findByIdOrFail(userId);
     const ok = await this.users.verifyPassword(user, dto.currentPassword);
     if (!ok) throw new BadRequestException('Mật khẩu hiện tại không đúng.');
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại.');
+    }
     await this.users.setPassword(userId, dto.newPassword);
   }
 
