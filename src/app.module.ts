@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { AccountModule } from './account/account.module';
 import { AdminUsersModule } from './admin-users/admin-users.module';
 import { MapsModule } from './maps/maps.module';
+import { AgvsModule } from './agvs/agvs.module';
 
 const localEnvFile = resolve(__dirname, '../.env');
 const hasLocalEnvFile = existsSync(localEnvFile);
@@ -35,6 +36,7 @@ const hasLocalEnvFile = existsSync(localEnvFile);
     AdminUsersModule,
     OpenTcsModule,
     MapsModule,
+    AgvsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

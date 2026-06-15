@@ -14,14 +14,14 @@ type FeRole = (typeof ROLES)[number];
 export class CreateAdminUserDto {
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @IsString()
   @Matches(/^[a-z0-9._]+$/, { message: 'Username chỉ gồm chữ thường, số, dấu chấm và gạch dưới.' })
-  username: string;
+  username!: string;
 
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsOptional()
   @IsString()
@@ -32,7 +32,7 @@ export class CreateAdminUserDto {
   shift?: string;
 
   @IsIn(ROLES)
-  role: FeRole;
+  role!: FeRole;
 
   @IsOptional()
   @IsBoolean()
@@ -63,7 +63,7 @@ export class UpdateAdminUserDto {
 
 export class SetRoleDto {
   @IsIn(ROLES)
-  role: FeRole;
+  role!: FeRole;
 }
 
 export class LockDto {

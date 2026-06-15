@@ -11,6 +11,13 @@ import { KernelApiService } from '../opentcs/kernel-api.service';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
 import { MapRecordEntity } from './entities/map-record.entity';
 
+export type KernelMode = 'MODELLING' | 'OPERATING';
+
+export interface KernelStatusDto {
+  reachable: boolean;
+  state: KernelMode | null;
+}
+
 @Injectable()
 export class MapsService {
   private readonly logger = new Logger(MapsService.name);
@@ -21,9 +28,24 @@ export class MapsService {
     private readonly repo: Repository<MapRecordEntity>,
   ) {}
 
-  async getKernelStatus(): Promise<{ reachable: boolean }> {
-    const reachable = await this.kernelApi.isReachable();
-    return { reachable };
+  async getKernelStatus(): Promise<KernelStatusDto> {
+    const [reachable, state] = await Promise.all([
+      this.kernelApi.isReachable(),
+      this.kernelApi.getKernelState(),
+    ]);
+    return { reachable, state };
+  }
+
+  async setKernelState(state: KernelMode): Promise<KernelStatusDto> {
+    try {
+      await this.kernelApi.setKernelState(state);
+    } catch (err) {
+      const msg = (err as AxiosError).message;
+      throw new ServiceUnavailableException(
+        `Không thể chuyển chế độ kernel: ${msg}`,
+      );
+    }
+    return this.getKernelStatus();
   }
 
   async getCurrent(): Promise<MapRecordEntity | null> {
@@ -56,12 +78,11 @@ export class MapsService {
       const status = axiosErr.response?.status;
       const msg =
         status === 400 || status === 409
-          ? `Kernel từ chối plant model. Kernel cần ở chế độ Modelling để nhận bản đồ mới (hiện đang ở Operating). Hãy dùng KernelControlCenter để chuyển sang Modelling trước.`
+          ? `Kernel đang ở chế độ Vận hành, không thể cập nhật bản đồ. Hãy chuyển sang chế độ Thiết kế trước.`
           : `Không thể kết nối kernel: ${axiosErr.message}`;
       throw new ServiceUnavailableException(msg);
     }
 
-    // Deactivate all previous records
     await this.repo.update({ isActive: true }, { isActive: false });
 
     const record = this.repo.create({

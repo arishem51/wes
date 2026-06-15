@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Post,
@@ -12,13 +13,20 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { IsIn } from 'class-validator';
 import type { AuthUser } from '../auth/jwt-payload';
+import type { KernelMode } from './maps.service';
 
 interface UploadFile {
   buffer: Buffer;
   originalname: string;
   size: number;
   mimetype: string;
+}
+
+class SetKernelStateDto {
+  @IsIn(['MODELLING', 'OPERATING'])
+  state!: KernelMode;
 }
 
 @UseGuards(JwtAuthGuard)
@@ -29,6 +37,13 @@ export class MapsController {
   @Get('kernel-status')
   getKernelStatus() {
     return this.maps.getKernelStatus();
+  }
+
+  @Post('kernel-state')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  setKernelState(@Body() dto: SetKernelStateDto) {
+    return this.maps.setKernelState(dto.state);
   }
 
   @Get('current')

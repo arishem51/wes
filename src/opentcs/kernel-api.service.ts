@@ -37,4 +37,34 @@ export class KernelApiService {
       return null;
     }
   }
+
+  async getVehicles(): Promise<Array<{ name: string }>> {
+    const res = await axios.get<Array<{ name: string }>>(
+      `${this.baseUrl}/v1/vehicles`,
+      { timeout: 3_000 },
+    );
+    return res.data;
+  }
+
+  async getKernelState(): Promise<'MODELLING' | 'OPERATING' | null> {
+    try {
+      const res = await axios.get<{ state: string }>(
+        `${this.baseUrl}/v1/kernel`,
+        { timeout: 3_000 },
+      );
+      const s = res.data?.state;
+      if (s === 'MODELLING' || s === 'OPERATING') return s;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async setKernelState(state: 'MODELLING' | 'OPERATING'): Promise<void> {
+    await axios.put(
+      `${this.baseUrl}/v1/kernel/state?newValue=${state}`,
+      null,
+      { timeout: 10_000 },
+    );
+  }
 }

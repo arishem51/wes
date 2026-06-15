@@ -8,29 +8,29 @@ import {
 @Entity('map_records')
 export class MapRecordEntity {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column()
-  name: string;
+  name!: string;
 
   @Column({ name: 'original_filename' })
-  originalFilename: string;
+  originalFilename!: string;
 
   @Column({ name: 'point_count', type: 'int', default: 0 })
-  pointCount: number;
+  pointCount!: number;
 
   @Column({ name: 'path_count', type: 'int', default: 0 })
-  pathCount: number;
+  pathCount!: number;
 
   @Column({ name: 'vehicle_count', type: 'int', default: 0 })
-  vehicleCount: number;
+  vehicleCount!: number;
 
   @Column({ name: 'is_active', default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @CreateDateColumn({ name: 'uploaded_at', type: 'timestamptz' })
-  uploadedAt: Date;
+  uploadedAt!: Date;
 
   @Column({ name: 'uploaded_by_id', type: 'uuid', nullable: true })
-  uploadedById: string | null;
+  uploadedById!: string | null;
 }

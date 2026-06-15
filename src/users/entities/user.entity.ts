@@ -11,50 +11,50 @@ import { UserRoleEntity } from './user-role.entity';
 @Entity('users')
 export class UserEntity {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column()
-  username: string;
+  username!: string;
 
   @Column()
-  email: string;
+  email!: string;
 
   @Column({ name: 'password_hash' })
-  passwordHash: string;
+  passwordHash!: string;
 
   @Column({ name: 'full_name' })
-  fullName: string;
+  fullName!: string;
 
   @Column({ type: 'varchar', nullable: true })
-  phone: string | null;
+  phone!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  shift: string | null;
+  shift!: string | null;
 
   @Column({ name: 'avatar_url', type: 'text', nullable: true })
-  avatarUrl: string | null;
+  avatarUrl!: string | null;
 
   @Column({ name: 'is_active', default: true })
-  isActive: boolean;
+  isActive!: boolean;
 
   @Column({ name: 'is_locked', default: false })
-  isLocked: boolean;
+  isLocked!: boolean;
 
   @Column({ name: 'is_invited', default: false })
-  isInvited: boolean;
+  isInvited!: boolean;
 
   @Column({ name: 'lock_reason', type: 'text', nullable: true })
-  lockReason: string | null;
+  lockReason!: string | null;
 
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
-  lastLoginAt: Date | null;
+  lastLoginAt!: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @OneToMany(() => UserRoleEntity, (ur) => ur.user)
-  userRoles: UserRoleEntity[];
+  userRoles!: UserRoleEntity[];
 }

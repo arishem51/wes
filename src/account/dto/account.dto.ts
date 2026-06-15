@@ -31,11 +31,11 @@ export class UpdateProfileDto {
 
 export class ChangePasswordDto {
   @IsString()
-  currentPassword: string;
+  currentPassword!: string;
 
   @IsString()
   @MinLength(8)
-  newPassword: string;
+  newPassword!: string;
 }
 
 export class UpdatePreferencesDto {

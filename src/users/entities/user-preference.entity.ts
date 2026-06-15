@@ -3,17 +3,17 @@ import { Column, Entity, PrimaryColumn } from 'typeorm';
 @Entity('user_preferences')
 export class UserPreferenceEntity {
   @PrimaryColumn({ name: 'user_id', type: 'uuid' })
-  userId: string;
+  userId!: string;
 
   @Column({ type: 'varchar', default: 'vi' })
-  language: string;
+  language!: string;
 
   @Column({ name: 'notifications_enabled', default: true })
-  notificationsEnabled: boolean;
+  notificationsEnabled!: boolean;
 
   @Column({ name: 'sound_enabled', default: false })
-  soundEnabled: boolean;
+  soundEnabled!: boolean;
 
   @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'NOW()' })
-  updatedAt: Date;
+  updatedAt!: Date;
 }
