@@ -11,6 +11,15 @@ export class KernelApiService {
     this.baseUrl = process.env.OPENTCS_KERNEL_URL ?? 'http://localhost:55200';
   }
 
+  async isReachable(): Promise<boolean> {
+    try {
+      await axios.get(`${this.baseUrl}/v1/kernel/version`, { timeout: 3_000 });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async putPlantModel(model: PlantModelDto): Promise<void> {
     await axios.put(`${this.baseUrl}/v1/plantModel`, model, {
       headers: { 'Content-Type': 'application/json' },
