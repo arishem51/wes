@@ -266,8 +266,107 @@ State      Action   Lý do
 
 ## MF-03 — Cancel & Xóa hàng (Cancel & Delete)
 
-**Mục tiêu nghiệp vụ:** Hủy lệnh vận chuyển đang chạy hoặc đang chờ, và/hoặc xóa cargo khỏi hệ thống. Hai thao tác này có thể xảy ra độc lập hoặc kết hợp.
+**Mục tiêu nghiệp vụ:** Xóa cargo khỏi hệ thống và hủy task vận chuyển liên quan (nếu có). Delete cargo là thao tác khởi đầu; cancel task là hệ quả bắt buộc theo sau.
 
-**Điều kiện kích hoạt:** Admin hoặc Operator thực hiện cancel transport request (UC 3.7) hoặc delete cargo (UC 3.16).
+**Điều kiện kích hoạt:** Admin hoặc Operator thực hiện delete cargo (UC 3.16). Nếu cargo có task liên quan, UC 3.7 (cancel transport) được thực thi ngay sau đó.
 
-> *(Nội dung chi tiết sẽ được bổ sung)*
+**Tiền điều kiện:** Admin/Operator đã xác thực; Cargo tồn tại trong hệ thống; Task liên quan (nếu có) chưa ở trạng thái `PICKUP_COMPLETED` hoặc `DELIVERY_COMPLETED`.
+
+**Swim-lane diagram:**
+
+```plantuml
+@startuml
+skinparam swimlaneWidth 220
+
+|Admin/Operator|
+start
+:Yêu cầu xóa cargo\n(cargo ID);
+
+|WES|
+:Validate cargo tồn tại;
+if (Cargo tồn tại?) then (Không)
+  :Trả lỗi Not Found;
+  stop
+else (Có)
+endif
+if (Cargo đã DELIVERED?) then (Có)
+  :Trả lỗi\nKhông thể xóa\ncargo đã giao;
+  stop
+else (Không)
+endif
+:Xóa Cargo khỏi hệ thống;
+:Tìm Task liên kết với Cargo;
+if (Có Task liên kết?) then (Không)
+  :Hoàn tất — không cần cancel;
+  stop
+else (Có)
+endif
+
+if (Task state?) then (PICKUP_COMPLETED)
+  :Trả lỗi\nKhông thể xóa —\nAGV đã lấy hàng;
+  stop
+else (IN_POOL\nhoặc IN_FLIGHT)
+endif
+
+if (Task state?) then (IN_POOL)
+  :Xóa Task khỏi Task Pool;
+  :Cập nhật Task → CANCELLED;
+  stop
+else (IN_FLIGHT)
+endif
+
+:Gọi FMS withdrawal API\n(cancel Transport Order);
+
+|FMS (openTCS)|
+:Hủy Transport Order;
+:Gửi lệnh dừng cho AGV;
+
+|AGV|
+:Dừng → Về idle\n→ Báo hoàn tất;
+
+|FMS (openTCS)|
+:Callback withdrawal confirmed → WES;
+
+|WES|
+:Cập nhật Task → CANCELLED;
+stop
+
+@enduml
+```
+
+**Mô tả theo từng lane:**
+
+- **Admin/Operator:** Gửi yêu cầu delete cargo kèm cargo ID. **Handoff → WES.**
+- **WES:** Validate cargo tồn tại, chưa `DELIVERED`, và Task liên kết (nếu có) chưa `PICKUP_COMPLETED`. Xóa Cargo. Tìm Task liên kết:
+  - Nếu không có Task → kết thúc.
+  - Nếu Task đang **IN_POOL** → xóa khỏi pool, cập nhật `CANCELLED`.
+  - Nếu Task đang **IN_FLIGHT** → gọi FMS withdrawal API. Sau khi nhận callback confirmed → cập nhật `CANCELLED`. **Handoff → FMS.**
+- **FMS (openTCS):** Nhận withdrawal request, hủy Transport Order, gửi lệnh dừng AGV. Callback confirmed về WES. **Handoff ↔ AGV.**
+- **AGV:** Nhận lệnh dừng. Nếu đang giữ hàng (`PICKUP_COMPLETED`) → trả hàng về vị trí an toàn do FMS chỉ định trước khi báo hoàn tất. **Handoff → FMS.**
+
+**Bảng các bước:**
+
+| Bước | Lane               | Hành động                                                                 | Đầu ra / Handoff                                      |
+| ---- | ------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------- |
+| 1    | Admin → WES        | Yêu cầu delete cargo (cargo ID)                                           | WES nhận request                                      |
+| 2    | WES                | Validate cargo tồn tại và chưa `DELIVERED`                                | Hợp lệ → tiếp; không → trả lỗi                        |
+| 3    | WES                | Xóa Cargo khỏi hệ thống                                                   | Cargo record removed                                  |
+| 4    | WES                | Tìm Task liên kết với Cargo                                               | Xác định có Task hay không                            |
+| 5a   | WES                | *(Nếu không có Task)* Kết thúc                                            | —                                                     |
+| 5b   | WES                | *(Nếu Task PICKUP_COMPLETED)* Từ chối — trả lỗi nghiệp vụ                | Cargo vẫn tồn tại, task không bị ảnh hưởng            |
+| 5c   | WES                | *(Nếu Task IN_POOL)* Xóa Task khỏi pool → `CANCELLED`                    | Task cancelled, pool updated                          |
+| 5d   | WES → FMS          | *(Nếu Task IN_FLIGHT)* Gọi FMS withdrawal API                             | FMS hủy Transport Order                               |
+| 6    | FMS → AGV          | Hủy TO, gửi lệnh dừng AGV                                                | AGV nhận lệnh dừng                                    |
+| 7    | AGV                | Dừng → về idle → báo hoàn tất                                             | AGV trở về idle                                       |
+| 8    | FMS → WES          | Callback withdrawal confirmed                                             | WES cập nhật Task                                     |
+| 9    | WES                | Cập nhật Task → `CANCELLED`                                               | Task cancelled, AGV eligible cho assignment tiếp theo |
+
+**Luồng ngoại lệ:**
+
+- **Cargo không tồn tại:** WES trả lỗi Not Found, không thực hiện thêm thao tác nào.
+- **Cargo đã `DELIVERED`:** WES từ chối xóa, trả lỗi nghiệp vụ — cargo đã giao không thể xóa.
+- **Task đang `PICKUP_COMPLETED`:** AGV đã lấy hàng và đang trên đường đến drop zone → WES từ chối xóa, trả lỗi nghiệp vụ. Admin phải chờ AGV hoàn tất delivery trước khi thực hiện thao tác khác.
+- **FMS withdrawal thất bại:** WES retry theo policy; nếu vẫn thất bại → ghi event log, thông báo Admin xử lý thủ công.
+- **AGV không phản hồi lệnh dừng:** FMS escalate, ghi incident log; WES giữ Task ở trạng thái `CANCELLING` cho đến khi FMS xác nhận.
+
+**Hậu điều kiện:** Cargo đã xóa khỏi hệ thống; Task liên kết (nếu có) ở trạng thái `CANCELLED`; AGV trở về idle, eligible cho assignment tiếp theo.
