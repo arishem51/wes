@@ -1,6 +1,6 @@
 # Main Flows — SWES
 
-Tài liệu mô tả 3 luồng nghiệp vụ chính (main flows) của SWES. Mỗi main flow trình bày mục tiêu nghiệp vụ, điều kiện kích hoạt, sơ đồ swim-lane, bảng các bước và luồng ngoại lệ.
+Tài liệu mô tả 4 luồng nghiệp vụ chính (main flows) của SWES. Mỗi main flow trình bày mục tiêu nghiệp vụ, điều kiện kích hoạt, sơ đồ swim-lane, bảng các bước và luồng ngoại lệ.
 
 **Các actor tham gia:**
 
@@ -370,3 +370,161 @@ stop
 - **AGV không phản hồi lệnh dừng:** FMS escalate, ghi incident log; WES giữ Task ở trạng thái `CANCELLING` cho đến khi FMS xác nhận.
 
 **Hậu điều kiện:** Cargo đã xóa khỏi hệ thống; Task liên kết (nếu có) ở trạng thái `CANCELLED`; AGV trở về idle, eligible cho assignment tiếp theo.
+
+---
+
+## MF-04 — Phát hiện & xử lý deadlock (Prevention & Recovery)
+
+**Mục tiêu nghiệp vụ:** Phát hiện sớm nguy cơ deadlock/ùn tắc giữa nhiều AGV, phòng ngừa bằng reservation và điều phối an toàn trước khi phát sinh kẹt cứng; khi deadlock đã xảy ra thì cô lập khu vực, chọn phương án recovery ít ảnh hưởng nhất, giải phóng AGV và đưa hệ thống quay lại trạng thái vận hành ổn định.
+
+**Điều kiện kích hoạt:**
+
+- FMS (openTCS) phát hiện route conflict, vehicle waiting bất thường, block order, hoặc không tìm được route khả thi.
+- WES watchdog phát hiện AGV/Task không tiến triển quá ngưỡng `DEADLOCK_TIMEOUT`.
+- Admin/Operator ghi nhận khu vực kẹt và kích hoạt xử lý thủ công.
+
+**Tiền điều kiện:** AGV, topology, point/segment, zone và task đang được đồng bộ giữa WES và FMS; WES nhận được telemetry/callback trạng thái từ FMS; các ngưỡng cảnh báo như `WAITING_THRESHOLD`, `DEADLOCK_TIMEOUT`, `MAX_REPLAN_RETRY` đã được cấu hình.
+
+**Swim-lane diagram:**
+
+```plantuml
+@startuml
+skinparam swimlaneWidth 220
+
+|FMS (openTCS)|
+start
+:Theo dõi route, segment lock,\nvehicle state và traffic conflict;
+if (Có nguy cơ deadlock?) then (Không)
+  :Tiếp tục traffic management\nvà routing bình thường;
+  stop
+else (Có)
+endif
+:Gửi deadlock/congestion event\nhoặc route-failed callback -> WES;
+
+|WES|
+:Nhận event và snapshot\nAGV + Task + segment/zone;
+:Phân loại sự kiện:\nwarning / suspected / confirmed;
+if (Mức độ?) then (Warning)
+  :Prevention:\nfreeze release task vào zone rủi ro;
+  :Yêu cầu FMS replan route\nhoặc đổi thứ tự dispatch;
+else (Suspected/Confirmed)
+  :Lock affected zone;
+  :Tạm dừng assignment mới\nvào affected zone;
+  :Xác định wait-for graph\nAGV <-> segment/point/task;
+  if (Có cycle deadlock?) then (Không)
+    :Đánh dấu congestion;\nmonitor tiếp;
+    :Unlock zone nếu an toàn;
+    stop
+  else (Có)
+  endif
+  :Chọn recovery plan:\n1) re-route\n2) move-to-safe-point\n3) cancel/requeue task;
+endif
+
+|FMS (openTCS)|
+:Thực thi recovery command:\nreplan / reroute /\nwithdraw TO / move vehicle;
+if (Recovery command khả thi?) then (Không)
+  :Callback recovery failed -> WES;
+else (Có)
+  :Điều khiển AGV theo plan;
+endif
+
+|AGV|
+:Dừng an toàn hoặc di chuyển\nđến safe point/route mới;
+:Báo trạng thái hiện tại -> FMS;
+
+|FMS (openTCS)|
+:Callback vehicle/task status -> WES;
+
+|WES|
+if (Deadlock đã giải phóng?) then (Không)
+  :Tăng retry count;
+  if (Retry vượt MAX_REPLAN_RETRY?) then (Có)
+    :Escalate Admin/Operator;\nGiữ zone locked;
+    stop
+  else (Không)
+    :Tính recovery plan khác;
+    :Gửi recovery command mới\ncho FMS;
+    stop
+  endif
+else (Có)
+  :Unlock affected zone;
+  :Requeue task bị cancel\nhoặc resume task hợp lệ;
+  :Mở lại release/assignment\ncho zone;
+  :Ghi incident log + metrics;
+  stop
+endif
+
+|Admin/Operator|
+:Nhận cảnh báo nếu cần\nxử lý thủ công;
+
+@enduml
+```
+
+**Mô tả theo từng lane:**
+
+- **FMS (openTCS):** Theo dõi traffic runtime ở mức route/segment/point, gồm vehicle state, segment lock, conflict, route failed và AGV waiting. Khi phát hiện nguy cơ deadlock hoặc route không khả thi, FMS gửi event/callback về WES. Khi WES chọn phương án recovery, FMS thực thi replan, reroute, withdraw Transport Order hoặc move vehicle đến safe point. **Handoff ↔ WES, AGV.**
+- **WES:** Nhận event từ FMS hoặc watchdog nội bộ, lấy snapshot AGV/Task/zone, phân loại mức độ `WARNING`, `SUSPECTED`, `CONFIRMED`. Với warning, WES phòng ngừa bằng cách tạm dừng release task mới vào vùng rủi ro và yêu cầu FMS replan. Với suspected/confirmed, WES lock affected zone, dựng wait-for graph để xác định cycle deadlock, chọn recovery plan theo thứ tự ít ảnh hưởng nhất: reroute, move-to-safe-point, withdraw/cancel và requeue task. Khi deadlock được giải phóng, WES unlock zone, resume/requeue task và mở lại assignment. **Handoff ↔ FMS, Admin/Operator.**
+- **AGV:** Nhận lệnh từ FMS, dừng an toàn, đi theo route mới hoặc di chuyển đến safe point. AGV không tự quyết định recovery nghiệp vụ; trạng thái thực tế được báo về FMS để FMS callback cho WES. **Handoff → FMS.**
+- **Admin/Operator:** Nhận cảnh báo khi hệ thống không tự recovery sau số lần retry cho phép hoặc cần can thiệp vật lý. Admin/Operator có thể xác nhận xử lý thủ công, mở khóa zone sau khi khu vực an toàn, hoặc hủy task theo quy trình vận hành. **Handoff → WES.**
+
+**Bảng các bước:**
+
+| Bước | Lane | Hành động | Đầu ra / Handoff |
+| ---- | ---- | --------- | ---------------- |
+| 1 | FMS | Theo dõi route, segment lock, vehicle state và traffic conflict | Phát hiện warning/congestion/deadlock |
+| 2 | FMS → WES | Gửi event hoặc route-failed callback | WES nhận tín hiệu xử lý |
+| 3 | WES | Lấy snapshot AGV + Task + affected segment/zone | Dữ liệu đủ để phân tích |
+| 4 | WES | Phân loại mức độ `WARNING` / `SUSPECTED` / `CONFIRMED` | Chọn nhánh prevention hoặc recovery |
+| 5a | WES | *(Warning)* Freeze release task mới vào zone rủi ro | Giảm khả năng tạo deadlock mới |
+| 5b | WES → FMS | *(Warning)* Yêu cầu replan/reroute hoặc đổi thứ tự dispatch | FMS thử phương án route an toàn hơn |
+| 6 | WES | *(Suspected/Confirmed)* Lock affected zone, tạm dừng assignment mới vào zone | Cô lập vùng kẹt |
+| 7 | WES | Dựng wait-for graph AGV ↔ segment/point/task | Xác định có cycle deadlock hay chỉ congestion |
+| 8a | WES | *(Không có cycle)* Đánh dấu congestion và tiếp tục monitor | Không kích hoạt recovery mạnh |
+| 8b | WES | *(Có cycle)* Chọn recovery plan theo priority | Recovery plan được xác định |
+| 9 | WES → FMS | Gửi recovery command: replan/reroute/move-to-safe-point/withdraw TO | FMS thực thi |
+| 10 | FMS → AGV | Điều khiển AGV dừng an toàn hoặc đi theo route/safe point mới | AGV thay đổi trạng thái vật lý |
+| 11 | AGV → FMS | Báo trạng thái hiện tại | FMS có dữ liệu callback |
+| 12 | FMS → WES | Callback kết quả recovery | WES đánh giá deadlock đã giải phóng chưa |
+| 13a | WES | *(Đã giải phóng)* Unlock zone, resume/requeue task, mở lại assignment | Hệ thống vận hành lại bình thường |
+| 13b | WES | *(Chưa giải phóng)* Retry phương án khác nếu chưa vượt `MAX_REPLAN_RETRY` | Tiếp tục recovery |
+| 13c | WES → Admin | *(Vượt retry)* Escalate xử lý thủ công, giữ zone locked | Admin/Operator can thiệp |
+| 14 | WES | Ghi incident log, metrics và nguyên nhân xử lý | Có dữ liệu audit/tối ưu vận hành |
+
+**Luồng ngoại lệ:**
+
+- **False positive warning:** FMS/WES cảnh báo nhưng wait-for graph không có cycle. WES chỉ giữ trạng thái congestion, không cancel task; zone được unlock khi traffic trở lại bình thường.
+- **Không có route thay thế:** FMS replan/reroute thất bại. WES chuyển sang phương án move-to-safe-point hoặc withdraw Transport Order theo priority recovery.
+- **Safe point không khả dụng:** Tất cả safe point gần nhất bị chiếm hoặc không reachable. WES giữ affected zone locked, không release task mới vào zone và escalate Admin/Operator.
+- **AGV không phản hồi:** FMS không nhận telemetry hoặc AGV không xác nhận lệnh dừng/di chuyển. WES giữ task ở trạng thái `BLOCKED` hoặc `RECOVERY_PENDING`, ghi incident log và yêu cầu xử lý thủ công.
+- **Recovery vượt số lần retry:** Sau `MAX_REPLAN_RETRY`, WES không tiếp tục tự động thử để tránh làm tình trạng tệ hơn; hệ thống gửi cảnh báo Admin/Operator và giữ khóa zone cho đến khi được xác nhận an toàn.
+- **Task bị withdraw nhưng AGV đang giữ hàng:** WES không xóa cargo. Task được đưa về trạng thái cần xử lý nghiệp vụ riêng (`RECOVERY_PENDING`/`MANUAL_REQUIRED`) để Admin quyết định trả hàng về safe drop point hoặc tiếp tục delivery sau khi thông đường.
+
+**Business Rule:**
+
+### BR-DEADLOCK-01 — Prevention trước Recovery
+
+**Rule:** WES luôn ưu tiên phòng deadlock trước khi dùng recovery mạnh. Khi zone có dấu hiệu congestion hoặc route risk, WES phải tạm dừng release/assignment task mới vào zone đó, sau đó yêu cầu FMS replan/reroute trước khi cân nhắc withdraw/cancel task.
+
+**Lý do:** Reroute và điều chỉnh dispatch ít ảnh hưởng hơn cancel task. Việc tiếp tục đưa task mới vào vùng đang rủi ro có thể làm tăng số AGV trong wait-for graph và biến congestion thành deadlock thật.
+
+**Áp dụng tại:** MF-04 bước 5a-5b.
+
+---
+
+### BR-DEADLOCK-02 — Confirm Deadlock bằng Wait-for Graph
+
+**Rule:** Deadlock chỉ được xem là `CONFIRMED` khi wait-for graph có cycle giữa AGV và tài nguyên bị giữ/chờ như segment, point, zone lock hoặc task dependency. Nếu không có cycle, sự kiện được xử lý như congestion/suspected deadlock.
+
+**Lý do:** Không phải mọi trường hợp AGV đứng chờ đều là deadlock. Phân biệt congestion với cycle deadlock giúp tránh cancel hoặc withdraw task không cần thiết.
+
+**Áp dụng tại:** MF-04 bước 7-8.
+
+---
+
+### BR-DEADLOCK-03 — Recovery theo mức ảnh hưởng tăng dần
+
+**Rule:** Khi deadlock đã confirmed, WES chọn recovery theo thứ tự ưu tiên: (1) reroute/replan, (2) move một AGV đến safe point, (3) withdraw/cancel và requeue task có chi phí ảnh hưởng thấp nhất. Chỉ escalate Admin/Operator khi các phương án tự động thất bại hoặc vượt `MAX_REPLAN_RETRY`.
+
+**Lý do:** Recovery cần giải phóng cycle nhưng vẫn hạn chế mất tiến độ vận chuyển, tránh hủy task không cần thiết và giữ trạng thái kho nhất quán.
+
+**Áp dụng tại:** MF-04 bước 8b-13c.
