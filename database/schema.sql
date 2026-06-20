@@ -68,12 +68,15 @@ CREATE TYPE map_status_enum AS ENUM ('DRAFT', 'ACTIVE', 'ARCHIVED');
 
 CREATE TYPE audit_action_enum AS ENUM ('CREATE', 'UPDATE', 'DELETE');
 
+CREATE TYPE cargo_status_enum AS ENUM ('ACTIVE', 'DELIVERED', 'CANCELLED');
+
 CREATE TYPE audit_entity_type_enum AS ENUM (
   'AGV',
   'POINT',
   'PATH',
   'LOCATION',
   'BLOCK',
+  'CARGO',
   'TRANSPORT_REQUEST',
   'DISPATCH_POLICY',
   'USER'
@@ -300,9 +303,24 @@ CREATE TABLE block_members (
 -- 4. TRANSPORT REQUEST MANAGEMENT
 -- =============================================================================
 
+-- Cargo is created first by scanner API, then triggers transport_request creation.
+-- source_point_id / destination_location_id are denormalized from cargo at task-creation
+-- time so transport_request history is preserved even after cargo is deleted.
+CREATE TABLE cargos (
+  id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  item_code               VARCHAR(255) NOT NULL,
+  source_point_id         UUID REFERENCES points(id) ON DELETE SET NULL,
+  destination_location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
+  status                  cargo_status_enum NOT NULL DEFAULT 'ACTIVE',
+  created_by              UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE transport_requests (
   id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   request_code            VARCHAR(50) NOT NULL UNIQUE,
+  cargo_id                UUID REFERENCES cargos(id) ON DELETE SET NULL,
   source_point_id         UUID REFERENCES points(id) ON DELETE SET NULL,
   destination_location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
   pickup_point_id         UUID REFERENCES points(id) ON DELETE SET NULL,   -- calculated
@@ -405,7 +423,14 @@ CREATE INDEX idx_paths_dest_point     ON paths(dest_point_id);
 CREATE INDEX idx_locations_map_id     ON locations(map_id);
 CREATE INDEX idx_blocks_map_id        ON blocks(map_id);
 
+-- Cargo
+CREATE INDEX idx_cargos_status      ON cargos(status);
+CREATE INDEX idx_cargos_created_at  ON cargos(created_at DESC);
+CREATE INDEX idx_cargos_source      ON cargos(source_point_id);
+CREATE INDEX idx_cargos_destination ON cargos(destination_location_id);
+
 -- Transport Request
+CREATE INDEX idx_transport_requests_cargo_id     ON transport_requests(cargo_id);
 CREATE INDEX idx_transport_requests_status       ON transport_requests(status);
 CREATE INDEX idx_transport_requests_created_at   ON transport_requests(created_at DESC);
 CREATE INDEX idx_transport_requests_assigned_agv ON transport_requests(assigned_agv_id);

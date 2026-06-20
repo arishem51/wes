@@ -186,9 +186,21 @@ erDiagram
 
   %% ── TRANSPORT REQUEST ──────────────────────────────────────────────────────
 
+  cargos {
+    uuid    id PK
+    varchar item_code "barcode from scanner"
+    uuid    source_point_id FK
+    uuid    destination_location_id FK
+    enum    status "ACTIVE|DELIVERED|CANCELLED"
+    uuid    created_by FK "null if created via scanner API"
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
   transport_requests {
     uuid    id PK
     varchar request_code UK
+    uuid    cargo_id FK
     uuid    source_point_id FK
     uuid    destination_location_id FK
     uuid    pickup_point_id FK "calculated"
@@ -285,6 +297,12 @@ erDiagram
   points         ||--o{ paths            : "source"
   points         ||--o{ paths            : "destination"
 
+  cargos         }o--|| points        : "source point"
+  cargos         }o--|| locations     : "destination"
+  cargos         ||--o| transport_requests : "triggers"
+  users          ||--o{ cargos        : "creates"
+
+  transport_requests }o--o| cargos      : "for cargo"
   transport_requests }o--|| points       : "source point"
   transport_requests }o--|| locations    : "destination"
   transport_requests }o--o| points       : "pickup point"
@@ -305,7 +323,7 @@ erDiagram
 | Auth & Users | `users`, `roles`, `user_roles`, `refresh_tokens`, `user_sessions`, `password_reset_tokens`, `user_preferences` |
 | AGV Fleet | `agvs`, `agv_live_status`, `agv_status_history`, `agv_error_history` |
 | Map & Topology | `operation_maps`, `points`, `paths`, `locations`, `location_points`, `blocks`, `block_members` |
-| Transport | `transport_requests` |
+| Transport | `cargos`, `transport_requests` |
 | Dispatch | `dispatch_policies` |
 | Monitoring & Logs | `kpi_snapshots`, `event_logs`, `audit_logs` |
 
@@ -319,6 +337,7 @@ erDiagram
 - **`location_type_enum`** không có `PARK` — parking là point-level concept trong openTCS (`PARK_POSITION`), không phải location.
 - **`block_members.member_id`** — không có FK cứng vì member có thể là point hoặc path, phân biệt qua `member_type`.
 - **`event_logs.payload JSONB`** — flexible để lưu context bất kỳ mà không cần thêm cột.
+- **`cargos`** — Cargo được tạo trước bởi scanner API (created_by nullable), sau đó trigger tạo transport_request. Một cargo map tối đa một transport_request (`||--o|`). Delete cargo khi task chưa `PICKUP_COMPLETED` cascade cancel transport_request liên kết (enforce ở application layer). `source_point_id` và `destination_location_id` trên `transport_requests` là denormalized copy từ cargo tại thời điểm tạo task — giữ nguyên để tránh join khi cargo bị delete.
 - **`dispatch_policies.is_active`** — chỉ một policy active tại một thời điểm (enforce ở application layer).
 - **`operation_maps.status`** — enum `DRAFT|ACTIVE|ARCHIVED` thay cho `is_active BOOLEAN`, hỗ trợ versioning lifecycle của WF-07: upload → DRAFT → validate → ACTIVE (chỉ một map ACTIVE tại một thời điểm) → ARCHIVED khi bị thay thế hoặc rollback.
 - **`event_logs.correlation_id`** — nullable UUID để nhóm các event liên quan thành một chuỗi (e.g. toàn bộ sự kiện của một transport request, hoặc một withdrawal attempt thất bại). Được nhắc đến trong WF-10 như context bắt buộc khi emit event.
