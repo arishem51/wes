@@ -38,6 +38,17 @@ export class KernelApiService {
     }
   }
 
+  async getPlantModel(): Promise<unknown | null> {
+    try {
+      const res = await axios.get(`${this.baseUrl}/v1/plantModel`, {
+        timeout: 10_000,
+      });
+      return res.data;
+    } catch {
+      return null;
+    }
+  }
+
   async getVehicles(): Promise<Array<{ name: string }>> {
     const res = await axios.get<Array<{ name: string }>>(
       `${this.baseUrl}/v1/vehicles`,

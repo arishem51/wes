@@ -48,6 +48,10 @@ export class MapsService {
     return this.getKernelStatus();
   }
 
+  async getPlantModel(): Promise<unknown | null> {
+    return this.kernelApi.getPlantModel();
+  }
+
   async getCurrent(): Promise<MapRecordEntity | null> {
     return this.repo.findOne({
       where: { isActive: true },

@@ -51,6 +51,11 @@ export class MapsController {
     return this.maps.getCurrent();
   }
 
+  @Get('plant-model')
+  getPlantModel() {
+    return this.maps.getPlantModel();
+  }
+
   @Post('upload')
   @UseGuards(RolesGuard)
   @Roles('admin')
