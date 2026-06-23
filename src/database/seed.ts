@@ -9,7 +9,9 @@ import { UsersService } from '../users/users.service';
  */
 async function run() {
   const log = new Logger('Seed');
-  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn'],
+  });
   const users = app.get(UsersService);
 
   const existing = await users.findByUsername('quan.tran');
@@ -35,7 +37,6 @@ async function run() {
 }
 
 run().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error('Seed failed:', err);
   process.exit(1);
 });

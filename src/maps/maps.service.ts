@@ -48,8 +48,19 @@ export class MapsService {
     return this.getKernelStatus();
   }
 
-  async getPlantModel(): Promise<unknown | null> {
+  async getPlantModel(): Promise<unknown> {
     return this.kernelApi.getPlantModel();
+  }
+
+  async getKernelVehicles(): Promise<unknown[]> {
+    return this.kernelApi.getVehicleStates();
+  }
+
+  async proxyKernelEvents(
+    minSequenceNo: number,
+    timeout: number,
+  ): Promise<unknown> {
+    return this.kernelApi.getEvents(minSequenceNo, timeout);
   }
 
   async getCurrent(): Promise<MapRecordEntity | null> {

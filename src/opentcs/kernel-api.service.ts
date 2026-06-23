@@ -38,7 +38,7 @@ export class KernelApiService {
     }
   }
 
-  async getPlantModel(): Promise<unknown | null> {
+  async getPlantModel(): Promise<unknown> {
     try {
       const res = await axios.get(`${this.baseUrl}/v1/plantModel`, {
         timeout: 10_000,
@@ -53,6 +53,25 @@ export class KernelApiService {
     const res = await axios.get<Array<{ name: string }>>(
       `${this.baseUrl}/v1/vehicles`,
       { timeout: 3_000 },
+    );
+    return res.data;
+  }
+
+  async getVehicleStates(): Promise<unknown[]> {
+    try {
+      const res = await axios.get(`${this.baseUrl}/v1/vehicles`, {
+        timeout: 5_000,
+      });
+      return Array.isArray(res.data) ? (res.data as unknown[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async getEvents(minSequenceNo: number, timeout: number): Promise<unknown> {
+    const res = await axios.get(
+      `${this.baseUrl}/v1/events?minSequenceNo=${minSequenceNo}&timeout=${timeout}`,
+      { timeout: timeout + 3_000 },
     );
     return res.data;
   }
@@ -72,10 +91,8 @@ export class KernelApiService {
   }
 
   async setKernelState(state: 'MODELLING' | 'OPERATING'): Promise<void> {
-    await axios.put(
-      `${this.baseUrl}/v1/kernel/state?newValue=${state}`,
-      null,
-      { timeout: 10_000 },
-    );
+    await axios.put(`${this.baseUrl}/v1/kernel/state?newValue=${state}`, null, {
+      timeout: 10_000,
+    });
   }
 }

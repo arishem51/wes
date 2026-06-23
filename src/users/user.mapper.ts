@@ -30,8 +30,10 @@ export interface AdminUserDto {
   lockReason: string | null;
 }
 
-export const roleToFe = (name: RoleName): FeRole => name.toLowerCase() as FeRole;
-export const roleToDb = (role: FeRole): RoleName => role.toUpperCase() as RoleName;
+export const roleToFe = (name: RoleName): FeRole =>
+  name.toLowerCase() as FeRole;
+export const roleToDb = (role: FeRole): RoleName =>
+  role.toUpperCase() as RoleName;
 
 export function deriveStatus(u: UserEntity): UserStatus {
   if (u.isLocked) return 'locked';
@@ -53,7 +55,11 @@ export function toAccountUser(u: UserEntity, role: FeRole): AccountUserDto {
   };
 }
 
-export function toAdminUser(u: UserEntity, role: FeRole, online: boolean): AdminUserDto {
+export function toAdminUser(
+  u: UserEntity,
+  role: FeRole,
+  online: boolean,
+): AdminUserDto {
   return {
     id: u.id,
     name: u.fullName,

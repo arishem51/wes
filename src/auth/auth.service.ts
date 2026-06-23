@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { TokenService } from './token.service';
 import { MailService } from '../mail/mail.service';
@@ -36,25 +36,37 @@ export class AuthService {
   private signAccess(user: UserEntity): string {
     const role = this.users.feRoleOf(user);
     const payload = { sub: user.id, username: user.username, roles: [role] };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const options: any = { expiresIn: this.accessTtl };
+    const options: JwtSignOptions = { expiresIn: this.accessTtl };
     return this.jwt.sign(payload, options);
   }
 
   private assertCanAuthenticate(user: UserEntity): void {
     if (user.isLocked) throw new UnauthorizedException('Tai khoan da bi khoa.');
     if (!user.isActive || user.isInvited) {
-      throw new UnauthorizedException('Tai khoan chua duoc kich hoat hoac da bi vo hieu hoa.');
+      throw new UnauthorizedException(
+        'Tai khoan chua duoc kich hoat hoac da bi vo hieu hoa.',
+      );
     }
   }
 
   // UC-81
-  async login(username: string, password: string, ip: string | null, ua: string | null): Promise<LoginResult> {
+  async login(
+    username: string,
+    password: string,
+    ip: string | null,
+    ua: string | null,
+  ): Promise<LoginResult> {
     const user = await this.users.findByUsername(username);
-    if (!user) throw new UnauthorizedException('Tên đăng nhập hoặc mật khẩu không đúng.');
+    if (!user)
+      throw new UnauthorizedException(
+        'Tên đăng nhập hoặc mật khẩu không đúng.',
+      );
     this.assertCanAuthenticate(user);
     const ok = await this.users.verifyPassword(user, password);
-    if (!ok) throw new UnauthorizedException('Tên đăng nhập hoặc mật khẩu không đúng.');
+    if (!ok)
+      throw new UnauthorizedException(
+        'Tên đăng nhập hoặc mật khẩu không đúng.',
+      );
 
     await this.users.touchLastLogin(user.id);
     await this.tokens.startSession(user.id, ip, ua);
@@ -75,7 +87,8 @@ export class AuthService {
   async refresh(refreshToken?: string): Promise<LoginResult> {
     if (!refreshToken) throw new UnauthorizedException('Missing refresh token');
     const rotated = await this.tokens.rotateRefreshToken(refreshToken);
-    if (!rotated) throw new UnauthorizedException('Refresh token không hợp lệ.');
+    if (!rotated)
+      throw new UnauthorizedException('Refresh token không hợp lệ.');
     const user = await this.users.findByIdOrFail(rotated.userId);
     try {
       this.assertCanAuthenticate(user);
@@ -112,7 +125,8 @@ export class AuthService {
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const userId = await this.tokens.consumeResetToken(token);
-    if (!userId) throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn.');
+    if (!userId)
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn.');
     const user = await this.users.findByIdOrFail(userId);
     if (user.isLocked || (!user.isActive && !user.isInvited)) {
       throw new BadRequestException('Tai khoan khong hoat dong.');

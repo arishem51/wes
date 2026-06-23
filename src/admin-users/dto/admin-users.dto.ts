@@ -17,7 +17,9 @@ export class CreateAdminUserDto {
   name!: string;
 
   @IsString()
-  @Matches(/^[a-z0-9._]+$/, { message: 'Username chỉ gồm chữ thường, số, dấu chấm và gạch dưới.' })
+  @Matches(/^[a-z0-9._]+$/, {
+    message: 'Username chỉ gồm chữ thường, số, dấu chấm và gạch dưới.',
+  })
   username!: string;
 
   @IsEmail()

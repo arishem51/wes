@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { UsersService, type AdminListParams } from '../users/users.service';
 import { TokenService } from '../auth/token.service';
 import { MailService } from '../mail/mail.service';
@@ -20,7 +24,10 @@ export class AdminUsersService {
     return this.users.listAdmin(params);
   }
 
-  async create(dto: CreateAdminUserDto, actorId: string): Promise<AdminUserDto> {
+  async create(
+    dto: CreateAdminUserDto,
+    actorId: string,
+  ): Promise<AdminUserDto> {
     if (await this.users.findByUsername(dto.username)) {
       throw new ConflictException('Tên đăng nhập đã tồn tại.');
     }
@@ -35,13 +42,18 @@ export class AdminUsersService {
         name: created.fullName,
         link: this.mail.passwordResetUrl(raw),
         subject: 'Activate your WES Console account',
-        intro: 'An administrator created a WES Console account for you. Use this link to set your password and activate access.',
+        intro:
+          'An administrator created a WES Console account for you. Use this link to set your password and activate access.',
       });
     }
     return this.users.adminUserOf(created.id);
   }
 
-  async update(id: string, dto: UpdateAdminUserDto, actorId: string): Promise<AdminUserDto> {
+  async update(
+    id: string,
+    dto: UpdateAdminUserDto,
+    actorId: string,
+  ): Promise<AdminUserDto> {
     await this.users.updateAdmin(id, dto, actorId);
     return this.users.adminUserOf(id);
   }
@@ -53,7 +65,11 @@ export class AdminUsersService {
     return this.users.adminUserOf(id);
   }
 
-  async setRole(id: string, role: 'admin' | 'operator', actorId: string): Promise<AdminUserDto> {
+  async setRole(
+    id: string,
+    role: 'admin' | 'operator',
+    actorId: string,
+  ): Promise<AdminUserDto> {
     await this.users.setRole(id, role, actorId);
     return this.users.adminUserOf(id);
   }

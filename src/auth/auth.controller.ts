@@ -33,7 +33,11 @@ export class AuthController {
 
   // UC-81
   @Post('login')
-  async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const ip = req.ip ?? null;
     const ua = req.headers['user-agent'] ?? null;
     const result = await this.auth.login(dto.username, dto.password, ip, ua);
@@ -45,7 +49,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(200)
-  async logout(@CurrentUser() user: AuthUser, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async logout(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const cookies = req.cookies as Record<string, string> | undefined;
     await this.auth.logout(user.sub, cookies?.[REFRESH_COOKIE]);
     res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
@@ -53,7 +61,10 @@ export class AuthController {
   }
 
   @Post('refresh')
-  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const cookies = req.cookies as Record<string, string> | undefined;
     const result = await this.auth.refresh(cookies?.[REFRESH_COOKIE]);
     this.setRefreshCookie(res, result.refreshToken);

@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
 
@@ -33,8 +37,14 @@ export class MailService {
     const secureEnv = config.get<string>('SMTP_SECURE')?.toLowerCase();
     const secure = secureEnv ? secureEnv === 'true' : port === 465;
 
-    this.appUrl = (config.get<string>('APP_URL') ?? config.get<string>('WEB_ORIGIN') ?? 'http://localhost:5173').replace(/\/+$/, '');
-    this.from = config.get<string>('MAIL_FROM') ?? (user ? `WES Console <${user}>` : 'WES Console <no-reply@localhost>');
+    this.appUrl = (
+      config.get<string>('APP_URL') ??
+      config.get<string>('WEB_ORIGIN') ??
+      'http://localhost:5173'
+    ).replace(/\/+$/, '');
+    this.from =
+      config.get<string>('MAIL_FROM') ??
+      (user ? `WES Console <${user}>` : 'WES Console <no-reply@localhost>');
     this.transporter = host
       ? createTransport({
           host,
@@ -53,13 +63,17 @@ export class MailService {
 
   async sendPasswordReset(mail: PasswordResetMail): Promise<void> {
     if (!this.transporter) {
-      this.logger.warn(`SMTP is not configured; reset link for ${mail.to}: ${mail.link}`);
+      this.logger.warn(
+        `SMTP is not configured; reset link for ${mail.to}: ${mail.link}`,
+      );
       return;
     }
 
     const safeName = escapeHtml(mail.name?.trim() || 'WES user');
     const safeLink = escapeHtml(mail.link);
-    const intro = mail.intro ?? 'A password reset was requested for your WES Console account.';
+    const intro =
+      mail.intro ??
+      'A password reset was requested for your WES Console account.';
     const subject = mail.subject ?? 'WES Console password reset';
 
     try {
@@ -94,8 +108,12 @@ export class MailService {
       this.logger.log(`Password reset email sent to ${mail.to}`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to send password reset email to ${mail.to}: ${detail}`);
-      throw new ServiceUnavailableException('Could not send password reset email.');
+      this.logger.error(
+        `Failed to send password reset email to ${mail.to}: ${detail}`,
+      );
+      throw new ServiceUnavailableException(
+        'Could not send password reset email.',
+      );
     }
   }
 }

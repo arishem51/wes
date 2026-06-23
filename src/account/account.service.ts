@@ -2,7 +2,11 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { TokenService } from '../auth/token.service';
 import type { AccountUserDto } from '../users/user.mapper';
-import type { ChangePasswordDto, UpdatePreferencesDto, UpdateProfileDto } from './dto/account.dto';
+import type {
+  ChangePasswordDto,
+  UpdatePreferencesDto,
+  UpdateProfileDto,
+} from './dto/account.dto';
 
 @Injectable()
 export class AccountService {
@@ -17,7 +21,10 @@ export class AccountService {
   }
 
   // UC-84
-  async updateMe(userId: string, dto: UpdateProfileDto): Promise<AccountUserDto> {
+  async updateMe(
+    userId: string,
+    dto: UpdateProfileDto,
+  ): Promise<AccountUserDto> {
     await this.users.updateProfile(userId, dto);
     return this.users.accountOf(userId);
   }
@@ -28,7 +35,9 @@ export class AccountService {
     const ok = await this.users.verifyPassword(user, dto.currentPassword);
     if (!ok) throw new BadRequestException('Mật khẩu hiện tại không đúng.');
     if (dto.currentPassword === dto.newPassword) {
-      throw new BadRequestException('Mật khẩu mới phải khác mật khẩu hiện tại.');
+      throw new BadRequestException(
+        'Mật khẩu mới phải khác mật khẩu hiện tại.',
+      );
     }
     await this.users.setPassword(userId, dto.newPassword);
   }

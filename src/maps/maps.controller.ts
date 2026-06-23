@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -56,16 +57,31 @@ export class MapsController {
     return this.maps.getPlantModel();
   }
 
+  @Get('kernel/vehicles')
+  getKernelVehicles() {
+    return this.maps.getKernelVehicles();
+  }
+
+  @Get('kernel/events')
+  getKernelEvents(
+    @Query('minSequenceNo') minSequenceNo?: string,
+    @Query('timeout') timeout?: string,
+  ) {
+    const seq = Math.max(0, parseInt(minSequenceNo ?? '0', 10) || 0);
+    const ms = Math.min(
+      10_000,
+      Math.max(0, parseInt(timeout ?? '1000', 10) || 1000),
+    );
+    return this.maps.proxyKernelEvents(seq, ms);
+  }
+
   @Post('upload')
   @UseGuards(RolesGuard)
   @Roles('admin')
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }),
   )
-  upload(
-    @UploadedFile() file: UploadFile,
-    @CurrentUser() user: AuthUser,
-  ) {
+  upload(@UploadedFile() file: UploadFile, @CurrentUser() user: AuthUser) {
     return this.maps.upload(file.buffer, file.originalname, user.sub);
   }
 }

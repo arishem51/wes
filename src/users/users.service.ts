@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -53,11 +49,16 @@ export class UsersService implements OnModuleInit {
   private roleIdByName = new Map<RoleName, number>();
 
   constructor(
-    @InjectRepository(UserEntity) private readonly users: Repository<UserEntity>,
-    @InjectRepository(RoleEntity) private readonly roles: Repository<RoleEntity>,
-    @InjectRepository(UserRoleEntity) private readonly userRoles: Repository<UserRoleEntity>,
-    @InjectRepository(UserSessionEntity) private readonly sessions: Repository<UserSessionEntity>,
-    @InjectRepository(UserPreferenceEntity) private readonly prefs: Repository<UserPreferenceEntity>,
+    @InjectRepository(UserEntity)
+    private readonly users: Repository<UserEntity>,
+    @InjectRepository(RoleEntity)
+    private readonly roles: Repository<RoleEntity>,
+    @InjectRepository(UserRoleEntity)
+    private readonly userRoles: Repository<UserRoleEntity>,
+    @InjectRepository(UserSessionEntity)
+    private readonly sessions: Repository<UserSessionEntity>,
+    @InjectRepository(UserPreferenceEntity)
+    private readonly prefs: Repository<UserPreferenceEntity>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -99,7 +100,10 @@ export class UsersService implements OnModuleInit {
   }
 
   async findByIdOrFail(id: string): Promise<UserEntity> {
-    const user = await this.users.findOne({ where: { id }, ...this.withRoles() });
+    const user = await this.users.findOne({
+      where: { id },
+      ...this.withRoles(),
+    });
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
@@ -111,16 +115,29 @@ export class UsersService implements OnModuleInit {
 
   // ── Admin listing ─────────────────────────────────────────────────────────
   async listAdmin(params: AdminListParams = {}): Promise<AdminUserDto[]> {
-    const all = await this.users.find({ ...this.withRoles(), order: { createdAt: 'DESC' } });
+    const all = await this.users.find({
+      ...this.withRoles(),
+      order: { createdAt: 'DESC' },
+    });
     const onlineIds = await this.onlineUserIds();
     const q = params.search?.trim().toLowerCase();
 
     return all
       .map((u) => toAdminUser(u, this.feRoleOf(u), onlineIds.has(u.id)))
       .filter((u) => {
-        if (params.role && params.role !== 'all' && u.role !== params.role) return false;
-        if (params.status && params.status !== 'all' && u.status !== params.status) return false;
-        if (q && !`${u.name} ${u.username} ${u.email}`.toLowerCase().includes(q)) return false;
+        if (params.role && params.role !== 'all' && u.role !== params.role)
+          return false;
+        if (
+          params.status &&
+          params.status !== 'all' &&
+          u.status !== params.status
+        )
+          return false;
+        if (
+          q &&
+          !`${u.name} ${u.username} ${u.email}`.toLowerCase().includes(q)
+        )
+          return false;
         return true;
       });
   }
@@ -140,7 +157,10 @@ export class UsersService implements OnModuleInit {
   }
 
   // ── Mutations ───────────────────────────────────────────────────────────────
-  async createUser(data: CreateUserData, assignedBy?: string): Promise<UserEntity> {
+  async createUser(
+    data: CreateUserData,
+    assignedBy?: string,
+  ): Promise<UserEntity> {
     const tempPassword = data.password ?? this.randomToken(12);
     const user = this.users.create({
       username: data.username,
@@ -184,14 +204,22 @@ export class UsersService implements OnModuleInit {
     await this.assignRole(id, role, assignedBy);
   }
 
-  private async assignRole(userId: string, role: FeRole, assignedBy?: string): Promise<void> {
+  private async assignRole(
+    userId: string,
+    role: FeRole,
+    assignedBy?: string,
+  ): Promise<void> {
     const roleId = await this.roleId(roleToDb(role));
     await this.userRoles.save(
       this.userRoles.create({ userId, roleId, assignedBy: assignedBy ?? null }),
     );
   }
 
-  async setLock(id: string, locking: boolean, reason?: string): Promise<UserEntity> {
+  async setLock(
+    id: string,
+    locking: boolean,
+    reason?: string,
+  ): Promise<UserEntity> {
     const user = await this.findByIdOrFail(id);
     user.isLocked = locking;
     user.lockReason = locking ? (reason ?? user.lockReason ?? null) : null;
@@ -253,7 +281,12 @@ export class UsersService implements OnModuleInit {
 
   async updatePreferences(
     userId: string,
-    patch: Partial<Pick<UserPreferenceEntity, 'language' | 'notificationsEnabled' | 'soundEnabled'>>,
+    patch: Partial<
+      Pick<
+        UserPreferenceEntity,
+        'language' | 'notificationsEnabled' | 'soundEnabled'
+      >
+    >,
   ): Promise<UserPreferenceEntity> {
     const pref = await this.getPreferences(userId);
     Object.assign(pref, patch, { updatedAt: new Date() });
@@ -262,6 +295,9 @@ export class UsersService implements OnModuleInit {
 
   randomToken(len = 32): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-    return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    return Array.from(
+      { length: len },
+      () => chars[Math.floor(Math.random() * chars.length)],
+    ).join('');
   }
 }

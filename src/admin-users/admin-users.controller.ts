@@ -46,7 +46,11 @@ export class AdminUsersController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateAdminUserDto, @CurrentUser() actor: AuthUser) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateAdminUserDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
     return this.admin.update(id, dto, actor.sub);
   }
 
@@ -57,7 +61,11 @@ export class AdminUsersController {
   }
 
   @Put(':id/role')
-  setRole(@Param('id') id: string, @Body() dto: SetRoleDto, @CurrentUser() actor: AuthUser) {
+  setRole(
+    @Param('id') id: string,
+    @Body() dto: SetRoleDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
     return this.admin.setRole(id, dto.role, actor.sub);
   }
 

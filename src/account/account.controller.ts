@@ -11,7 +11,11 @@ import { AccountService } from './account.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/jwt-payload';
-import { ChangePasswordDto, UpdatePreferencesDto, UpdateProfileDto } from './dto/account.dto';
+import {
+  ChangePasswordDto,
+  UpdatePreferencesDto,
+  UpdateProfileDto,
+} from './dto/account.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('account')
@@ -30,7 +34,10 @@ export class AccountController {
 
   @Post('change-password')
   @HttpCode(200)
-  async changePassword(@CurrentUser() user: AuthUser, @Body() dto: ChangePasswordDto) {
+  async changePassword(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
     await this.account.changePassword(user.sub, dto);
     return { ok: true };
   }
@@ -48,7 +55,10 @@ export class AccountController {
   }
 
   @Patch('preferences')
-  updatePreferences(@CurrentUser() user: AuthUser, @Body() dto: UpdatePreferencesDto) {
+  updatePreferences(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdatePreferencesDto,
+  ) {
     return this.account.updatePreferences(user.sub, dto);
   }
 }

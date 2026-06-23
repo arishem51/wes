@@ -32,7 +32,11 @@ export class AgvEntity {
   @Column({ name: 'is_ignored', default: false })
   isIgnored!: boolean;
 
-  @Column({ name: 'operational_battery_threshold', type: 'smallint', default: 20 })
+  @Column({
+    name: 'operational_battery_threshold',
+    type: 'smallint',
+    default: 20,
+  })
   operationalBatteryThreshold!: number;
 
   @Column({ name: 'charging_battery_threshold', type: 'smallint', default: 10 })
