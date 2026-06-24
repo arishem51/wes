@@ -21,6 +21,7 @@ const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
   model: null,
   manufacturer: null,
   serialNumber: null,
+  initialPosition: null,
   isDispatchEnabled: true,
   isIgnored: false,
   operationalBatteryThreshold: 20,
@@ -63,8 +64,9 @@ describe('AgvsService', () => {
     it('paginates results and reports kernel status', async () => {
       const agv = makeAgv();
       repo.findAndCount.mockResolvedValue([[agv], 1]);
-      repo.find.mockResolvedValue([{ name: agv.name }]);
-      kernelApi.getVehicles.mockResolvedValue([{ name: agv.name }]);
+      kernelApi.getVehicles.mockResolvedValue([
+        { name: agv.name, integrationLevel: 'TO_BE_UTILIZED' },
+      ]);
 
       const result = await service.list({ page: 1, limit: 10 });
 
@@ -81,7 +83,6 @@ describe('AgvsService', () => {
     it('marks kernelStatus as unknown when kernel is unreachable', async () => {
       const agv = makeAgv();
       repo.findAndCount.mockResolvedValue([[agv], 1]);
-      repo.find.mockResolvedValue([{ name: agv.name }]);
       kernelApi.getVehicles.mockRejectedValue(new Error('unreachable'));
 
       const result = await service.list();
@@ -90,26 +91,39 @@ describe('AgvsService', () => {
       expect(result.agvs[0].kernelStatus).toBe('unknown');
     });
 
-    it('applies search filter across code, name and serial number', async () => {
+    it('marks kernelStatus as reachable when vehicle is not TO_BE_UTILIZED', async () => {
+      const agv = makeAgv();
+      repo.findAndCount.mockResolvedValue([[agv], 1]);
+      kernelApi.getVehicles.mockResolvedValue([
+        { name: agv.name, integrationLevel: 'TO_BE_IGNORED' },
+      ]);
+
+      const result = await service.list();
+
+      expect(result.agvs[0].kernelStatus).toBe('reachable');
+    });
+
+    it('marks kernelStatus as unreachable when name does not match any kernel vehicle', async () => {
+      const agv = makeAgv();
+      repo.findAndCount.mockResolvedValue([[agv], 1]);
+      kernelApi.getVehicles.mockResolvedValue([
+        { name: 'OTHER-AGV', integrationLevel: 'TO_BE_UTILIZED' },
+      ]);
+
+      const result = await service.list();
+
+      expect(result.agvs[0].kernelStatus).toBe('unreachable');
+    });
+
+    it('applies search filter across code and name', async () => {
       repo.findAndCount.mockResolvedValue([[], 0]);
-      repo.find.mockResolvedValue([]);
       kernelApi.getVehicles.mockResolvedValue([]);
 
       await service.list({ search: 'agv-1' });
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       const callArg: { where?: unknown[] } = repo.findAndCount.mock.calls[0][0];
-      expect(callArg.where).toHaveLength(3);
-    });
-
-    it('lists unregistered kernel vehicles not present in WES', async () => {
-      repo.findAndCount.mockResolvedValue([[], 0]);
-      repo.find.mockResolvedValue([]);
-      kernelApi.getVehicles.mockResolvedValue([{ name: 'GHOST-AGV' }]);
-
-      const result = await service.list();
-
-      expect(result.unregistered).toEqual([{ name: 'GHOST-AGV' }]);
+      expect(callArg.where).toHaveLength(2);
     });
   });
 
@@ -122,7 +136,7 @@ describe('AgvsService', () => {
       const result = await service.findOne(agv.id);
 
       expect(result.id).toBe(agv.id);
-      expect(result.kernelStatus).toBe('disconnected');
+      expect(result.kernelStatus).toBe('unreachable');
     });
 
     it('throws NotFoundException when AGV does not exist', async () => {

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
   UploadedFile,
@@ -57,9 +58,24 @@ export class MapsController {
     return this.maps.getPlantModel();
   }
 
+  @Get('cargo-options')
+  getCargoOptions() {
+    return this.maps.getCargoOptions();
+  }
+
   @Get('kernel/vehicles')
   getKernelVehicles() {
     return this.maps.getKernelVehicles();
+  }
+
+  @Get('kernel/debug')
+  getKernelDebug() {
+    return this.maps.getKernelDebug();
+  }
+
+  @Post('kernel/transport-orders/:name/withdraw')
+  withdrawTO(@Param('name') name: string) {
+    return this.maps.withdrawTransportOrder(name);
   }
 
   @Get('kernel/events')

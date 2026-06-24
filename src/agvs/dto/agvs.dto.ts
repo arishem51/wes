@@ -48,26 +48,12 @@ export class CreateAgvDto {
   chargingBatteryThreshold?: number;
 
   @IsOptional()
+  @IsString()
+  initialPosition?: string;
+
+  @IsOptional()
   @IsObject()
   config?: Record<string, unknown>;
-}
-
-export class RegisterAgvDto {
-  @IsString()
-  @IsNotEmpty()
-  name!: string;
-
-  @IsOptional()
-  @IsString()
-  model?: string;
-
-  @IsOptional()
-  @IsString()
-  manufacturer?: string;
-
-  @IsOptional()
-  @IsString()
-  serialNumber?: string;
 }
 
 export class UpdateAgvDto {
@@ -99,6 +85,10 @@ export class UpdateAgvDto {
   @Min(0)
   @Max(100)
   chargingBatteryThreshold?: number;
+
+  @IsOptional()
+  @IsString()
+  initialPosition?: string;
 
   @IsOptional()
   @IsObject()

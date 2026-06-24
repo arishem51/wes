@@ -7,9 +7,14 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AxiosError } from 'axios';
-import { KernelApiService } from '../opentcs/kernel-api.service';
+import {
+  KernelApiService,
+  KernelLocation,
+  KernelLocationType,
+} from '../opentcs/kernel-api.service';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
 import { MapRecordEntity } from './entities/map-record.entity';
+import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
 
 export type KernelMode = 'MODELLING' | 'OPERATING';
 
@@ -26,6 +31,8 @@ export class MapsService {
     private readonly kernelApi: KernelApiService,
     @InjectRepository(MapRecordEntity)
     private readonly repo: Repository<MapRecordEntity>,
+    @InjectRepository(CargoEntity)
+    private readonly cargoRepo: Repository<CargoEntity>,
   ) {}
 
   async getKernelStatus(): Promise<KernelStatusDto> {
@@ -45,6 +52,11 @@ export class MapsService {
         `Không thể chuyển chế độ kernel: ${msg}`,
       );
     }
+
+    if (state === 'OPERATING') {
+      await this.kernelApi.initializeVehiclesForOperation();
+    }
+
     return this.getKernelStatus();
   }
 
@@ -54,6 +66,83 @@ export class MapsService {
 
   async getKernelVehicles(): Promise<unknown[]> {
     return this.kernelApi.getVehicleStates();
+  }
+
+  async getKernelDebug(): Promise<unknown> {
+    return this.kernelApi.getDebugSnapshot();
+  }
+
+  async withdrawTransportOrder(name: string): Promise<void> {
+    await this.kernelApi.withdrawTransportOrder(name);
+  }
+
+  async getCargoOptions(): Promise<{
+    pickupLocations: { locationName: string; pointName: string }[];
+    dropoffLocations: string[];
+  }> {
+    const [model, deliveredCargos] = await Promise.all([
+      this.kernelApi.getLocationModel(),
+      this.cargoRepo.find({
+        where: { status: CargoStatus.DELIVERED },
+        select: { destinationLocationName: true },
+      }),
+    ]);
+    if (!model) return { pickupLocations: [], dropoffLocations: [] };
+
+    const locationTypes: KernelLocationType[] = model.locationTypes ?? [];
+    const locations: KernelLocation[] = model.locations ?? [];
+    const occupiedDropoffLocations = new Set(
+      deliveredCargos
+        .map((cargo) => cargo.destinationLocationName)
+        .filter((locationName): locationName is string =>
+          Boolean(locationName),
+        ),
+    );
+
+    const pickupTypeNames = new Set<string>(
+      locationTypes
+        .filter((locationType) =>
+          locationType.allowedOperations.includes('PICK_UP'),
+        )
+        .map((locationType) => locationType.name),
+    );
+    const dropoffTypeNames = new Set<string>(
+      locationTypes
+        .filter((locationType) =>
+          locationType.allowedOperations.includes('DROP_OFF'),
+        )
+        .map((locationType) => locationType.name),
+    );
+
+    const pickupLocations: { locationName: string; pointName: string }[] = [];
+    const dropoffLocations: string[] = [];
+
+    for (const loc of locations) {
+      const typeName: string = loc.typeName ?? loc.type ?? '';
+      if (pickupTypeNames.has(typeName)) {
+        const links = loc.links;
+        let pointName = '';
+        if (Array.isArray(links) && links.length > 0) {
+          pointName = links[0].pointName ?? links[0].point ?? '';
+        } else if (links && typeof links === 'object') {
+          pointName = Object.keys(links)[0] ?? '';
+        }
+        if (pointName)
+          pickupLocations.push({ locationName: loc.name, pointName });
+      }
+      if (dropoffTypeNames.has(typeName)) {
+        if (!occupiedDropoffLocations.has(loc.name)) {
+          dropoffLocations.push(loc.name);
+        }
+      }
+    }
+
+    return {
+      pickupLocations: pickupLocations.sort((a, b) =>
+        a.locationName.localeCompare(b.locationName),
+      ),
+      dropoffLocations: dropoffLocations.sort(),
+    };
   }
 
   async proxyKernelEvents(

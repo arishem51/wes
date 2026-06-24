@@ -12,7 +12,8 @@ export class MapLoaderService implements OnApplicationBootstrap {
   constructor(private readonly kernelApi: KernelApiService) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    if (process.env.OPENTCS_MAP_AUTO_LOAD === 'false') {
+    if (process.env.OPENTCS_MAP_AUTO_LOAD !== 'true') {
+      this.logger.log('Skipping plant model auto-load');
       return;
     }
 

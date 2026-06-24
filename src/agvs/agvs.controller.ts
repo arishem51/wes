@@ -16,12 +16,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/jwt-payload';
-import {
-  CreateAgvDto,
-  ListAgvsQueryDto,
-  RegisterAgvDto,
-  UpdateAgvDto,
-} from './dto/agvs.dto';
+import { CreateAgvDto, ListAgvsQueryDto, UpdateAgvDto } from './dto/agvs.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
@@ -44,14 +39,21 @@ export class AgvsController {
     return this.service.create(dto, user.sub);
   }
 
-  @Post('register')
-  register(@Body() dto: RegisterAgvDto, @CurrentUser() user: AuthUser) {
-    return this.service.register(dto, user.sub);
-  }
-
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateAgvDto) {
     return this.service.update(id, dto);
+  }
+
+  @Post(':id/connect')
+  @HttpCode(204)
+  connect(@Param('id') id: string) {
+    return this.service.connect(id);
+  }
+
+  @Post(':id/position')
+  @HttpCode(204)
+  setPosition(@Param('id') id: string, @Body('pointName') pointName: string) {
+    return this.service.setPosition(id, pointName);
   }
 
   @Delete(':id')

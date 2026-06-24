@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -12,12 +13,14 @@ import { AccountModule } from './account/account.module';
 import { AdminUsersModule } from './admin-users/admin-users.module';
 import { MapsModule } from './maps/maps.module';
 import { AgvsModule } from './agvs/agvs.module';
+import { CargoModule } from './cargo/cargo.module';
 
 const localEnvFile = resolve(__dirname, '../.env');
 const hasLocalEnvFile = existsSync(localEnvFile);
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       ...(hasLocalEnvFile
@@ -37,6 +40,7 @@ const hasLocalEnvFile = existsSync(localEnvFile);
     OpenTcsModule,
     MapsModule,
     AgvsModule,
+    CargoModule,
   ],
   controllers: [AppController],
   providers: [AppService],

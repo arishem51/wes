@@ -42,6 +42,14 @@ export class AgvEntity {
   @Column({ name: 'charging_battery_threshold', type: 'smallint', default: 10 })
   chargingBatteryThreshold!: number;
 
+  @Column({
+    name: 'initial_position',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  initialPosition!: string | null;
+
   @Column({ type: 'jsonb', default: {} })
   config!: Record<string, unknown>;
 

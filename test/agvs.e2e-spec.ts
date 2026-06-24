@@ -21,6 +21,7 @@ const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
   model: null,
   manufacturer: null,
   serialNumber: null,
+  initialPosition: null,
   isDispatchEnabled: true,
   isIgnored: false,
   operationalBatteryThreshold: 20,

@@ -36,7 +36,7 @@ export class AuthService {
   private signAccess(user: UserEntity): string {
     const role = this.users.feRoleOf(user);
     const payload = { sub: user.id, username: user.username, roles: [role] };
-    const options: JwtSignOptions = { expiresIn: this.accessTtl };
+    const options = { expiresIn: this.accessTtl } as JwtSignOptions;
     return this.jwt.sign(payload, options);
   }
 

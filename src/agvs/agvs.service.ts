@@ -6,15 +6,21 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
 import { AgvEntity } from './entities/agv.entity';
-import { KernelApiService } from '../opentcs/kernel-api.service';
+import {
+  KernelApiService,
+  KernelVehicleState,
+} from '../opentcs/kernel-api.service';
 import type {
   CreateAgvDto,
   ListAgvsQueryDto,
-  RegisterAgvDto,
   UpdateAgvDto,
 } from './dto/agvs.dto';
 
-export type AgvKernelStatus = 'connected' | 'disconnected' | 'unknown';
+export type AgvKernelStatus =
+  | 'connected'
+  | 'reachable'
+  | 'unreachable'
+  | 'unknown';
 
 export interface AgvDto {
   id: string;
@@ -27,6 +33,7 @@ export interface AgvDto {
   isIgnored: boolean;
   operationalBatteryThreshold: number;
   chargingBatteryThreshold: number;
+  initialPosition: string | null;
   config: Record<string, unknown>;
   createdAt: Date;
   createdById: string | null;
@@ -38,8 +45,18 @@ export interface AgvListResponse {
   total: number;
   page: number;
   limit: number;
-  unregistered: { name: string }[];
   kernelReachable: boolean;
+}
+
+function resolveKernelStatus(
+  kernelReachable: boolean,
+  vehicle: KernelVehicleState | undefined,
+): AgvKernelStatus {
+  if (!kernelReachable) return 'unknown';
+  if (!vehicle) return 'unreachable';
+  return vehicle.integrationLevel === 'TO_BE_UTILIZED'
+    ? 'connected'
+    : 'reachable';
 }
 
 const DEFAULT_PAGE = 1;
@@ -59,27 +76,23 @@ export class AgvsService {
     const search = query.search?.trim();
 
     const where = search
-      ? [
-          { code: ILike(`%${search}%`) },
-          { name: ILike(`%${search}%`) },
-          { serialNumber: ILike(`%${search}%`) },
-        ]
+      ? [{ code: ILike(`%${search}%`) }, { name: ILike(`%${search}%`) }]
       : undefined;
 
-    const [[agvs, total], allNames, kernelVehicles] = await Promise.all([
+    const [[agvs, total], kernelVehicles] = await Promise.all([
       this.repo.findAndCount({
         where,
         order: { createdAt: 'DESC' },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.repo.find({ select: { name: true } }),
       this.kernelApi.getVehicles().catch(() => null),
     ]);
 
     const kernelReachable = kernelVehicles !== null;
-    const kernelNames = new Set(kernelVehicles?.map((v) => v.name) ?? []);
-    const wesNames = new Set(allNames.map((a) => a.name));
+    const kernelByName = new Map<string, KernelVehicleState>(
+      kernelVehicles?.map((v) => [v.name, v]) ?? [],
+    );
 
     const mappedAgvs: AgvDto[] = agvs.map((agv) => ({
       id: agv.id,
@@ -92,26 +105,21 @@ export class AgvsService {
       isIgnored: agv.isIgnored,
       operationalBatteryThreshold: agv.operationalBatteryThreshold,
       chargingBatteryThreshold: agv.chargingBatteryThreshold,
+      initialPosition: agv.initialPosition,
       config: agv.config,
       createdAt: agv.createdAt,
       createdById: agv.createdById,
-      kernelStatus: kernelReachable
-        ? kernelNames.has(agv.name)
-          ? 'connected'
-          : 'disconnected'
-        : 'unknown',
+      kernelStatus: resolveKernelStatus(
+        kernelReachable,
+        kernelByName.get(agv.name),
+      ),
     }));
-
-    const unregistered = (kernelVehicles ?? [])
-      .filter((v) => !wesNames.has(v.name))
-      .map((v) => ({ name: v.name }));
 
     return {
       agvs: mappedAgvs,
       total,
       page,
       limit,
-      unregistered,
       kernelReachable,
     };
   }
@@ -122,15 +130,11 @@ export class AgvsService {
 
     const kernelVehicles = await this.kernelApi.getVehicles().catch(() => null);
     const kernelReachable = kernelVehicles !== null;
-    const kernelNames = new Set(kernelVehicles?.map((v) => v.name) ?? []);
+    const kernelVehicle = kernelVehicles?.find((v) => v.name === agv.name);
 
     return {
       ...agv,
-      kernelStatus: kernelReachable
-        ? kernelNames.has(agv.name)
-          ? 'connected'
-          : 'disconnected'
-        : 'unknown',
+      kernelStatus: resolveKernelStatus(kernelReachable, kernelVehicle),
     };
   }
 
@@ -151,24 +155,12 @@ export class AgvsService {
       isDispatchEnabled: dto.isDispatchEnabled ?? true,
       operationalBatteryThreshold: dto.operationalBatteryThreshold ?? 20,
       chargingBatteryThreshold: dto.chargingBatteryThreshold ?? 10,
+      initialPosition: dto.initialPosition ?? null,
       config: dto.config ?? {},
       createdById: userId,
     });
     const saved = await this.repo.save(agv);
     return { ...saved, kernelStatus: 'unknown' };
-  }
-
-  async register(dto: RegisterAgvDto, userId: string): Promise<AgvDto> {
-    return this.create(
-      {
-        code: dto.name,
-        name: dto.name,
-        model: dto.model,
-        manufacturer: dto.manufacturer,
-        serialNumber: dto.serialNumber,
-      },
-      userId,
-    );
   }
 
   async update(id: string, dto: UpdateAgvDto): Promise<AgvDto> {
@@ -193,11 +185,42 @@ export class AgvsService {
       ...(dto.chargingBatteryThreshold !== undefined && {
         chargingBatteryThreshold: dto.chargingBatteryThreshold,
       }),
+      ...(dto.initialPosition !== undefined && {
+        initialPosition: dto.initialPosition,
+      }),
       ...(dto.config !== undefined && { config: dto.config }),
     });
 
     const saved = await this.repo.save(agv);
     return { ...saved, kernelStatus: 'unknown' };
+  }
+
+  async connect(id: string): Promise<void> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    await this.kernelApi.setVehicleAdapterEnabled(agv.name, true);
+    await this.kernelApi.setVehicleProperty(
+      agv.name,
+      'loopback:loadOperation',
+      'PICK_UP',
+    );
+    await this.kernelApi.setVehicleProperty(
+      agv.name,
+      'loopback:unloadOperation',
+      'DROP_OFF',
+    );
+    await this.kernelApi.setVehicleProperty(
+      agv.name,
+      'loopback:operatingTime',
+      '2000',
+    );
+    await this.kernelApi.setVehicleIntegrationLevel(agv.name, 'TO_BE_UTILIZED');
+  }
+
+  async setPosition(id: string, pointName: string): Promise<void> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    await this.kernelApi.setVehiclePosition(agv.name, pointName);
   }
 
   async remove(id: string): Promise<void> {

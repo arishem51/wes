@@ -16,8 +16,14 @@ export class KernelSyncService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap(): Promise<void> {
     const reachable = await this.waitForKernel();
-    if (reachable) {
-      this.logger.log('Kernel sync complete — ready');
+    if (!reachable) return;
+
+    this.logger.log('Kernel sync complete — ready');
+
+    const state = await this.kernelApi.getKernelState();
+    if (state === 'OPERATING') {
+      this.logger.log('Kernel already OPERATING — initializing vehicles');
+      await this.kernelApi.initializeVehiclesForOperation();
     }
   }
 
