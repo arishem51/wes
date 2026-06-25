@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -20,7 +19,6 @@ const hasLocalEnvFile = existsSync(localEnvFile);
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       ...(hasLocalEnvFile

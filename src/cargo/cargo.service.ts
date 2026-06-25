@@ -115,9 +115,7 @@ export class CargoService {
     const task = await this.taskRepo.findOne({ where: { cargoId: id } });
     if (task) {
       if (task.status === TaskStatus.PICKUP_COMPLETED) {
-        throw new BadRequestException(
-          'Khong the xoa - AGV da lay hang va dang tren duong tra.',
-        );
+        throw new BadRequestException('Không thể xóa - AGV đã lấy hàng');
       }
 
       if (task.status !== TaskStatus.DELIVERY_COMPLETED) {

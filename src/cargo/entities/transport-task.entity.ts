@@ -9,7 +9,7 @@ import {
 export enum TaskStatus {
   CREATED = 'CREATED',
   READY_TO_ASSIGN = 'READY_TO_ASSIGN',
-  IN_FLIGHT = 'IN_FLIGHT',
+  PROCESSING = 'PROCESSING',
   PICKUP_COMPLETED = 'PICKUP_COMPLETED',
   DELIVERY_COMPLETED = 'DELIVERY_COMPLETED',
   CANCELLED = 'CANCELLED',
@@ -21,6 +21,12 @@ export interface TaskMetadata {
   to1Name?: string;
   to2Name?: string;
 }
+
+export const TASK_META = {
+  ASSIGNED_VEHICLE_NAME: 'assignedVehicleName',
+  TO1_NAME: 'to1Name',
+  TO2_NAME: 'to2Name',
+} as const satisfies Record<string, keyof TaskMetadata>;
 
 @Entity('transport_requests')
 export class TransportTaskEntity {

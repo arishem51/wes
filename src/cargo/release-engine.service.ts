@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Interval } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -16,7 +15,6 @@ export class ReleaseEngineService {
     private readonly taskRepo: Repository<TransportTaskEntity>,
   ) {}
 
-  @Interval(10_000)
   async run(): Promise<void> {
     const tasks = await this.taskRepo.find({
       where: { status: TaskStatus.CREATED },

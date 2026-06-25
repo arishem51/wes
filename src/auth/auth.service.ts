@@ -30,7 +30,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     config: ConfigService,
   ) {
-    this.accessTtl = config.get<string>('JWT_ACCESS_TTL', '15m');
+    this.accessTtl = config.get<string>('JWT_ACCESS_TTL', '1d');
   }
 
   private signAccess(user: UserEntity): string {

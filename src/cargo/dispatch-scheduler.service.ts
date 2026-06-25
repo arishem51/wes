@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
 
@@ -6,7 +6,6 @@ const DEBOUNCE_MS = 1_500;
 
 @Injectable()
 export class DispatchSchedulerService {
-  private readonly logger = new Logger(DispatchSchedulerService.name);
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(

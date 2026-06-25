@@ -1,15 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Interval } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   TransportTaskEntity,
   TaskStatus,
+  TASK_META,
 } from './entities/transport-task.entity';
 import { CargoEntity } from './entities/cargo.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 
 const ASSIGNED_VEHICLE = 'Vehicle-0001';
+
+const BUSY_STATUSES = [TaskStatus.PROCESSING, TaskStatus.PICKUP_COMPLETED];
 
 @Injectable()
 export class AssignmentEngineService {
@@ -23,7 +25,6 @@ export class AssignmentEngineService {
     private readonly kernelApi: KernelApiService,
   ) {}
 
-  @Interval(10_000)
   async run(): Promise<void> {
     const tasks = await this.taskRepo.find({
       where: { status: TaskStatus.READY_TO_ASSIGN },
@@ -32,8 +33,23 @@ export class AssignmentEngineService {
     if (tasks.length === 0) return;
 
     for (const task of tasks) {
+      const isBusy = await this.isVehicleBusy(ASSIGNED_VEHICLE);
+      if (isBusy) {
+        break;
+      }
       await this.assign(task);
     }
+  }
+
+  private async isVehicleBusy(vehicleName: string): Promise<boolean> {
+    const count = await this.taskRepo
+      .createQueryBuilder('t')
+      .where(`t.metadata->>'${TASK_META.ASSIGNED_VEHICLE_NAME}' = :vehicle`, {
+        vehicle: vehicleName,
+      })
+      .andWhere('t.status IN (:...statuses)', { statuses: BUSY_STATUSES })
+      .getCount();
+    return count > 0;
   }
 
   private async assign(task: TransportTaskEntity): Promise<void> {
@@ -65,7 +81,7 @@ export class AssignmentEngineService {
       return;
     }
 
-    task.status = TaskStatus.IN_FLIGHT;
+    task.status = TaskStatus.PROCESSING;
     task.assignedAt = new Date();
     task.startedAt = new Date();
     task.metadata = {
@@ -74,6 +90,6 @@ export class AssignmentEngineService {
       to1Name,
     };
     await this.taskRepo.save(task);
-    this.logger.log(`Task ${task.id} → IN_FLIGHT (${to1Name})`);
+    this.logger.log(`Task ${task.id} → PROCESSING (${to1Name})`);
   }
 }
