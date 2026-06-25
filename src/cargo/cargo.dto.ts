@@ -3,9 +3,9 @@ import { CargoStatus } from './entities/cargo.entity';
 import { TaskStatus } from './entities/transport-task.entity';
 
 export class CreateCargoDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  itemCode!: string;
+  itemCode?: string;
 
   @IsString()
   @IsNotEmpty()

@@ -27,11 +27,11 @@ export class EventProcessorService {
     const task = await this.taskRepo
       .createQueryBuilder('t')
       .where(`t.metadata->>'${TASK_META.TO1_NAME}' = :name`, { name: toName })
-      .andWhere('t.status = :status', { status: TaskStatus.PROCESSING })
+      .andWhere('t.status = :status', { status: TaskStatus.PICKING_UP })
       .getOne();
 
     if (!task) {
-      this.logger.debug(`No PROCESSING task found for TO1 "${toName}"`);
+      this.logger.debug(`No PICKING_UP task found for TO1 "${toName}"`);
       return;
     }
 
@@ -67,21 +67,21 @@ export class EventProcessorService {
       return;
     }
 
-    task.status = TaskStatus.PICKUP_COMPLETED;
+    task.status = TaskStatus.DELIVERING;
     task.metadata = { ...task.metadata, to2Name };
     await this.taskRepo.save(task);
-    this.logger.log(`Task ${task.id} → PICKUP_COMPLETED, created ${to2Name}`);
+    this.logger.log(`Task ${task.id} → DELIVERING, created ${to2Name}`);
   }
 
   async onDropOffToFinished(toName: string): Promise<void> {
     const task = await this.taskRepo
       .createQueryBuilder('t')
       .where(`t.metadata->>'${TASK_META.TO2_NAME}' = :name`, { name: toName })
-      .andWhere('t.status = :status', { status: TaskStatus.PICKUP_COMPLETED })
+      .andWhere('t.status = :status', { status: TaskStatus.DELIVERING })
       .getOne();
 
     if (!task) {
-      this.logger.debug(`No PICKUP_COMPLETED task found for TO2 "${toName}"`);
+      this.logger.debug(`No DELIVERING task found for TO2 "${toName}"`);
       return;
     }
 

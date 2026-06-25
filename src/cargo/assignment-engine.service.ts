@@ -11,7 +11,7 @@ import { KernelApiService } from '../opentcs/kernel-api.service';
 
 const ASSIGNED_VEHICLE = 'Vehicle-0001';
 
-const BUSY_STATUSES = [TaskStatus.PROCESSING, TaskStatus.PICKUP_COMPLETED];
+const BUSY_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
 
 @Injectable()
 export class AssignmentEngineService {
@@ -81,7 +81,7 @@ export class AssignmentEngineService {
       return;
     }
 
-    task.status = TaskStatus.PROCESSING;
+    task.status = TaskStatus.PICKING_UP;
     task.assignedAt = new Date();
     task.startedAt = new Date();
     task.metadata = {
@@ -90,6 +90,6 @@ export class AssignmentEngineService {
       to1Name,
     };
     await this.taskRepo.save(task);
-    this.logger.log(`Task ${task.id} → PROCESSING (${to1Name})`);
+    this.logger.log(`Task ${task.id} → PICKING_UP (${to1Name})`);
   }
 }

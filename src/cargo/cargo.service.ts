@@ -63,7 +63,7 @@ export class CargoService {
     }
 
     const cargo = this.cargoRepo.create({
-      itemCode: dto.itemCode,
+      itemCode: dto.itemCode ?? `ITEM-${Date.now().toString(36).toUpperCase()}`,
       sourcePointName: dto.sourcePointName,
       sourcePickupLocationName: pickupLocationName,
       destinationLocationName: dto.destinationLocationName,
@@ -108,25 +108,31 @@ export class CargoService {
 
   async remove(id: string): Promise<{ message: string }> {
     const cargo = await this.cargoRepo.findOne({ where: { id } });
-    if (!cargo) {
-      throw new NotFoundException('Cargo not found.');
-    }
+    if (!cargo) throw new NotFoundException('Cargo not found.');
 
     const task = await this.taskRepo.findOne({ where: { cargoId: id } });
+
     if (task) {
-      if (task.status === TaskStatus.PICKUP_COMPLETED) {
-        throw new BadRequestException('Không thể xóa - AGV đã lấy hàng');
+      if (task.status === TaskStatus.DELIVERING) {
+        throw new BadRequestException(
+          'Cannot delete cargo: the AGV is currently carrying this item to its destination.',
+        );
       }
 
-      if (task.status !== TaskStatus.DELIVERY_COMPLETED) {
-        task.status = TaskStatus.CANCELLED;
-        task.cancelledAt = new Date();
-        await this.taskRepo.save(task);
+      if (task.status === TaskStatus.PICKING_UP) {
+        const toName = task.metadata?.to1Name;
+        if (toName) {
+          await this.kernelApi.withdrawTransportOrder(toName);
+        }
       }
+
+      task.status = TaskStatus.CANCELLED;
+      task.cancelledAt = new Date();
+      await this.taskRepo.save(task);
     }
 
     await this.cargoRepo.softDelete(id);
-    return { message: 'Cargo da duoc xoa mem.' };
+    return { message: 'Cargo deleted.' };
   }
 
   async getTaskByCargo(cargoId: string): Promise<TransportTaskEntity | null> {
@@ -194,7 +200,7 @@ export class CargoService {
     task: TransportTaskEntity | null,
     destinationPointName: string | null,
   ): CargoVisualDto {
-    if (task?.status === TaskStatus.PICKUP_COMPLETED) {
+    if (task?.status === TaskStatus.DELIVERING) {
       return {
         state: 'ON_AGV',
         pointName: null,
