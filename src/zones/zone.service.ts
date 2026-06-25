@@ -22,6 +22,21 @@ export interface SyncResult {
   kernelUnreachable: boolean;
 }
 
+type KernelLocationType = 'Pick up' | 'Drop off';
+
+type KernelLocationMeta = {
+  useTypeNameKey: 'typeName' | 'type';
+  useArrayLinks: boolean;
+  layout?: Record<string, unknown>;
+};
+
+type KernelModelContext = {
+  model: Record<string, unknown>;
+  locations: Record<string, unknown>[];
+  kernelPoints: Record<string, unknown>[];
+  updatedLocations: Record<string, unknown>[];
+};
+
 @Injectable()
 export class ZoneService {
   private readonly logger = new Logger(ZoneService.name);
@@ -61,6 +76,9 @@ export class ZoneService {
       });
 
       const saved = await zoneRepo.save(zone);
+      const memberLocationNames = dto.members.map(
+        (member) => member.locationName,
+      );
 
       const members = dto.members.map((member) =>
         memberRepo.create({
@@ -74,8 +92,10 @@ export class ZoneService {
       if (dto.type === ZoneType.DROPOFF) {
         await this.applyDropoffZoneToKernel(
           `${ZONE_PREFIX}${kernelId}`,
-          dto.members.map((member) => member.locationName),
+          memberLocationNames,
         );
+      } else if (dto.type === ZoneType.PICKUP) {
+        await this.applyPickupZoneToKernel(memberLocationNames);
       }
 
       return saved.id;
@@ -91,6 +111,66 @@ export class ZoneService {
     parentLocationName: string,
     memberLocationNames: string[],
   ): Promise<void> {
+    const context = await this.loadKernelModelContext();
+    const locationMeta = this.getLocationMeta(context.locations, 'Drop off');
+    const pointSummaries = this.upsertMemberLocations(
+      context,
+      memberLocationNames,
+      'Drop off',
+      locationMeta,
+    );
+    const parentLinkedPoints = [
+      ...new Set(pointSummaries.map((p) => p.pointName)),
+    ];
+    const positionedPoints = pointSummaries.filter((p) => p.hasPosition);
+    const sumX = positionedPoints.reduce((sum, point) => sum + point.x, 0);
+    const sumY = positionedPoints.reduce((sum, point) => sum + point.y, 0);
+    const count = positionedPoints.length;
+
+    const parentLocation = this.buildKernelLocation(
+      parentLocationName,
+      'Drop off',
+      parentLinkedPoints,
+      {
+        x: count > 0 ? Math.round(sumX / count) : 0,
+        y: count > 0 ? Math.round(sumY / count) : 0,
+        z: 0,
+      },
+      locationMeta,
+    );
+    this.upsertLocation(context.updatedLocations, parentLocation);
+
+    await savePlantModel(this.kernelApi, {
+      ...context.model,
+      locations: context.updatedLocations,
+    });
+    this.logger.log(
+      `Zone "${parentLocationName}": đã tạo ${memberLocationNames.length} location con và 1 location cha trong kernel`,
+    );
+  }
+
+  private async applyPickupZoneToKernel(
+    memberLocationNames: string[],
+  ): Promise<void> {
+    const context = await this.loadKernelModelContext();
+    const locationMeta = this.getLocationMeta(context.locations, 'Pick up');
+    this.upsertMemberLocations(
+      context,
+      memberLocationNames,
+      'Pick up',
+      locationMeta,
+    );
+
+    await savePlantModel(this.kernelApi, {
+      ...context.model,
+      locations: context.updatedLocations,
+    });
+    this.logger.log(
+      `Zone lấy hàng: đã tạo ${memberLocationNames.length} location con trong kernel`,
+    );
+  }
+
+  private async loadKernelModelContext(): Promise<KernelModelContext> {
     const rawModel = await this.kernelApi.getPlantModel();
     if (!rawModel || typeof rawModel !== 'object') {
       throw new ServiceUnavailableException('Không thể kết nối kernel.');
@@ -100,102 +180,115 @@ export class ZoneService {
     const locations = Array.isArray(model.locations)
       ? (model.locations as Record<string, unknown>[])
       : [];
-
-    const sampleDropoff = locations.find(
-      (location) => (location.typeName ?? location.type) === 'Drop off',
-    );
-    const useTypeNameKey =
-      !sampleDropoff || 'typeName' in sampleDropoff ? 'typeName' : 'type';
-    const useArrayLinks = !sampleDropoff || Array.isArray(sampleDropoff.links);
-
-    const buildLinks = (pointNames: string[]) =>
-      useArrayLinks
-        ? pointNames.map((pointName) => ({ pointName }))
-        : Object.fromEntries(pointNames.map((pointName) => [pointName, []]));
-
     const kernelPoints = Array.isArray(model.points)
       ? (model.points as Record<string, unknown>[])
       : [];
 
-    const updatedLocations = [...locations];
-    const parentLinkedPoints: string[] = [];
-    let sumX = 0;
-    let sumY = 0;
-    let count = 0;
+    return {
+      model,
+      locations,
+      kernelPoints,
+      updatedLocations: [...locations],
+    };
+  }
 
-    for (const locName of memberLocationNames) {
-      const pointName = locName.startsWith(LOCATION_PREFIX)
-        ? locName.slice(LOCATION_PREFIX.length)
-        : locName;
-
-      const point = kernelPoints.find(
+  private upsertMemberLocations(
+    context: KernelModelContext,
+    memberLocationNames: string[],
+    locationType: KernelLocationType,
+    meta: KernelLocationMeta,
+  ): Array<{ pointName: string; x: number; y: number; hasPosition: boolean }> {
+    return memberLocationNames.map((locationName) => {
+      const pointName = this.getPointNameFromLocation(locationName);
+      const point = context.kernelPoints.find(
         (candidate) => candidate.name === pointName,
       );
-      const pos = point?.position as Record<string, number> | undefined;
-      const px = pos?.x ?? 0;
-      const py = pos?.y ?? 0;
+      const position = point?.position as Record<string, number> | undefined;
+      const x = position?.x ?? 0;
+      const y = position?.y ?? 0;
 
-      if (pos) {
-        sumX += px;
-        sumY += py;
-        count++;
-      }
-
-      const childLocation: Record<string, unknown> = {
-        name: locName,
-        [useTypeNameKey]: 'Drop off',
-        position: { x: px, y: py, z: 0 },
-        locked: false,
-        links: buildLinks([pointName]),
-      };
-      if (sampleDropoff?.layout) {
-        childLocation.layout = { ...sampleDropoff.layout };
-      }
-
-      const idx = updatedLocations.findIndex(
-        (location) => location.name === locName,
+      this.upsertLocation(
+        context.updatedLocations,
+        this.buildKernelLocation(
+          locationName,
+          locationType,
+          [pointName],
+          { x, y, z: 0 },
+          meta,
+        ),
       );
-      if (idx >= 0) {
-        updatedLocations[idx] = childLocation;
-      } else {
-        updatedLocations.push(childLocation);
-      }
 
-      if (!parentLinkedPoints.includes(pointName)) {
-        parentLinkedPoints.push(pointName);
-      }
-    }
-
-    const centroidX = count > 0 ? Math.round(sumX / count) : 0;
-    const centroidY = count > 0 ? Math.round(sumY / count) : 0;
-
-    const parentLocation: Record<string, unknown> = {
-      name: parentLocationName,
-      [useTypeNameKey]: 'Drop off',
-      position: { x: centroidX, y: centroidY, z: 0 },
-      locked: false,
-      links: buildLinks(parentLinkedPoints),
-    };
-    if (sampleDropoff?.layout) {
-      parentLocation.layout = { ...sampleDropoff.layout };
-    }
-
-    const parentIdx = updatedLocations.findIndex(
-      (location) => location.name === parentLocationName,
-    );
-    if (parentIdx >= 0) {
-      updatedLocations[parentIdx] = parentLocation;
-    } else {
-      updatedLocations.push(parentLocation);
-    }
-
-    await savePlantModel(this.kernelApi, {
-      ...model,
-      locations: updatedLocations,
+      return {
+        pointName,
+        x,
+        y,
+        hasPosition: !!position,
+      };
     });
-    this.logger.log(
-      `Zone "${parentLocationName}": created ${memberLocationNames.length} child locations + 1 parent location in kernel`,
+  }
+
+  private getPointNameFromLocation(locationName: string): string {
+    return locationName.startsWith(LOCATION_PREFIX)
+      ? locationName.slice(LOCATION_PREFIX.length)
+      : locationName;
+  }
+
+  private getLocationMeta(
+    locations: Record<string, unknown>[],
+    locationType: KernelLocationType,
+  ): KernelLocationMeta {
+    const sampleLocation = locations.find(
+      (location) => (location.typeName ?? location.type) === locationType,
     );
+    return {
+      useTypeNameKey:
+        !sampleLocation || 'typeName' in sampleLocation ? 'typeName' : 'type',
+      useArrayLinks: !sampleLocation || Array.isArray(sampleLocation.links),
+      layout:
+        sampleLocation?.layout && typeof sampleLocation.layout === 'object'
+          ? { ...(sampleLocation.layout as Record<string, unknown>) }
+          : undefined,
+    } as const;
+  }
+
+  private buildKernelLocation(
+    name: string,
+    locationType: KernelLocationType,
+    pointNames: string[],
+    position: { x: number; y: number; z: number },
+    meta: {
+      useTypeNameKey: 'typeName' | 'type';
+      useArrayLinks: boolean;
+      layout?: Record<string, unknown>;
+    },
+  ): Record<string, unknown> {
+    const location: Record<string, unknown> = {
+      name,
+      [meta.useTypeNameKey]: locationType,
+      position,
+      locked: false,
+      links: meta.useArrayLinks
+        ? pointNames.map((pointName) => ({ pointName }))
+        : Object.fromEntries(pointNames.map((pointName) => [pointName, []])),
+    };
+
+    if (meta.layout) {
+      location.layout = { ...meta.layout };
+    }
+
+    return location;
+  }
+
+  private upsertLocation(
+    locations: Record<string, unknown>[],
+    location: Record<string, unknown>,
+  ): void {
+    const index = locations.findIndex((item) => item.name === location.name);
+    if (index >= 0) {
+      locations[index] = location;
+    } else {
+      locations.push(location);
+    }
   }
 
   async list(): Promise<ZoneEntity[]> {
