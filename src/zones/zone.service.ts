@@ -4,12 +4,12 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { InjectDataSource } from '@nestjs/typeorm';
 import { ZoneEntity, ZoneStatus, ZoneType } from './entities/zone.entity';
 import { ZoneMemberEntity } from './entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { savePlantModel } from '../opentcs/save-plant-model';
 import type { CreateZoneDto } from './zone.dto';
 
 export const LOCATION_PREFIX = 'location_';
@@ -38,45 +38,51 @@ export class ZoneService {
   async create(dto: CreateZoneDto): Promise<ZoneEntity> {
     this.validateMembers(dto);
 
-    let kernelId: number | null = null;
+    const savedZoneId = await this.dataSource.transaction(async (manager) => {
+      const zoneRepo = manager.getRepository(ZoneEntity);
+      const memberRepo = manager.getRepository(ZoneMemberEntity);
 
-    if (dto.type === ZoneType.DROPOFF) {
-      // Atomically generate a unique sequential kernel ID via PostgreSQL sequence
-      const rows = await this.dataSource.query<[{ id: string }]>(
-        `SELECT nextval('zone_kernel_id_seq') AS id`,
+      let kernelId: number | null = null;
+
+      if (dto.type === ZoneType.DROPOFF) {
+        const rows = await manager.query<[{ id: string }]>(
+          `SELECT nextval('zone_kernel_id_seq') AS id`,
+        );
+        kernelId = Number(rows[0].id);
+      }
+
+      const zone = zoneRepo.create({
+        name: dto.name,
+        type: dto.type,
+        kernelId,
+        approachLocationName:
+          kernelId != null ? `${ZONE_PREFIX}${kernelId}` : null,
+        status: ZoneStatus.ACTIVE,
+      });
+
+      const saved = await zoneRepo.save(zone);
+
+      const members = dto.members.map((member) =>
+        memberRepo.create({
+          zoneId: saved.id,
+          locationName: member.locationName,
+          positionIndex: member.positionIndex,
+        }),
       );
-      kernelId = Number(rows[0].id);
-    }
+      await memberRepo.save(members);
 
-    const zone = this.zoneRepo.create({
-      name: dto.name,
-      type: dto.type,
-      kernelId,
-      approachLocationName:
-        kernelId != null ? `${ZONE_PREFIX}${kernelId}` : null,
-      status: ZoneStatus.ACTIVE,
+      if (dto.type === ZoneType.DROPOFF) {
+        await this.applyDropoffZoneToKernel(
+          `${ZONE_PREFIX}${kernelId}`,
+          dto.members.map((member) => member.locationName),
+        );
+      }
+
+      return saved.id;
     });
 
-    const saved = await this.zoneRepo.save(zone);
-
-    const members = dto.members.map((m) =>
-      this.memberRepo.create({
-        zoneId: saved.id,
-        locationName: m.locationName,
-        positionIndex: m.positionIndex,
-      }),
-    );
-    await this.memberRepo.save(members);
-
-    if (dto.type === ZoneType.DROPOFF) {
-      await this.applyDropoffZoneToKernel(
-        `${ZONE_PREFIX}${kernelId}`,
-        dto.members.map((m) => m.locationName),
-      );
-    }
-
     return this.zoneRepo.findOneOrFail({
-      where: { id: saved.id },
+      where: { id: savedZoneId },
       relations: { members: true },
     });
   }
@@ -85,55 +91,49 @@ export class ZoneService {
     parentLocationName: string,
     memberLocationNames: string[],
   ): Promise<void> {
-    const state = await this.kernelApi.getKernelState();
-    if (state !== 'MODELLING') {
-      throw new BadRequestException(
-        'Kernel phải ở chế độ Thiết kế để tạo khu vực trả hàng. Hãy chuyển chế độ trước.',
-      );
-    }
-
     const rawModel = await this.kernelApi.getPlantModel();
     if (!rawModel || typeof rawModel !== 'object') {
       throw new ServiceUnavailableException('Không thể kết nối kernel.');
     }
 
     const model = rawModel as Record<string, unknown>;
-    const locations = Array.isArray(model['locations'])
-      ? (model['locations'] as Record<string, unknown>[])
+    const locations = Array.isArray(model.locations)
+      ? (model.locations as Record<string, unknown>[])
       : [];
 
     const sampleDropoff = locations.find(
-      (l) => (l['typeName'] ?? l['type']) === 'Drop off',
+      (location) => (location.typeName ?? location.type) === 'Drop off',
     );
     const useTypeNameKey =
       !sampleDropoff || 'typeName' in sampleDropoff ? 'typeName' : 'type';
-    const useArrayLinks =
-      !sampleDropoff || Array.isArray(sampleDropoff['links']);
+    const useArrayLinks = !sampleDropoff || Array.isArray(sampleDropoff.links);
 
     const buildLinks = (pointNames: string[]) =>
       useArrayLinks
-        ? pointNames.map((pt) => ({ pointName: pt }))
-        : Object.fromEntries(pointNames.map((pt) => [pt, []]));
+        ? pointNames.map((pointName) => ({ pointName }))
+        : Object.fromEntries(pointNames.map((pointName) => [pointName, []]));
 
-    const kernelPoints = Array.isArray(model['points'])
-      ? (model['points'] as Record<string, unknown>[])
+    const kernelPoints = Array.isArray(model.points)
+      ? (model.points as Record<string, unknown>[])
       : [];
 
     const updatedLocations = [...locations];
     const parentLinkedPoints: string[] = [];
-    let sumX = 0,
-      sumY = 0,
-      count = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let count = 0;
 
     for (const locName of memberLocationNames) {
       const pointName = locName.startsWith(LOCATION_PREFIX)
         ? locName.slice(LOCATION_PREFIX.length)
         : locName;
 
-      const point = kernelPoints.find((p) => p['name'] === pointName);
-      const pos = point?.['position'] as Record<string, number> | undefined;
-      const px = pos?.['x'] ?? 0;
-      const py = pos?.['y'] ?? 0;
+      const point = kernelPoints.find(
+        (candidate) => candidate.name === pointName,
+      );
+      const pos = point?.position as Record<string, number> | undefined;
+      const px = pos?.x ?? 0;
+      const py = pos?.y ?? 0;
 
       if (pos) {
         sumX += px;
@@ -148,11 +148,13 @@ export class ZoneService {
         locked: false,
         links: buildLinks([pointName]),
       };
-      if (sampleDropoff?.['layout']) {
-        childLocation['layout'] = { ...sampleDropoff['layout'] };
+      if (sampleDropoff?.layout) {
+        childLocation.layout = { ...sampleDropoff.layout };
       }
 
-      const idx = updatedLocations.findIndex((l) => l['name'] === locName);
+      const idx = updatedLocations.findIndex(
+        (location) => location.name === locName,
+      );
       if (idx >= 0) {
         updatedLocations[idx] = childLocation;
       } else {
@@ -174,12 +176,12 @@ export class ZoneService {
       locked: false,
       links: buildLinks(parentLinkedPoints),
     };
-    if (sampleDropoff?.['layout']) {
-      parentLocation['layout'] = { ...sampleDropoff['layout'] };
+    if (sampleDropoff?.layout) {
+      parentLocation.layout = { ...sampleDropoff.layout };
     }
 
     const parentIdx = updatedLocations.findIndex(
-      (l) => l['name'] === parentLocationName,
+      (location) => location.name === parentLocationName,
     );
     if (parentIdx >= 0) {
       updatedLocations[parentIdx] = parentLocation;
@@ -187,7 +189,7 @@ export class ZoneService {
       updatedLocations.push(parentLocation);
     }
 
-    await this.kernelApi.putRawPlantModel({
+    await savePlantModel(this.kernelApi, {
       ...model,
       locations: updatedLocations,
     });
@@ -216,7 +218,9 @@ export class ZoneService {
       };
     }
 
-    const kernelLocationNames = new Set(model.locations.map((l) => l.name));
+    const kernelLocationNames = new Set(
+      model.locations.map((location) => location.name),
+    );
     const zones = await this.zoneRepo.find({ relations: { members: true } });
 
     let markedStale = 0;
@@ -250,8 +254,8 @@ export class ZoneService {
   }
 
   private isZoneValid(zone: ZoneEntity, kernelLocations: Set<string>): boolean {
-    const allMembersExist = zone.members.every((m) =>
-      kernelLocations.has(m.locationName),
+    const allMembersExist = zone.members.every((member) =>
+      kernelLocations.has(member.locationName),
     );
     if (!allMembersExist) return false;
 
@@ -263,13 +267,13 @@ export class ZoneService {
   }
 
   private validateMembers(dto: CreateZoneDto): void {
-    const locationNames = dto.members.map((m) => m.locationName);
+    const locationNames = dto.members.map((member) => member.locationName);
     const uniqueNames = new Set(locationNames);
     if (uniqueNames.size !== locationNames.length) {
       throw new BadRequestException('Duplicate locationName in members.');
     }
 
-    const positionIndexes = dto.members.map((m) => m.positionIndex);
+    const positionIndexes = dto.members.map((member) => member.positionIndex);
     const uniqueIndexes = new Set(positionIndexes);
     if (uniqueIndexes.size !== positionIndexes.length) {
       throw new BadRequestException('Duplicate positionIndex in members.');

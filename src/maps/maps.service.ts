@@ -13,6 +13,7 @@ import {
   KernelLocationType,
 } from '../opentcs/kernel-api.service';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
+import { savePlantModel } from '../opentcs/save-plant-model';
 import { MapRecordEntity } from './entities/map-record.entity';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
 
@@ -127,8 +128,9 @@ export class MapsService {
         } else if (links && typeof links === 'object') {
           pointName = Object.keys(links)[0] ?? '';
         }
-        if (pointName)
+        if (pointName) {
           pickupLocations.push({ locationName: loc.name, pointName });
+        }
       }
       if (dropoffTypeNames.has(typeName)) {
         if (!occupiedDropoffLocations.has(loc.name)) {
@@ -175,17 +177,7 @@ export class MapsService {
       );
     }
 
-    try {
-      await this.kernelApi.putPlantModel(model);
-    } catch (err) {
-      const axiosErr = err as AxiosError;
-      const status = axiosErr.response?.status;
-      const msg =
-        status === 400 || status === 409
-          ? `Kernel đang ở chế độ Vận hành, không thể cập nhật bản đồ. Hãy chuyển sang chế độ Thiết kế trước.`
-          : `Không thể kết nối kernel: ${axiosErr.message}`;
-      throw new ServiceUnavailableException(msg);
-    }
+    await savePlantModel(this.kernelApi, model);
 
     await this.repo.update({ isActive: true }, { isActive: false });
 
