@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ZoneService } from './zone.service';
 import { CreateZoneDto } from './zone.dto';
@@ -16,6 +25,12 @@ export class ZoneController {
   @Post()
   create(@Body() dto: CreateZoneDto) {
     return this.zones.create(dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(200)
+  remove(@Param('id') id: string) {
+    return this.zones.remove(id);
   }
 
   @Post('sync')

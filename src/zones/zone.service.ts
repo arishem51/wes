@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -298,6 +299,19 @@ export class ZoneService {
     });
   }
 
+  async remove(id: string): Promise<void> {
+    const zone = await this.zoneRepo.findOne({
+      where: { id },
+      relations: { members: true },
+    });
+    if (!zone) {
+      throw new NotFoundException('Khu vực không tồn tại.');
+    }
+
+    await this.removeZoneLocationsFromKernel(zone);
+    await this.zoneRepo.softDelete(id);
+  }
+
   async sync(): Promise<SyncResult> {
     const model = await this.kernelApi.getLocationModel();
 
@@ -371,5 +385,58 @@ export class ZoneService {
     if (uniqueIndexes.size !== positionIndexes.length) {
       throw new BadRequestException('Duplicate positionIndex in members.');
     }
+  }
+
+  private async removeZoneLocationsFromKernel(zone: ZoneEntity): Promise<void> {
+    const context = await this.loadKernelModelContext();
+    const removableNames = new Set<string>();
+    const memberLocationNames = [
+      ...new Set(zone.members.map((member) => member.locationName)),
+    ];
+
+    if (memberLocationNames.length > 0) {
+      const sharedLocationRows = await this.dataSource.query<
+        Array<{ location_name: string }>
+      >(
+        `
+          SELECT DISTINCT zm.location_name
+          FROM zone_members zm
+          JOIN zones z ON z.id = zm.zone_id
+          WHERE zm.zone_id <> $1
+            AND z.deleted_at IS NULL
+            AND zm.location_name = ANY($2)
+        `,
+        [zone.id, memberLocationNames],
+      );
+      const sharedLocationNames = new Set(
+        sharedLocationRows.map((row) => row.location_name),
+      );
+
+      for (const locationName of memberLocationNames) {
+        if (!sharedLocationNames.has(locationName)) {
+          removableNames.add(locationName);
+        }
+      }
+    }
+
+    if (zone.type === ZoneType.DROPOFF && zone.approachLocationName) {
+      removableNames.add(zone.approachLocationName);
+    }
+
+    if (removableNames.size === 0) {
+      return;
+    }
+
+    const nextLocations = context.updatedLocations.filter((location) => {
+      const name =
+        typeof location.name === 'string' ? location.name : undefined;
+      return !name || !removableNames.has(name);
+    });
+
+    await savePlantModel(this.kernelApi, {
+      ...context.model,
+      locations: nextLocations,
+    });
+    this.logger.log(`Zone "${zone.name}" (${zone.id}) soft-deleted`);
   }
 }

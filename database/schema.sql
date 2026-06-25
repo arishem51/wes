@@ -466,6 +466,7 @@ CREATE TABLE zones (
   kernel_id              INTEGER UNIQUE,
   approach_location_name VARCHAR(255),
   status                 zone_status_enum NOT NULL DEFAULT 'ACTIVE',
+  deleted_at             TIMESTAMPTZ,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -479,3 +480,4 @@ CREATE TABLE zone_members (
 );
 
 CREATE INDEX idx_zone_members_zone_id ON zone_members(zone_id);
+CREATE INDEX idx_zones_deleted_at ON zones(deleted_at);

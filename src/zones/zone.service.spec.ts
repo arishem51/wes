@@ -19,6 +19,7 @@ const makeZone = (overrides: Partial<ZoneEntity> = {}): ZoneEntity => ({
   members: [],
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
+  deletedAt: null,
   ...overrides,
 });
 
