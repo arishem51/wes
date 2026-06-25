@@ -208,6 +208,14 @@ export class KernelApiService {
     this.logger.log(`Plant model "${model.name}" loaded into kernel`);
   }
 
+  async putRawPlantModel(model: unknown): Promise<void> {
+    await axios.put(`${this.baseUrl}/v1/plantModel`, model, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 15_000,
+    });
+    this.logger.log('Plant model patched');
+  }
+
   async getPlantModelName(): Promise<string | null> {
     try {
       const res = await axios.get<{ name: string }>(

@@ -446,3 +446,36 @@ CREATE INDEX idx_audit_logs_performed_by ON audit_logs(performed_by);
 
 -- KPI
 CREATE INDEX idx_kpi_snapshots_at ON kpi_snapshots(snapshot_at DESC);
+
+-- =============================================================================
+-- 7. ZONES
+-- =============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS zone_kernel_id_seq START 1;
+
+CREATE TYPE zone_type_enum AS ENUM ('PICKUP', 'DROPOFF');
+CREATE TYPE zone_status_enum AS ENUM ('ACTIVE', 'STALE');
+
+-- kernel_id: unique sequential ID used to name locations in openTCS.
+-- NULL for PICKUP zones. For DROPOFF zones: parent location = zone_{kernel_id},
+-- child locations = location_{kernel_id}_{point_name}.
+CREATE TABLE zones (
+  id                     UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name                   VARCHAR(255) NOT NULL,
+  type                   zone_type_enum NOT NULL,
+  kernel_id              INTEGER UNIQUE,
+  approach_location_name VARCHAR(255),
+  status                 zone_status_enum NOT NULL DEFAULT 'ACTIVE',
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE zone_members (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  zone_id        UUID NOT NULL REFERENCES zones(id) ON DELETE CASCADE,
+  location_name  VARCHAR(255) NOT NULL,
+  position_index INTEGER NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_zone_members_zone_id ON zone_members(zone_id);

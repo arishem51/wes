@@ -13,6 +13,7 @@ import { AdminUsersModule } from './admin-users/admin-users.module';
 import { MapsModule } from './maps/maps.module';
 import { AgvsModule } from './agvs/agvs.module';
 import { CargoModule } from './cargo/cargo.module';
+import { ZoneModule } from './zones/zone.module';
 
 const localEnvFile = resolve(__dirname, '../.env');
 const hasLocalEnvFile = existsSync(localEnvFile);
@@ -39,6 +40,7 @@ const hasLocalEnvFile = existsSync(localEnvFile);
     MapsModule,
     AgvsModule,
     CargoModule,
+    ZoneModule,
   ],
   controllers: [AppController],
   providers: [AppService],
