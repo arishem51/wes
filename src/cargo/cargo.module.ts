@@ -8,7 +8,6 @@ import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
 import { EventProcessorService } from './event-processor.service';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
-import { KernelEventListenerService } from './kernel-event-listener.service';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
 
 @Module({
@@ -22,7 +21,6 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     AssignmentEngineService,
     DispatchSchedulerService,
     EventProcessorService,
-    KernelEventListenerService,
   ],
   controllers: [CargoController],
 })

@@ -38,6 +38,11 @@ type KernelModelContext = {
   updatedLocations: Record<string, unknown>[];
 };
 
+type RuntimePlantModel = {
+  pointNames: Set<string>;
+  locations: Map<string, Set<string>>;
+};
+
 @Injectable()
 export class ZoneService {
   private readonly logger = new Logger(ZoneService.name);
@@ -313,7 +318,7 @@ export class ZoneService {
   }
 
   async sync(): Promise<SyncResult> {
-    const model = await this.kernelApi.getLocationModel();
+    const model = await this.loadRuntimePlantModel();
 
     if (!model) {
       this.logger.warn('Sync skipped: kernel unreachable');
@@ -325,16 +330,13 @@ export class ZoneService {
       };
     }
 
-    const kernelLocationNames = new Set(
-      model.locations.map((location) => location.name),
-    );
     const zones = await this.zoneRepo.find({ relations: { members: true } });
 
     let markedStale = 0;
     let markedActive = 0;
 
     for (const zone of zones) {
-      const isValid = this.isZoneValid(zone, kernelLocationNames);
+      const isValid = this.isZoneValid(zone, model);
       const targetStatus = isValid ? ZoneStatus.ACTIVE : ZoneStatus.STALE;
 
       if (zone.status !== targetStatus) {
@@ -360,17 +362,119 @@ export class ZoneService {
     };
   }
 
-  private isZoneValid(zone: ZoneEntity, kernelLocations: Set<string>): boolean {
-    const allMembersExist = zone.members.every((member) =>
-      kernelLocations.has(member.locationName),
-    );
-    if (!allMembersExist) return false;
+  private isZoneValid(zone: ZoneEntity, model: RuntimePlantModel): boolean {
+    const expectedMemberPoints = new Set<string>();
+
+    for (const member of zone.members) {
+      const memberLinks = model.locations.get(member.locationName);
+      if (!memberLinks) {
+        return false;
+      }
+
+      const pointName = this.getPointNameFromLocation(member.locationName);
+      if (!model.pointNames.has(pointName) || !memberLinks.has(pointName)) {
+        return false;
+      }
+
+      expectedMemberPoints.add(pointName);
+    }
 
     if (zone.type === ZoneType.DROPOFF && zone.approachLocationName) {
-      return kernelLocations.has(zone.approachLocationName);
+      const approachLinks = model.locations.get(zone.approachLocationName);
+      if (!approachLinks || approachLinks.size === 0) {
+        return false;
+      }
+
+      for (const pointName of approachLinks) {
+        if (
+          !model.pointNames.has(pointName) ||
+          !expectedMemberPoints.has(pointName)
+        ) {
+          return false;
+        }
+      }
     }
 
     return true;
+  }
+
+  private async loadRuntimePlantModel(): Promise<RuntimePlantModel | null> {
+    const rawModel = await this.kernelApi.getPlantModel();
+    if (!rawModel || typeof rawModel !== 'object') {
+      return null;
+    }
+
+    const model = rawModel as Record<string, unknown>;
+    const modelName = typeof model.name === 'string' ? model.name : null;
+    const rawPoints = Array.isArray(model.points) ? model.points : [];
+    const rawLocations = Array.isArray(model.locations) ? model.locations : [];
+    const rawPaths = Array.isArray(model.paths) ? model.paths : [];
+    const rawVehicles = Array.isArray(model.vehicles) ? model.vehicles : [];
+    if (
+      modelName === 'unnamed' &&
+      rawPoints.length === 0 &&
+      rawLocations.length === 0 &&
+      rawPaths.length === 0 &&
+      rawVehicles.length === 0
+    ) {
+      return null;
+    }
+
+    const pointNames = new Set(
+      rawPoints
+        .map((point) =>
+          point &&
+          typeof point === 'object' &&
+          typeof (point as { name?: unknown }).name === 'string'
+            ? (point as { name: string }).name
+            : null,
+        )
+        .filter((name): name is string => name !== null),
+    );
+    const locations = new Map<string, Set<string>>();
+
+    if (rawLocations.length > 0) {
+      for (const location of rawLocations) {
+        if (!location || typeof location !== 'object') {
+          continue;
+        }
+
+        const { name } = location as { name?: unknown };
+        if (typeof name !== 'string') {
+          continue;
+        }
+
+        locations.set(
+          name,
+          this.extractLinkedPointNames((location as { links?: unknown }).links),
+        );
+      }
+    }
+
+    return { pointNames, locations };
+  }
+
+  private extractLinkedPointNames(links: unknown): Set<string> {
+    if (Array.isArray(links)) {
+      return new Set(
+        links
+          .map((link) =>
+            link && typeof link === 'object'
+              ? ((link as { pointName?: unknown }).pointName ??
+                (link as { point?: unknown }).point)
+              : null,
+          )
+          .filter(
+            (pointName): pointName is string => typeof pointName === 'string',
+          ),
+      );
+    }
+
+    if (links && typeof links === 'object') {
+      return new Set(Object.keys(links));
+    }
+
+    return new Set();
   }
 
   private validateMembers(dto: CreateZoneDto): void {

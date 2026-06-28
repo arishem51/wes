@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
+import { FMS_EVENTS } from './domain/events';
 
 const DEBOUNCE_MS = 1_500;
 
@@ -12,6 +14,11 @@ export class DispatchSchedulerService {
     private readonly releaseEngine: ReleaseEngineService,
     private readonly assignmentEngine: AssignmentEngineService,
   ) {}
+
+  @OnEvent(FMS_EVENTS.VEHICLE_AVAILABLE)
+  onVehicleAvailable(): void {
+    this.schedule();
+  }
 
   schedule(): void {
     if (this.timer) clearTimeout(this.timer);

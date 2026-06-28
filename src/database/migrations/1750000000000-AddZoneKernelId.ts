@@ -4,7 +4,9 @@ export class AddZoneKernelId1750000000000 implements MigrationInterface {
   name = 'AddZoneKernelId1750000000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`CREATE SEQUENCE IF NOT EXISTS zone_kernel_id_seq START 1`);
+    await queryRunner.query(
+      `CREATE SEQUENCE IF NOT EXISTS zone_kernel_id_seq START 1`,
+    );
 
     await queryRunner.query(`
       DO $$ BEGIN
@@ -33,7 +35,9 @@ export class AddZoneKernelId1750000000000 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`ALTER TABLE zones ADD COLUMN IF NOT EXISTS kernel_id INTEGER UNIQUE`);
+    await queryRunner.query(
+      `ALTER TABLE zones ADD COLUMN IF NOT EXISTS kernel_id INTEGER UNIQUE`,
+    );
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS zone_members (

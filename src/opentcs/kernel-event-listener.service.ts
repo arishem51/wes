@@ -4,10 +4,14 @@ import {
   OnApplicationBootstrap,
   OnApplicationShutdown,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as http from 'http';
 import * as https from 'https';
-import { EventProcessorService } from './event-processor.service';
-import { DispatchSchedulerService } from './dispatch-scheduler.service';
+import {
+  FMS_EVENTS,
+  FmsTransportOrderFinishedEvent,
+  FmsVehicleAvailableEvent,
+} from '../cargo/domain/events';
 
 const RETRY_DELAY_MS = 3_000;
 
@@ -34,10 +38,7 @@ export class KernelEventListenerService
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private currentRequest: http.ClientRequest | null = null;
 
-  constructor(
-    private readonly eventProcessor: EventProcessorService,
-    private readonly dispatchScheduler: DispatchSchedulerService,
-  ) {
+  constructor(private readonly eventEmitter: EventEmitter2) {
     this.baseUrl = process.env.OPENTCS_KERNEL_URL ?? 'http://localhost:55200';
   }
 
@@ -73,7 +74,7 @@ export class KernelEventListenerService
       },
       (res) => {
         this.logger.log(`SSE connected — status ${res.statusCode}`);
-        this.dispatchScheduler.schedule();
+        this.eventEmitter.emit(FMS_EVENTS.VEHICLE_AVAILABLE, null);
         res.setEncoding('utf8');
 
         let buffer = '';
@@ -98,9 +99,9 @@ export class KernelEventListenerService
             if (!dataLine) continue;
             try {
               const payload = JSON.parse(dataLine) as KernelSsePayload;
-              void this.route(eventName, payload);
+              this.route(eventName, payload);
             } catch {
-              // ignore malformed
+              // ignore malformed SSE frames
             }
           }
         });
@@ -140,26 +141,25 @@ export class KernelEventListenerService
 
   private route(eventName: string, payload: KernelSsePayload): void {
     if (eventName === '/events/transportOrders') {
-      void this.handleTO(payload);
+      this.handleTO(payload);
     } else if (eventName === '/events/vehicles') {
-      void this.handleVehicle(payload);
+      this.handleVehicle(payload);
     }
   }
 
-  private async handleTO(payload: KernelSsePayload): Promise<void> {
+  private handleTO(payload: KernelSsePayload): void {
     const current = payload.currentObjectState;
     const name = current?.name;
     const state = current?.state;
 
     if (!name || state !== 'FINISHED') return;
 
-    if (name.startsWith('TO1-')) {
-      this.logger.log(`TO1 "${name}" FINISHED`);
-      await this.eventProcessor.onPickUpToFinished(name);
-      this.dispatchScheduler.schedule();
-    } else if (name.startsWith('TO2-')) {
-      this.logger.log(`TO2 "${name}" FINISHED`);
-      await this.eventProcessor.onDropOffToFinished(name);
+    if (name.startsWith('TO1-') || name.startsWith('TO2-')) {
+      this.logger.log(`Transport order "${name}" FINISHED`);
+      this.eventEmitter.emit(
+        FMS_EVENTS.TRANSPORT_ORDER_FINISHED,
+        new FmsTransportOrderFinishedEvent(name),
+      );
     }
   }
 
@@ -174,8 +174,11 @@ export class KernelEventListenerService
       integrationLevel === 'TO_BE_UTILIZED';
 
     if (isAvailable) {
-      this.logger.log(`Vehicle "${name}" available — scheduling assignment`);
-      this.dispatchScheduler.schedule();
+      this.logger.log(`Vehicle "${name}" available`);
+      this.eventEmitter.emit(
+        FMS_EVENTS.VEHICLE_AVAILABLE,
+        new FmsVehicleAvailableEvent(name),
+      );
     }
   }
 }

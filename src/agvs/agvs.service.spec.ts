@@ -121,7 +121,6 @@ describe('AgvsService', () => {
 
       await service.list({ search: 'agv-1' });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       const callArg: { where?: unknown[] } = repo.findAndCount.mock.calls[0][0];
       expect(callArg.where).toHaveLength(2);
     });

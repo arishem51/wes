@@ -1,0 +1,132 @@
+@startuml Software Architecture - SWES
+
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam linetype ortho
+skinparam nodesep 40
+skinparam ranksep 60
+top to bottom direction
+
+skinparam rectangle {
+  BackgroundColor #DDEEFF
+  BorderColor #336699
+}
+skinparam package {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+  FontStyle bold
+  Padding 16
+}
+skinparam database {
+  BackgroundColor #FFF5CC
+  BorderColor #CC9900
+}
+skinparam node {
+  BackgroundColor #E8F5E9
+  BorderColor #388E3C
+}
+skinparam cloud {
+  BackgroundColor #FCE4EC
+  BorderColor #C62828
+}
+
+' ── Users ────────────────────────────────────────────
+rectangle "Admin" as Admin
+rectangle "Operator" as Operator
+rectangle "Barcode Scanner\n/ Handheld App" as Scanner
+
+' ── Client ───────────────────────────────────────────
+rectangle "React SPA (Web Browser)" as ReactSPA
+
+' ── Application Layer ────────────────────────────────
+package "NestJS Backend (SWES)" {
+
+  package "REST API Controllers" {
+    rectangle "AgvsController" as AgvsCtrl
+    rectangle "MapsController\nZoneController" as MapsCtrl
+    rectangle "CargoController" as CargoCtrl
+    rectangle "AuthController\nAccountController\nAdminUsersController" as AuthCtrl
+  }
+
+  package "Business Services" {
+    rectangle "AgvsService" as AgvsSvc
+    rectangle "MapsService" as MapsSvc
+    rectangle "ZoneService" as ZoneSvc
+    rectangle "MapLoaderService" as MapLoader
+    rectangle "CargoService" as CargoSvc
+    rectangle "EventProcessorService" as EventProc
+    rectangle "ReleaseEngineService" as ReleaseEng
+    rectangle "AssignmentEngineService" as AssignEng
+    rectangle "DispatchSchedulerService" as DispatchSched
+    rectangle "KernelSyncService" as KernelSync
+    rectangle "AuthService\nTokenService" as AuthSvc
+    rectangle "UsersService\nAccountService\nAdminUsersService" as UserSvc
+    rectangle "MailService" as MailSvc
+  }
+
+  package "Background Services" {
+    rectangle "KernelEventListenerService\n(SSE Subscriber)" as SSEListener
+  }
+
+  rectangle "KernelApiService\n(openTCS Adapter)" as KernelApi
+}
+
+' ── External ─────────────────────────────────────────
+database "PostgreSQL" as DB
+node "FMS (openTCS)" as FMS
+cloud "Gmail Service" as Gmail
+
+' ── User → Client ────────────────────────────────────
+Admin    -down-> ReactSPA : uses
+Operator -down-> ReactSPA : uses
+
+' ── Client / Scanner → Controllers ───────────────────
+ReactSPA -down-> AgvsCtrl  : HTTP REST
+ReactSPA -down-> MapsCtrl  : HTTP REST
+ReactSPA -down-> CargoCtrl : HTTP REST
+ReactSPA -down-> AuthCtrl  : HTTP REST
+Scanner  -down-> CargoCtrl : HTTP REST
+
+' ── Controllers → Services ───────────────────────────
+AgvsCtrl  -down-> AgvsSvc
+MapsCtrl  -down-> MapsSvc
+MapsCtrl  -down-> ZoneSvc
+CargoCtrl -down-> CargoSvc
+AuthCtrl  -down-> AuthSvc
+AuthCtrl  -down-> UserSvc
+
+' ── WebSocket back to client ─────────────────────────
+KernelSync -up-> ReactSPA : WebSocket (AGV live / alerts)
+
+' ── Services → DB ────────────────────────────────────
+AgvsSvc       -down-> DB : SQL
+MapsSvc       -down-> DB : SQL
+ZoneSvc       -down-> DB : SQL
+CargoSvc      -down-> DB : SQL
+EventProc     -down-> DB : SQL
+ReleaseEng    -down-> DB : SQL
+AssignEng     -down-> DB : SQL
+DispatchSched -down-> DB : SQL
+KernelSync    -down-> DB : SQL
+AuthSvc       -down-> DB : SQL
+UserSvc       -down-> DB : SQL
+
+' ── Internal service calls ───────────────────────────
+ReleaseEng    -right-> DispatchSched : trigger
+DispatchSched -right-> AssignEng     : run assignment
+AssignEng     -right-> KernelApi     : push Transport Order
+EventProc     -right-> ReleaseEng    : on TO finished
+SSEListener   -right-> EventProc     : dispatch event
+SSEListener   -right-> DispatchSched : trigger on vehicle available
+MapLoader     -right-> KernelApi     : push Map topology
+
+' ── KernelApi ↔ FMS ──────────────────────────────────
+KernelApi   -down-> FMS : REST API
+SSEListener -down-> FMS : subscribe GET /v1/sse
+FMS         -up->   SSEListener : SSE events\n(vehicles, transportOrders)
+
+' ── Mail ─────────────────────────────────────────────
+MailSvc -right-> Gmail : REST (OTP / reset link)
+
+@enduml

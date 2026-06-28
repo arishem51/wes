@@ -25,9 +25,6 @@ export class MapRecordEntity {
   @Column({ name: 'vehicle_count', type: 'int', default: 0 })
   vehicleCount!: number;
 
-  @Column({ name: 'is_active', default: true })
-  isActive!: boolean;
-
   @CreateDateColumn({ name: 'uploaded_at', type: 'timestamptz' })
   uploadedAt!: Date;
 

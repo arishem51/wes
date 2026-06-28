@@ -24,6 +24,23 @@ export interface KernelStatusDto {
   state: KernelMode | null;
 }
 
+export interface CurrentMapDto {
+  name: string;
+  pointCount: number;
+  pathCount: number;
+  vehicleCount: number;
+  originalFilename: string | null;
+  uploadedAt: Date | null;
+  uploadedById: string | null;
+}
+
+interface KernelPlantModelSummary {
+  name: string;
+  pointCount: number;
+  pathCount: number;
+  vehicleCount: number;
+}
+
 @Injectable()
 export class MapsService {
   private readonly logger = new Logger(MapsService.name);
@@ -62,7 +79,8 @@ export class MapsService {
   }
 
   async getPlantModel(): Promise<unknown> {
-    return this.kernelApi.getPlantModel();
+    const plantModel = await this.kernelApi.getPlantModel();
+    return this.toPlantModelSummary(plantModel) ? plantModel : null;
   }
 
   async getKernelVehicles(): Promise<unknown[]> {
@@ -154,11 +172,25 @@ export class MapsService {
     return this.kernelApi.getEvents(minSequenceNo, timeout);
   }
 
-  async getCurrent(): Promise<MapRecordEntity | null> {
-    return this.repo.findOne({
-      where: { isActive: true },
+  async getCurrent(): Promise<CurrentMapDto | null> {
+    const plantModel = this.toPlantModelSummary(
+      await this.kernelApi.getPlantModel(),
+    );
+    if (!plantModel) {
+      return null;
+    }
+
+    const latestRecord = await this.repo.findOne({
+      where: { name: plantModel.name },
       order: { uploadedAt: 'DESC' },
     });
+
+    return {
+      ...plantModel,
+      originalFilename: latestRecord?.originalFilename ?? null,
+      uploadedAt: latestRecord?.uploadedAt ?? null,
+      uploadedById: latestRecord?.uploadedById ?? null,
+    };
   }
 
   async upload(
@@ -179,17 +211,51 @@ export class MapsService {
 
     await savePlantModel(this.kernelApi, model);
 
-    await this.repo.update({ isActive: true }, { isActive: false });
-
     const record = this.repo.create({
       name: model.name,
       originalFilename,
       pointCount: model.points.length,
       pathCount: model.paths.length,
       vehicleCount: model.vehicles.length,
-      isActive: true,
       uploadedById,
     });
     return this.repo.save(record);
+  }
+
+  private toPlantModelSummary(value: unknown): KernelPlantModelSummary | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+
+    const model = value as Record<string, unknown>;
+    if (typeof model.name !== 'string') {
+      return null;
+    }
+
+    const pointCount = Array.isArray(model.points) ? model.points.length : 0;
+    const pathCount = Array.isArray(model.paths) ? model.paths.length : 0;
+    const vehicleCount = Array.isArray(model.vehicles)
+      ? model.vehicles.length
+      : 0;
+    const locationCount = Array.isArray(model.locations)
+      ? model.locations.length
+      : 0;
+
+    const isUnnamedEmptyModel =
+      model.name === 'unnamed' &&
+      pointCount === 0 &&
+      pathCount === 0 &&
+      vehicleCount === 0 &&
+      locationCount === 0;
+    if (isUnnamedEmptyModel) {
+      return null;
+    }
+
+    return {
+      name: model.name,
+      pointCount,
+      pathCount,
+      vehicleCount,
+    };
   }
 }

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -9,6 +10,7 @@ import {
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
+import { FMS_EVENTS, FmsTransportOrderFinishedEvent } from './domain/events';
 
 @Injectable()
 export class EventProcessorService {
@@ -23,7 +25,20 @@ export class EventProcessorService {
     private readonly dispatchScheduler: DispatchSchedulerService,
   ) {}
 
-  async onPickUpToFinished(toName: string): Promise<void> {
+  @OnEvent(FMS_EVENTS.TRANSPORT_ORDER_FINISHED)
+  async onTransportOrderFinished(
+    event: FmsTransportOrderFinishedEvent,
+  ): Promise<void> {
+    const { orderName } = event;
+    if (orderName.startsWith('TO1-')) {
+      await this.onPickUpToFinished(orderName);
+      this.dispatchScheduler.schedule();
+    } else if (orderName.startsWith('TO2-')) {
+      await this.onDropOffToFinished(orderName);
+    }
+  }
+
+  private async onPickUpToFinished(toName: string): Promise<void> {
     const task = await this.taskRepo
       .createQueryBuilder('t')
       .where(`t.metadata->>'${TASK_META.TO1_NAME}' = :name`, { name: toName })
@@ -73,7 +88,7 @@ export class EventProcessorService {
     this.logger.log(`Task ${task.id} → DELIVERING, created ${to2Name}`);
   }
 
-  async onDropOffToFinished(toName: string): Promise<void> {
+  private async onDropOffToFinished(toName: string): Promise<void> {
     const task = await this.taskRepo
       .createQueryBuilder('t')
       .where(`t.metadata->>'${TASK_META.TO2_NAME}' = :name`, { name: toName })

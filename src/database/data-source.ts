@@ -12,7 +12,11 @@ function loadEnv(filePath: string): Record<string, string> {
     const sep = line.indexOf('=');
     if (sep <= 0) continue;
     const key = line.slice(0, sep).trim();
-    const val = line.slice(sep + 1).trim().replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+    const val = line
+      .slice(sep + 1)
+      .trim()
+      .replace(/^"(.*)"$/, '$1')
+      .replace(/^'(.*)'$/, '$1');
     env[key] = val;
   }
   return env;
