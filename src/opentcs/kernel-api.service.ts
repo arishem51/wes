@@ -205,6 +205,7 @@ export class KernelApiService {
     await axios.put(`${this.baseUrl}/v1/plantModel`, model, {
       headers: { 'Content-Type': 'application/json' },
     });
+    this.invalidatePlantModelCache();
     this.logger.log(`Plant model "${model.name}" loaded into kernel`);
   }
 
@@ -213,6 +214,7 @@ export class KernelApiService {
       headers: { 'Content-Type': 'application/json' },
       timeout: 15_000,
     });
+    this.invalidatePlantModelCache();
     this.logger.log('Plant model patched');
   }
 
@@ -227,12 +229,20 @@ export class KernelApiService {
     }
   }
 
+  private cachedPlantModel: unknown = null;
+
+  invalidatePlantModelCache(): void {
+    this.cachedPlantModel = null;
+  }
+
   async getPlantModel(): Promise<unknown> {
+    if (this.cachedPlantModel) return this.cachedPlantModel;
     try {
       const res = await axios.get(`${this.baseUrl}/v1/plantModel`, {
         timeout: 10_000,
       });
-      return res.data;
+      this.cachedPlantModel = res.data;
+      return this.cachedPlantModel;
     } catch {
       return null;
     }

@@ -2,14 +2,18 @@ import {
   Body,
   Controller,
   Get,
+  MessageEvent,
   Param,
   Post,
   Query,
+  Sse,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { MapsService } from './maps.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -18,6 +22,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { IsIn } from 'class-validator';
 import type { AuthUser } from '../auth/jwt-payload';
 import type { KernelMode } from './maps.service';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 
 interface UploadFile {
   buffer: Buffer;
@@ -34,7 +39,10 @@ class SetKernelStateDto {
 @UseGuards(JwtAuthGuard)
 @Controller('maps')
 export class MapsController {
-  constructor(private readonly maps: MapsService) {}
+  constructor(
+    private readonly maps: MapsService,
+    private readonly vehicleStateStore: VehicleStateStore,
+  ) {}
 
   @Get('kernel-status')
   getKernelStatus() {
@@ -66,6 +74,13 @@ export class MapsController {
   @Get('kernel/vehicles')
   getKernelVehicles() {
     return this.maps.getKernelVehicles();
+  }
+
+  @Sse('kernel/sse')
+  vehicleStream(): Observable<MessageEvent> {
+    return this.vehicleStateStore.vehicleUpdates.pipe(
+      map((vehicle) => ({ data: vehicle })),
+    );
   }
 
   @Get('kernel/debug')

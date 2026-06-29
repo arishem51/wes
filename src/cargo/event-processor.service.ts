@@ -34,6 +34,8 @@ export class EventProcessorService {
       await this.onPickUpToFinished(orderName);
       this.dispatchScheduler.schedule();
     } else if (orderName.startsWith('TO2-')) {
+      await this.onApproachToFinished(orderName);
+    } else if (orderName.startsWith('TO3-')) {
       await this.onDropOffToFinished(orderName);
     }
   }
@@ -50,12 +52,11 @@ export class EventProcessorService {
       return;
     }
 
-    const cargo = task.cargoId
-      ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
-      : null;
-
-    if (!cargo?.destinationLocationName) {
-      this.logger.warn(`Task ${task.id} missing destination — marking FAILED`);
+    const approachLocationName = task.metadata?.approachLocationName;
+    if (!approachLocationName) {
+      this.logger.warn(
+        `Task ${task.id} has no approach location — marking FAILED`,
+      );
       task.status = TaskStatus.FAILED;
       await this.taskRepo.save(task);
       return;
@@ -67,12 +68,7 @@ export class EventProcessorService {
     try {
       await this.kernelApi.createTransportOrder(
         to2Name,
-        [
-          {
-            locationName: cargo.destinationLocationName,
-            operation: 'DROP_OFF',
-          },
-        ],
+        [{ locationName: approachLocationName, operation: 'NOP' }],
         vehicle,
       );
     } catch (err) {
@@ -85,10 +81,12 @@ export class EventProcessorService {
     task.status = TaskStatus.DELIVERING;
     task.metadata = { ...task.metadata, to2Name };
     await this.taskRepo.save(task);
-    this.logger.log(`Task ${task.id} → DELIVERING, created ${to2Name}`);
+    this.logger.log(
+      `Task ${task.id} → DELIVERING, created ${to2Name} (approach)`,
+    );
   }
 
-  private async onDropOffToFinished(toName: string): Promise<void> {
+  private async onApproachToFinished(toName: string): Promise<void> {
     const task = await this.taskRepo
       .createQueryBuilder('t')
       .where(`t.metadata->>'${TASK_META.TO2_NAME}' = :name`, { name: toName })
@@ -97,6 +95,59 @@ export class EventProcessorService {
 
     if (!task) {
       this.logger.debug(`No DELIVERING task found for TO2 "${toName}"`);
+      return;
+    }
+
+    const cargo = task.cargoId
+      ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
+      : null;
+
+    if (!cargo?.destinationLocationName) {
+      this.logger.warn(
+        `Task ${task.id} missing destination location — marking FAILED`,
+      );
+      task.status = TaskStatus.FAILED;
+      await this.taskRepo.save(task);
+      return;
+    }
+
+    const to3Name = `TO3-${task.id}`;
+    const vehicle = task.metadata?.assignedVehicleName ?? 'Vehicle-0001';
+
+    try {
+      await this.kernelApi.createTransportOrder(
+        to3Name,
+        [
+          {
+            locationName: cargo.destinationLocationName,
+            operation: 'DROP_OFF',
+          },
+        ],
+        vehicle,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Failed to create TO3 for task ${task.id}: ${(err as Error).message}`,
+      );
+      return;
+    }
+
+    task.metadata = { ...task.metadata, to3Name };
+    await this.taskRepo.save(task);
+    this.logger.log(
+      `Task ${task.id}: created ${to3Name} (drop-off at ${cargo.destinationLocationName})`,
+    );
+  }
+
+  private async onDropOffToFinished(toName: string): Promise<void> {
+    const task = await this.taskRepo
+      .createQueryBuilder('t')
+      .where(`t.metadata->>'${TASK_META.TO3_NAME}' = :name`, { name: toName })
+      .andWhere('t.status = :status', { status: TaskStatus.DELIVERING })
+      .getOne();
+
+    if (!task) {
+      this.logger.debug(`No DELIVERING task found for TO3 "${toName}"`);
       return;
     }
 

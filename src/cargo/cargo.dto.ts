@@ -13,7 +13,7 @@ export class CreateCargoDto {
 
   @IsString()
   @IsNotEmpty()
-  destinationLocationName!: string;
+  destinationZoneId!: string;
 }
 
 export class ListCargosQueryDto {

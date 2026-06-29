@@ -297,11 +297,40 @@ export class ZoneService {
     }
   }
 
-  async list(): Promise<ZoneEntity[]> {
-    return this.zoneRepo.find({
+  async list(): Promise<
+    Array<ZoneEntity & { occupiedSlotCount: number; totalSlotCount: number }>
+  > {
+    const zones = await this.zoneRepo.find({
       relations: { members: true },
       order: { createdAt: 'DESC' },
     });
+
+    if (zones.length === 0) return [];
+
+    const zoneIds = zones.map((z) => z.id);
+    const rows = await this.dataSource.query<
+      Array<{ zone_id: string; count: string }>
+    >(
+      `SELECT zm.zone_id, COUNT(c.id)::text AS count
+       FROM zone_members zm
+       INNER JOIN cargos c
+         ON c.destination_location_name = zm.location_name
+        AND c.status IN ('ACTIVE', 'DELIVERED')
+        AND c.deleted_at IS NULL
+       WHERE zm.zone_id = ANY($1)
+       GROUP BY zm.zone_id`,
+      [zoneIds],
+    );
+
+    const occupiedByZone = new Map(
+      rows.map((r) => [r.zone_id, Number(r.count)]),
+    );
+
+    return zones.map((z) => ({
+      ...z,
+      occupiedSlotCount: occupiedByZone.get(z.id) ?? 0,
+      totalSlotCount: z.members.length,
+    }));
   }
 
   async remove(id: string): Promise<void> {

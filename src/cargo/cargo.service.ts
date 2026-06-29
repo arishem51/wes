@@ -12,6 +12,12 @@ import {
 } from './entities/transport-task.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
+import { DeliverySlotEngine } from './delivery-slot.engine';
+import {
+  ZoneEntity,
+  ZoneStatus,
+  ZoneType,
+} from '../zones/entities/zone.entity';
 import type {
   CargoResponseDto,
   CargoVisualDto,
@@ -26,7 +32,10 @@ export class CargoService {
     private readonly cargoRepo: Repository<CargoEntity>,
     @InjectRepository(TransportTaskEntity)
     private readonly taskRepo: Repository<TransportTaskEntity>,
+    @InjectRepository(ZoneEntity)
+    private readonly zoneRepo: Repository<ZoneEntity>,
     private readonly kernelApi: KernelApiService,
+    private readonly deliverySlotEngine: DeliverySlotEngine,
     private readonly dispatchScheduler: DispatchSchedulerService,
   ) {}
 
@@ -52,21 +61,32 @@ export class CargoService {
       );
     }
 
-    const deliveredAtDestination = await this.cargoRepo.findOne({
+    const zone = await this.zoneRepo.findOne({
       where: {
-        destinationLocationName: dto.destinationLocationName,
-        status: CargoStatus.DELIVERED,
+        id: dto.destinationZoneId,
+        type: ZoneType.DROPOFF,
+        status: ZoneStatus.ACTIVE,
       },
+      relations: { members: true },
     });
-    if (deliveredAtDestination) {
-      throw new BadRequestException('Đã có hàng đặt ở đây');
+    if (!zone) {
+      throw new BadRequestException(
+        'Khu trả hàng không tồn tại hoặc không hoạt động.',
+      );
+    }
+
+    const slotLocationName = await this.deliverySlotEngine.findSlot(zone);
+    if (!slotLocationName) {
+      throw new BadRequestException(
+        'Khu trả hàng đã đầy, không còn vị trí trống.',
+      );
     }
 
     const cargo = this.cargoRepo.create({
       itemCode: dto.itemCode ?? `ITEM-${Date.now().toString(36).toUpperCase()}`,
       sourcePointName: dto.sourcePointName,
       sourcePickupLocationName: pickupLocationName,
-      destinationLocationName: dto.destinationLocationName,
+      destinationLocationName: slotLocationName,
       status: CargoStatus.ACTIVE,
       createdBy: userId,
     });
@@ -79,7 +99,9 @@ export class CargoService {
       requestCode,
       cargoId: saved.id,
       status: TaskStatus.CREATED,
-      metadata: {},
+      metadata: {
+        approachLocationName: zone.approachLocationName ?? undefined,
+      },
     });
     await this.taskRepo.save(task);
     this.dispatchScheduler.schedule();

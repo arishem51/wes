@@ -20,12 +20,16 @@ export interface TaskMetadata {
   assignedVehicleName?: string;
   to1Name?: string;
   to2Name?: string;
+  to3Name?: string;
+  approachLocationName?: string;
 }
 
 export const TASK_META = {
   ASSIGNED_VEHICLE_NAME: 'assignedVehicleName',
   TO1_NAME: 'to1Name',
   TO2_NAME: 'to2Name',
+  TO3_NAME: 'to3Name',
+  APPROACH_LOCATION_NAME: 'approachLocationName',
 } as const satisfies Record<string, keyof TaskMetadata>;
 
 @Entity('transport_requests')

@@ -6,10 +6,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
 import { AgvEntity } from './entities/agv.entity';
-import {
-  KernelApiService,
-  KernelVehicleState,
-} from '../opentcs/kernel-api.service';
+import { KernelApiService } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type {
   CreateAgvDto,
   ListAgvsQueryDto,
@@ -68,6 +67,7 @@ export class AgvsService {
     @InjectRepository(AgvEntity)
     private readonly repo: Repository<AgvEntity>,
     private readonly kernelApi: KernelApiService,
+    private readonly vehicleStateStore: VehicleStateStore,
   ) {}
 
   async list(query: ListAgvsQueryDto = {}): Promise<AgvListResponse> {
@@ -79,19 +79,17 @@ export class AgvsService {
       ? [{ code: ILike(`%${search}%`) }, { name: ILike(`%${search}%`) }]
       : undefined;
 
-    const [[agvs, total], kernelVehicles] = await Promise.all([
-      this.repo.findAndCount({
-        where,
-        order: { createdAt: 'DESC' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.kernelApi.getVehicles().catch(() => null),
-    ]);
+    const [agvs, total] = await this.repo.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
 
-    const kernelReachable = kernelVehicles !== null;
+    const kernelVehicles = this.vehicleStateStore.getAll();
+    const kernelReachable = this.vehicleStateStore.isConnected();
     const kernelByName = new Map<string, KernelVehicleState>(
-      kernelVehicles?.map((v) => [v.name, v]) ?? [],
+      kernelVehicles.map((v) => [v.name, v]),
     );
 
     const mappedAgvs: AgvDto[] = agvs.map((agv) => ({
@@ -128,9 +126,9 @@ export class AgvsService {
     const agv = await this.repo.findOne({ where: { id } });
     if (!agv) throw new NotFoundException('AGV không tồn tại.');
 
-    const kernelVehicles = await this.kernelApi.getVehicles().catch(() => null);
-    const kernelReachable = kernelVehicles !== null;
-    const kernelVehicle = kernelVehicles?.find((v) => v.name === agv.name);
+    const kernelVehicles = this.vehicleStateStore.getAll();
+    const kernelReachable = this.vehicleStateStore.isConnected();
+    const kernelVehicle = kernelVehicles.find((v) => v.name === agv.name);
 
     return {
       ...agv,

@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { CargoService } from './cargo.service';
+import { DispatchSchedulerService } from './dispatch-scheduler.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/jwt-payload';
@@ -18,7 +19,10 @@ import { CreateCargoDto, ListCargosQueryDto } from './cargo.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('cargo')
 export class CargoController {
-  constructor(private readonly service: CargoService) {}
+  constructor(
+    private readonly service: CargoService,
+    private readonly dispatcher: DispatchSchedulerService,
+  ) {}
 
   @Get()
   list(@Query() query: ListCargosQueryDto) {
@@ -39,5 +43,11 @@ export class CargoController {
   @HttpCode(200)
   remove(@Param('id') id: string) {
     return this.service.remove(id);
+  }
+
+  @Post('dispatch/trigger')
+  @HttpCode(204)
+  triggerDispatch() {
+    this.dispatcher.schedule();
   }
 }
