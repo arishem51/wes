@@ -350,9 +350,15 @@ export class KernelApiService {
     }
   }
 
-  async withdrawTransportOrder(name: string): Promise<void> {
+  /**
+   * Withdraw a transport order. `immediate=false` (default) is the graceful
+   * abort: openTCS lets the vehicle finish moving to its next point before
+   * aborting, avoiding the collisions/deadlocks the spec warns `immediate=true`
+   * can cause when the vehicle is not halted on a point.
+   */
+  async withdrawTransportOrder(name: string, immediate = false): Promise<void> {
     await axios.post(
-      `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}/withdrawal?immediate=true`,
+      `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}/withdrawal?immediate=${immediate}`,
       null,
       { timeout: 5_000 },
     );

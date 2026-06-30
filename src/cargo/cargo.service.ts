@@ -11,7 +11,8 @@ import {
   TaskStatus,
 } from './entities/transport-task.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import { DispatchSchedulerService } from './dispatch-scheduler.service';
+import { TransportTaskService } from './transport-task.service';
+import { TransportTaskStateMachine } from './domain/transport-task.state-machine';
 import { DeliverySlotEngine } from './delivery-slot.engine';
 import {
   ZoneEntity,
@@ -36,7 +37,7 @@ export class CargoService {
     private readonly zoneRepo: Repository<ZoneEntity>,
     private readonly kernelApi: KernelApiService,
     private readonly deliverySlotEngine: DeliverySlotEngine,
-    private readonly dispatchScheduler: DispatchSchedulerService,
+    private readonly transportTask: TransportTaskService,
   ) {}
 
   async create(dto: CreateCargoDto, userId: string): Promise<CargoEntity> {
@@ -82,11 +83,16 @@ export class CargoService {
       );
     }
 
+    // Pickup zone the source belongs to (if any) — drives the row-dependency
+    // rule at release time. Null when the source point isn't in a PICKUP zone.
+    const sourceZoneId = await this.resolvePickupZoneId(pickupLocationName);
+
     const cargo = this.cargoRepo.create({
       itemCode: dto.itemCode ?? `ITEM-${Date.now().toString(36).toUpperCase()}`,
       sourcePointName: dto.sourcePointName,
       sourcePickupLocationName: pickupLocationName,
       destinationLocationName: slotLocationName,
+      sourceZoneId,
       status: CargoStatus.ACTIVE,
       createdBy: userId,
     });
@@ -104,7 +110,7 @@ export class CargoService {
       },
     });
     await this.taskRepo.save(task);
-    this.dispatchScheduler.schedule();
+    this.transportTask.publishCreated(task);
 
     return saved;
   }
@@ -148,9 +154,10 @@ export class CargoService {
         }
       }
 
-      task.status = TaskStatus.CANCELLED;
-      task.cancelledAt = new Date();
-      await this.taskRepo.save(task);
+      if (TransportTaskStateMachine.isCancellable(task.status)) {
+        task.cancelledAt = new Date();
+        await this.transportTask.changeStatus(task, TaskStatus.CANCELLED);
+      }
     }
 
     await this.cargoRepo.softDelete(id);
@@ -159,6 +166,21 @@ export class CargoService {
 
   async getTaskByCargo(cargoId: string): Promise<TransportTaskEntity | null> {
     return this.taskRepo.findOne({ where: { cargoId } });
+  }
+
+  /** The active PICKUP zone whose members include this pickup location, if any. */
+  private async resolvePickupZoneId(
+    pickupLocationName: string,
+  ): Promise<string | null> {
+    const zone = await this.zoneRepo
+      .createQueryBuilder('z')
+      .innerJoin('z.members', 'm', 'm.locationName = :loc', {
+        loc: pickupLocationName,
+      })
+      .where('z.type = :type', { type: ZoneType.PICKUP })
+      .andWhere('z.status = :status', { status: ZoneStatus.ACTIVE })
+      .getOne();
+    return zone?.id ?? null;
   }
 
   private async enrichCargos(

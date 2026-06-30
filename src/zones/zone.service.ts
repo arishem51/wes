@@ -118,6 +118,30 @@ export class ZoneService {
     memberLocationNames: string[],
   ): Promise<void> {
     const context = await this.loadKernelModelContext();
+    this.appendDropoffZoneLocations(
+      context,
+      parentLocationName,
+      memberLocationNames,
+    );
+    await savePlantModel(this.kernelApi, {
+      ...context.model,
+      locations: context.updatedLocations,
+    });
+    this.logger.log(
+      `Zone "${parentLocationName}": đã tạo ${memberLocationNames.length} location con và 1 location cha trong kernel`,
+    );
+  }
+
+  /**
+   * Builds a dropoff zone's child locations + parent (`zone_<id>`) location and
+   * upserts them into `context.updatedLocations`. Does NOT persist — callers save
+   * the model, so several zones can be batched into one PUT.
+   */
+  private appendDropoffZoneLocations(
+    context: KernelModelContext,
+    parentLocationName: string,
+    memberLocationNames: string[],
+  ): void {
     const locationMeta = this.getLocationMeta(context.locations, 'Drop off');
     const pointSummaries = this.upsertMemberLocations(
       context,
@@ -145,28 +169,13 @@ export class ZoneService {
       locationMeta,
     );
     this.upsertLocation(context.updatedLocations, parentLocation);
-
-    await savePlantModel(this.kernelApi, {
-      ...context.model,
-      locations: context.updatedLocations,
-    });
-    this.logger.log(
-      `Zone "${parentLocationName}": đã tạo ${memberLocationNames.length} location con và 1 location cha trong kernel`,
-    );
   }
 
   private async applyPickupZoneToKernel(
     memberLocationNames: string[],
   ): Promise<void> {
     const context = await this.loadKernelModelContext();
-    const locationMeta = this.getLocationMeta(context.locations, 'Pick up');
-    this.upsertMemberLocations(
-      context,
-      memberLocationNames,
-      'Pick up',
-      locationMeta,
-    );
-
+    this.appendPickupZoneLocations(context, memberLocationNames);
     await savePlantModel(this.kernelApi, {
       ...context.model,
       locations: context.updatedLocations,
@@ -176,8 +185,63 @@ export class ZoneService {
     );
   }
 
+  /**
+   * Builds a pickup zone's child locations and upserts them into
+   * `context.updatedLocations` without persisting (see appendDropoffZoneLocations).
+   */
+  private appendPickupZoneLocations(
+    context: KernelModelContext,
+    memberLocationNames: string[],
+  ): void {
+    const locationMeta = this.getLocationMeta(context.locations, 'Pick up');
+    this.upsertMemberLocations(
+      context,
+      memberLocationNames,
+      'Pick up',
+      locationMeta,
+    );
+  }
+
+  private appendZoneLocations(
+    context: KernelModelContext,
+    zone: ZoneEntity,
+  ): void {
+    const memberLocationNames = this.zoneMemberLocationNames(zone);
+    if (zone.type === ZoneType.DROPOFF && zone.approachLocationName) {
+      this.appendDropoffZoneLocations(
+        context,
+        zone.approachLocationName,
+        memberLocationNames,
+      );
+    } else {
+      this.appendPickupZoneLocations(context, memberLocationNames);
+    }
+  }
+
+  /**
+   * A zone can be rebuilt onto the current kernel map only if every member's
+   * underlying point still exists (locations are derived from points). A dropoff
+   * zone additionally needs its parent identity (`approachLocationName`). Missing
+   * *location* is what we repair; missing *point* is unrepairable.
+   */
+  private canRepairZone(
+    zone: ZoneEntity,
+    kernelPointNames: Set<string>,
+  ): boolean {
+    if (zone.members.length === 0) return false;
+    if (zone.type === ZoneType.DROPOFF && !zone.approachLocationName) {
+      return false;
+    }
+    return zone.members.every((member) =>
+      kernelPointNames.has(this.getPointNameFromLocation(member.locationName)),
+    );
+  }
+
   private async loadKernelModelContext(): Promise<KernelModelContext> {
-    const rawModel = await this.kernelApi.getPlantModel();
+    return this.buildKernelModelContext(await this.kernelApi.getPlantModel());
+  }
+
+  private buildKernelModelContext(rawModel: unknown): KernelModelContext {
     if (!rawModel || typeof rawModel !== 'object') {
       throw new ServiceUnavailableException('Không thể kết nối kernel.');
     }
@@ -346,10 +410,27 @@ export class ZoneService {
     await this.zoneRepo.softDelete(id);
   }
 
+  /**
+   * Reconciles WES zones with the kernel's current map.
+   *
+   * Rules:
+   * - A member location may belong to at most one ACTIVE zone.
+   * - Sync never resurrects a STALE zone: only currently-ACTIVE zones are
+   *   candidates to stay ACTIVE.
+   * - A candidate whose member points are gone → STALE (unrepairable).
+   * - If two or more candidates share a member location, all of them → STALE
+   *   (an unresolved conflict to be sorted out manually).
+   * - Surviving winners keep ACTIVE and have their missing locations rebuilt in a
+   *   single PUT. If the kernel rejects the write (e.g. read-only/OPERATING), the
+   *   zones that needed rebuilding fall back to STALE.
+   */
   async sync(): Promise<SyncResult> {
-    const model = await this.loadRuntimePlantModel();
+    // Sync may rewrite the kernel map, so always read it fresh (not from cache).
+    this.kernelApi.invalidatePlantModelCache();
+    const rawModel = await this.kernelApi.getPlantModel();
+    const runtime = this.buildRuntimePlantModel(rawModel);
 
-    if (!model) {
+    if (!runtime) {
       this.logger.warn('Sync skipped: kernel unreachable');
       return {
         total: 0,
@@ -359,15 +440,76 @@ export class ZoneService {
       };
     }
 
+    const context = this.buildKernelModelContext(rawModel);
     const zones = await this.zoneRepo.find({ relations: { members: true } });
+
+    // Candidates: currently ACTIVE and still repairable (member points exist).
+    const candidates = zones.filter(
+      (zone) =>
+        zone.status === ZoneStatus.ACTIVE &&
+        this.canRepairZone(zone, runtime.pointNames),
+    );
+
+    // Any member location claimed by two+ candidates disqualifies every zone
+    // touching it (both-active conflict → STALE).
+    const claimants = new Map<string, ZoneEntity[]>();
+    for (const zone of candidates) {
+      for (const locationName of this.zoneMemberLocationNames(zone)) {
+        const list = claimants.get(locationName) ?? [];
+        list.push(zone);
+        claimants.set(locationName, list);
+      }
+    }
+    const conflictedZoneIds = new Set<string>();
+    for (const list of claimants.values()) {
+      if (list.length > 1) {
+        for (const zone of list) conflictedZoneIds.add(zone.id);
+      }
+    }
+
+    const winners = candidates.filter(
+      (zone) => !conflictedZoneIds.has(zone.id),
+    );
+
+    // Everything starts STALE; winners are promoted back to ACTIVE below.
+    const desiredStatus = new Map<string, ZoneStatus>(
+      zones.map((zone) => [zone.id, ZoneStatus.STALE]),
+    );
+    const toRebuild: ZoneEntity[] = [];
+    for (const zone of winners) {
+      desiredStatus.set(zone.id, ZoneStatus.ACTIVE);
+      if (!this.isZoneValid(zone, runtime)) {
+        // Locations missing but repairable → queue a rebuild.
+        this.appendZoneLocations(context, zone);
+        toRebuild.push(zone);
+      }
+    }
+
+    if (toRebuild.length > 0) {
+      try {
+        await savePlantModel(this.kernelApi, {
+          ...context.model,
+          locations: context.updatedLocations,
+        });
+      } catch (err) {
+        // Kernel refused the write (read-only / OPERATING) — can't restore now.
+        // Winners that were already valid keep ACTIVE; only those needing a
+        // rebuild fall back to STALE.
+        for (const zone of toRebuild) {
+          desiredStatus.set(zone.id, ZoneStatus.STALE);
+        }
+        this.logger.warn(
+          `Không thể ghi location khôi phục (kernel cần chế độ Thiết kế?): ${
+            (err as Error).message
+          }`,
+        );
+      }
+    }
 
     let markedStale = 0;
     let markedActive = 0;
-
     for (const zone of zones) {
-      const isValid = this.isZoneValid(zone, model);
-      const targetStatus = isValid ? ZoneStatus.ACTIVE : ZoneStatus.STALE;
-
+      const targetStatus = desiredStatus.get(zone.id) ?? ZoneStatus.STALE;
       if (zone.status !== targetStatus) {
         zone.status = targetStatus;
         await this.zoneRepo.save(zone);
@@ -389,6 +531,10 @@ export class ZoneService {
       markedActive,
       kernelUnreachable: false,
     };
+  }
+
+  private zoneMemberLocationNames(zone: ZoneEntity): string[] {
+    return [...new Set(zone.members.map((member) => member.locationName))];
   }
 
   private isZoneValid(zone: ZoneEntity, model: RuntimePlantModel): boolean {
@@ -427,8 +573,7 @@ export class ZoneService {
     return true;
   }
 
-  private async loadRuntimePlantModel(): Promise<RuntimePlantModel | null> {
-    const rawModel = await this.kernelApi.getPlantModel();
+  private buildRuntimePlantModel(rawModel: unknown): RuntimePlantModel | null {
     if (!rawModel || typeof rawModel !== 'object') {
       return null;
     }

@@ -1,6 +1,6 @@
 # WES Backend — Agent Rules
 
-> Read `../ARCHITECTURE.md` first. This file adds NestJS-specific conventions on top.
+> Read `ARCHITECTURE.md` (same folder) first. This file adds NestJS-specific conventions on top.
 
 ## Quick orientation
 
@@ -32,27 +32,13 @@
 - Migrations: generate with `pnpm migration:generate -- src/database/migrations/NNN-Description`. Never edit existing migrations.
 - All `timestamptz` columns. Never `timestamp without time zone`.
 
-## Event Bus (Phase 1 target)
+## Architecture
 
-After Phase 1 refactor:
-- Import `EventEmitter2` from `@nestjs/event-emitter`.
-- Inject via constructor: `private readonly eventEmitter: EventEmitter2`.
-- Emit: `this.eventEmitter.emit('transport-task.status-changed', new TransportTaskStatusChangedEvent(...))`.
-- Listen: `@OnEvent('transport-task.status-changed')` on a service method.
-- Event classes defined in `src/cargo/domain/events.ts`.
-
-## State Machine (Phase 2 target)
-
-- `TransportTaskStateMachine.transition(task, newStatus)` is the ONLY way to change `task.status`.
-- Call it, then `await this.taskRepo.save(task)`.
-- After save, emit the corresponding domain event.
-
-## Current known shortcuts (temporary, remove in respective phase)
-
-- `ASSIGNED_VEHICLE = 'Vehicle-0001'` in `assignment-engine.service.ts` → replace in Phase 3.
-- `ReleaseEngineService` releases ALL CREATED tasks without dependency check → add in Phase 4.
-- `KernelEventListenerService` is in `src/cargo/` but belongs in `src/opentcs/` → move in Phase 1.
-- Direct method call `EventProcessorService.onPickUpToFinished()` → replace with event emit in Phase 1.
+Any backend change that touches architecture — module boundaries, the transport
+task lifecycle, events, dispatch/assignment, the openTCS ACL, or where business
+logic lives — MUST be checked against and follow **`ARCHITECTURE.md`** (same folder). That
+file is the source of truth for architecture and design patterns; this file only
+covers NestJS/TypeORM coding conventions.
 
 ## Running locally
 

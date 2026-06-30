@@ -3,27 +3,39 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CargoEntity } from './entities/cargo.entity';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
+import { AgvEntity } from '../agvs/entities/agv.entity';
 import { CargoService } from './cargo.service';
 import { CargoController } from './cargo.controller';
+import { TransportTaskService } from './transport-task.service';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
-import { EventProcessorService } from './event-processor.service';
+import { TransportTaskSaga } from './transport-task.saga';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
+import { ZoneGeometryService } from './zone-geometry.service';
+import { PickupDependencyService } from './pickup-dependency.service';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CargoEntity, TransportTaskEntity, ZoneEntity]),
+    TypeOrmModule.forFeature([
+      CargoEntity,
+      TransportTaskEntity,
+      ZoneEntity,
+      AgvEntity,
+    ]),
     OpenTcsModule,
   ],
   providers: [
     CargoService,
+    TransportTaskService,
     DeliverySlotEngine,
+    ZoneGeometryService,
+    PickupDependencyService,
     ReleaseEngineService,
     AssignmentEngineService,
     DispatchSchedulerService,
-    EventProcessorService,
+    TransportTaskSaga,
   ],
   controllers: [CargoController],
   exports: [DeliverySlotEngine],

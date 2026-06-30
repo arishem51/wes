@@ -45,6 +45,9 @@ export class CargoEntity {
   })
   destinationLocationName!: string | null;
 
+  @Column({ name: 'source_zone_id', type: 'uuid', nullable: true })
+  sourceZoneId!: string | null;
+
   @Column({
     type: 'enum',
     enum: CargoStatus,

@@ -1,17 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   TransportTaskEntity,
   TaskStatus,
-  TASK_META,
 } from './entities/transport-task.entity';
 import { CargoEntity } from './entities/cargo.entity';
+import { AgvEntity } from '../agvs/entities/agv.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-
-const ASSIGNED_VEHICLE = 'Vehicle-0001';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
+import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import { TransportTaskService } from './transport-task.service';
+import { PickupDependencyService } from './pickup-dependency.service';
+import { VehicleCandidate, pickVehicle } from './domain/dispatch.policy';
 
 const BUSY_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
+
+function isFmsDispatchable(state: KernelVehicleState | undefined): boolean {
+  if (!state) return false;
+  return (
+    (state.procState === 'IDLE' || state.procState === 'AWAITING_ORDER') &&
+    state.integrationLevel === 'TO_BE_UTILIZED'
+  );
+}
 
 @Injectable()
 export class AssignmentEngineService {
@@ -22,44 +33,94 @@ export class AssignmentEngineService {
     private readonly taskRepo: Repository<TransportTaskEntity>,
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
+    @InjectRepository(AgvEntity)
+    private readonly agvRepo: Repository<AgvEntity>,
     private readonly kernelApi: KernelApiService,
+    private readonly vehicleStore: VehicleStateStore,
+    private readonly transportTask: TransportTaskService,
+    private readonly pickupDependency: PickupDependencyService,
   ) {}
 
   async run(): Promise<void> {
     const tasks = await this.taskRepo.find({
       where: { status: TaskStatus.READY_TO_ASSIGN },
+      order: { createdAt: 'ASC' },
     });
-
     if (tasks.length === 0) return;
 
+    const candidates = await this.buildCandidates();
+    this.logger.debug(
+      `Assignment: ${tasks.length} READY task(s); candidates=[` +
+        candidates
+          .map(
+            (c) =>
+              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},e:${c.energyLevel}/${c.operationalThreshold}}`,
+          )
+          .join(' ') +
+        ']',
+    );
+
     for (const task of tasks) {
-      const isBusy = await this.isVehicleBusy(ASSIGNED_VEHICLE);
-      if (isBusy) {
-        break;
+      // Guard: the lane may have become blocked since release decided this
+      // task was free (a closer-to-aisle cargo was added). Skip it; the next
+      // ReleaseEngine pass demotes it to BLOCKED.
+      if (await this.pickupDependency.isBlocked(task)) {
+        this.logger.debug(`Task ${task.id} blocked at assign time — skipping`);
+        continue;
       }
-      await this.assign(task);
+
+      const vehicle = pickVehicle(candidates);
+      if (!vehicle) break; // no eligible AGV right now — try again next cycle
+
+      const assigned = await this.assign(task, vehicle.name);
+      if (assigned) {
+        // Don't hand the same vehicle two tasks in one cycle.
+        vehicle.hasActiveTask = true;
+      }
     }
   }
 
-  private async isVehicleBusy(vehicleName: string): Promise<boolean> {
-    const count = await this.taskRepo
-      .createQueryBuilder('t')
-      .where(`t.metadata->>'${TASK_META.ASSIGNED_VEHICLE_NAME}' = :vehicle`, {
-        vehicle: vehicleName,
-      })
-      .andWhere('t.status IN (:...statuses)', { statuses: BUSY_STATUSES })
-      .getCount();
-    return count > 0;
+  private async buildCandidates(): Promise<VehicleCandidate[]> {
+    const agvs = await this.agvRepo.find();
+    const busy = await this.busyVehicleNames();
+
+    return agvs.map((agv) => {
+      const fms = this.vehicleStore.get(agv.name);
+      return {
+        name: agv.name,
+        dispatchEnabled: agv.isDispatchEnabled,
+        ignored: agv.isIgnored,
+        available: isFmsDispatchable(fms),
+        energyLevel: fms?.energyLevel ?? 0,
+        operationalThreshold: agv.operationalBatteryThreshold,
+        hasActiveTask: busy.has(agv.name),
+      };
+    });
   }
 
-  private async assign(task: TransportTaskEntity): Promise<void> {
+  private async busyVehicleNames(): Promise<Set<string>> {
+    const tasks = await this.taskRepo.find({
+      where: { status: In(BUSY_STATUSES) },
+    });
+    const names = new Set<string>();
+    for (const task of tasks) {
+      const name = task.metadata?.assignedVehicleName;
+      if (name) names.add(name);
+    }
+    return names;
+  }
+
+  private async assign(
+    task: TransportTaskEntity,
+    vehicleName: string,
+  ): Promise<boolean> {
     const cargo = task.cargoId
       ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
       : null;
 
     if (!cargo?.sourcePickupLocationName || !cargo?.destinationLocationName) {
       this.logger.warn(`Task ${task.id} missing location names — skipping`);
-      return;
+      return false;
     }
 
     const to1Name = `TO1-${task.id}`;
@@ -72,24 +133,26 @@ export class AssignmentEngineService {
             operation: 'PICK_UP',
           },
         ],
-        ASSIGNED_VEHICLE,
+        vehicleName,
       );
     } catch (err) {
       this.logger.error(
         `Failed to create TO1 for task ${task.id}: ${(err as Error).message}`,
       );
-      return;
+      return false;
     }
 
-    task.status = TaskStatus.PICKING_UP;
     task.assignedAt = new Date();
     task.startedAt = new Date();
     task.metadata = {
       ...task.metadata,
-      assignedVehicleName: ASSIGNED_VEHICLE,
+      assignedVehicleName: vehicleName,
       to1Name,
     };
-    await this.taskRepo.save(task);
-    this.logger.log(`Task ${task.id} → PICKING_UP (${to1Name})`);
+    await this.transportTask.changeStatus(task, TaskStatus.PICKING_UP);
+    this.logger.log(
+      `Task ${task.id} → PICKING_UP on ${vehicleName} (${to1Name})`,
+    );
+    return true;
   }
 }

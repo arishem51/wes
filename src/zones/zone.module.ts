@@ -4,12 +4,15 @@ import { ZoneEntity } from './entities/zone.entity';
 import { ZoneMemberEntity } from './entities/zone-member.entity';
 import { ZoneController } from './zone.controller';
 import { ZoneService } from './zone.service';
-import { KernelApiService } from '../opentcs/kernel-api.service';
+import { OpenTcsModule } from '../opentcs/opentcs.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ZoneEntity, ZoneMemberEntity])],
+  imports: [
+    TypeOrmModule.forFeature([ZoneEntity, ZoneMemberEntity]),
+    OpenTcsModule,
+  ],
   controllers: [ZoneController],
-  providers: [ZoneService, KernelApiService],
+  providers: [ZoneService],
   exports: [ZoneService],
 })
 export class ZoneModule {}

@@ -65,13 +65,21 @@ describe('ZoneService.sync', () => {
   let service: ZoneService;
   let zoneRepo: RepoMock;
   let memberRepo: RepoMock;
-  let kernelApi: { getPlantModel: jest.Mock };
+  let kernelApi: {
+    getPlantModel: jest.Mock;
+    invalidatePlantModelCache: jest.Mock;
+    putRawPlantModel: jest.Mock;
+  };
 
   beforeEach(async () => {
     zoneRepo = makeRepo();
     memberRepo = makeRepo();
     kernelApi = {
       getPlantModel: jest.fn(),
+      invalidatePlantModelCache: jest.fn(),
+      // Default: kernel accepts the write (MODELLING). OPERATING cases override
+      // this with a rejection.
+      putRawPlantModel: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -90,9 +98,27 @@ describe('ZoneService.sync', () => {
     service = module.get(ZoneService);
   });
 
-  it('marks zone ACTIVE when member locations and approach location match runtime plant model', async () => {
+  const makePickupZone = (
+    id: string,
+    name: string,
+    status: ZoneStatus,
+    locationNames: string[],
+  ): ZoneEntity =>
+    makeZone({
+      id,
+      name,
+      type: ZoneType.PICKUP,
+      kernelId: null,
+      approachLocationName: null,
+      status,
+      members: locationNames.map((locationName, index) =>
+        makeMember(locationName, index),
+      ),
+    });
+
+  it('leaves an already-valid ACTIVE zone ACTIVE and writes nothing', async () => {
     const zone = makeZone({
-      status: ZoneStatus.STALE,
+      status: ZoneStatus.ACTIVE,
       members: [makeMember('location_P1', 0), makeMember('location_P2', 1)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
@@ -109,84 +135,151 @@ describe('ZoneService.sync', () => {
 
     const result = await service.sync();
 
-    expect(zoneRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ status: ZoneStatus.ACTIVE }),
-    );
     expect(result).toEqual({
       total: 1,
       markedStale: 0,
-      markedActive: 1,
+      markedActive: 0,
       kernelUnreachable: false,
     });
+    expect(zoneRepo.save).not.toHaveBeenCalled();
+    expect(kernelApi.putRawPlantModel).not.toHaveBeenCalled();
   });
 
-  it('marks zone STALE when a member location is missing from runtime plant model', async () => {
+  it('rebuilds a repairable ACTIVE zone in the kernel while keeping it ACTIVE', async () => {
     const zone = makeZone({
+      status: ZoneStatus.ACTIVE,
+      members: [makeMember('location_P1', 0), makeMember('location_P2', 1)],
+    });
+    zoneRepo.find.mockResolvedValue([zone]);
+    // Points still exist but every location is gone (map reloaded without them).
+    kernelApi.getPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1', 'P2'], locations: [] }),
+    );
+
+    const result = await service.sync();
+
+    expect(result.markedStale).toBe(0);
+    expect(kernelApi.putRawPlantModel).toHaveBeenCalledTimes(1);
+    const pushed = kernelApi.putRawPlantModel.mock.calls[0][0] as {
+      locations: Array<{ name: string }>;
+    };
+    expect(pushed.locations.map((location) => location.name).sort()).toEqual([
+      'location_P1',
+      'location_P2',
+      'zone_1',
+    ]);
+  });
+
+  it('does not resurrect a STALE zone even if its points still exist', async () => {
+    const zone = makeZone({
+      status: ZoneStatus.STALE,
+      members: [makeMember('location_P1', 0)],
+    });
+    zoneRepo.find.mockResolvedValue([zone]);
+    kernelApi.getPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1'], locations: [] }),
+    );
+
+    const result = await service.sync();
+
+    expect(result).toEqual({
+      total: 1,
+      markedStale: 0,
+      markedActive: 0,
+      kernelUnreachable: false,
+    });
+    expect(zoneRepo.save).not.toHaveBeenCalled();
+    expect(kernelApi.putRawPlantModel).not.toHaveBeenCalled();
+  });
+
+  it('keeps the sole ACTIVE zone and leaves a conflicting STALE zone STALE', async () => {
+    const active = makePickupZone('z1', 'zone A', ZoneStatus.ACTIVE, [
+      'location_P1',
+    ]);
+    const stale = makePickupZone('z2', 'Lấy hànng', ZoneStatus.STALE, [
+      'location_P1',
+    ]);
+    zoneRepo.find.mockResolvedValue([active, stale]);
+    kernelApi.getPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1'], locations: [] }),
+    );
+
+    const result = await service.sync();
+
+    expect(result.markedStale).toBe(0);
+    // Only the winning (ACTIVE) zone's location is pushed to the kernel.
+    expect(kernelApi.putRawPlantModel).toHaveBeenCalledTimes(1);
+    const pushed = kernelApi.putRawPlantModel.mock.calls[0][0] as {
+      locations: Array<{ name: string }>;
+    };
+    expect(pushed.locations.map((location) => location.name)).toEqual([
+      'location_P1',
+    ]);
+  });
+
+  it('marks both zones STALE when two ACTIVE zones share a location', async () => {
+    const a = makePickupZone('z1', 'zone A', ZoneStatus.ACTIVE, [
+      'location_P1',
+    ]);
+    const b = makePickupZone('z2', 'Lấy hànng', ZoneStatus.ACTIVE, [
+      'location_P1',
+    ]);
+    zoneRepo.find.mockResolvedValue([a, b]);
+    kernelApi.getPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1'], locations: [] }),
+    );
+
+    const result = await service.sync();
+
+    expect(result.markedStale).toBe(2);
+    expect(result.markedActive).toBe(0);
+    expect(zoneRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'z1', status: ZoneStatus.STALE }),
+    );
+    expect(zoneRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'z2', status: ZoneStatus.STALE }),
+    );
+    expect(kernelApi.putRawPlantModel).not.toHaveBeenCalled();
+  });
+
+  it('falls back to STALE when the kernel rejects the repair write (read-only / OPERATING)', async () => {
+    const zone = makeZone({
+      status: ZoneStatus.ACTIVE,
       members: [makeMember('location_P1', 0), makeMember('location_P2', 1)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
     kernelApi.getPlantModel.mockResolvedValue(
-      makePlantModel({
-        pointNames: ['P1', 'P2'],
-        locations: [
-          { name: 'location_P1', links: ['P1'] },
-          { name: 'zone_1', links: ['P1', 'P2'] },
-        ],
-      }),
+      makePlantModel({ pointNames: ['P1', 'P2'], locations: [] }),
     );
+    kernelApi.putRawPlantModel.mockRejectedValue(new Error('OPERATING'));
 
     const result = await service.sync();
 
+    expect(result.markedStale).toBe(1);
+    expect(result.markedActive).toBe(0);
+    expect(kernelApi.putRawPlantModel).toHaveBeenCalledTimes(1);
     expect(zoneRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({ status: ZoneStatus.STALE }),
     );
-    expect(result.markedStale).toBe(1);
   });
 
-  it('marks zone STALE when member location link no longer points to an existing point', async () => {
+  it('marks an ACTIVE zone STALE without writing when a member point is missing', async () => {
     const zone = makeZone({
+      status: ZoneStatus.ACTIVE,
       members: [makeMember('location_P1', 0)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
     kernelApi.getPlantModel.mockResolvedValue(
-      makePlantModel({
-        pointNames: [],
-        locations: [
-          { name: 'location_P1', links: ['P1'] },
-          { name: 'zone_1', links: ['P1'] },
-        ],
-      }),
+      makePlantModel({ pointNames: [], locations: [] }),
     );
 
     const result = await service.sync();
 
+    expect(result.markedStale).toBe(1);
     expect(zoneRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({ status: ZoneStatus.STALE }),
     );
-    expect(result.markedStale).toBe(1);
-  });
-
-  it('marks dropoff zone STALE when approach location links drift away from member points', async () => {
-    const zone = makeZone({
-      members: [makeMember('location_P1', 0)],
-    });
-    zoneRepo.find.mockResolvedValue([zone]);
-    kernelApi.getPlantModel.mockResolvedValue(
-      makePlantModel({
-        pointNames: ['P1', 'P9'],
-        locations: [
-          { name: 'location_P1', links: ['P1'] },
-          { name: 'zone_1', links: ['P9'] },
-        ],
-      }),
-    );
-
-    const result = await service.sync();
-
-    expect(zoneRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ status: ZoneStatus.STALE }),
-    );
-    expect(result.markedStale).toBe(1);
+    expect(kernelApi.putRawPlantModel).not.toHaveBeenCalled();
   });
 
   it('returns kernelUnreachable=true and skips sync when plant model is unavailable', async () => {

@@ -9,6 +9,7 @@ import {
 export enum TaskStatus {
   CREATED = 'CREATED',
   READY_TO_ASSIGN = 'READY_TO_ASSIGN',
+  BLOCKED = 'BLOCKED',
   PICKING_UP = 'PICKING_UP',
   DELIVERING = 'DELIVERING',
   DELIVERY_COMPLETED = 'DELIVERY_COMPLETED',
@@ -22,6 +23,7 @@ export interface TaskMetadata {
   to2Name?: string;
   to3Name?: string;
   approachLocationName?: string;
+  blockedReason?: string;
 }
 
 export const TASK_META = {
@@ -30,6 +32,7 @@ export const TASK_META = {
   TO2_NAME: 'to2Name',
   TO3_NAME: 'to3Name',
   APPROACH_LOCATION_NAME: 'approachLocationName',
+  BLOCKED_REASON: 'blockedReason',
 } as const satisfies Record<string, keyof TaskMetadata>;
 
 @Entity('transport_requests')
