@@ -20,8 +20,10 @@ const RETRY_DELAY_MS = 3_000;
 
 interface TCSObjectState {
   name: string;
-  state?: string;
-  procState?: string;
+  // state/procState arrive as a plain string over REST but as a nested object
+  // ({ state: "IDLE", timestamp }) over SSE — typed unknown, unwrapped below.
+  state?: unknown;
+  procState?: unknown;
   integrationLevel?: string;
   [key: string]: unknown;
 }
@@ -186,6 +188,11 @@ export class KernelEventListenerService
     const raw = payload.currentObjectState;
     if (!raw?.name) return;
 
+    // Over SSE, state/procState arrive as { state|procState: "IDLE", timestamp }
+    // (TimestampedVehicleState/ProcState) — unwrap to the enum string.
+    const state = this.unwrapEnum(raw.state);
+    const procState = this.unwrapEnum(raw.procState);
+
     const existing = this.vehicleStateStore.get(raw.name);
     const incoming: KernelVehicleState = {
       ...(existing ?? {
@@ -197,11 +204,11 @@ export class KernelEventListenerService
         paused: false,
         currentPosition: null,
       }),
-      ...(raw.state && { state: raw.state as KernelVehicleState['state'] }),
-      ...(raw.procState && {
-        procState: raw.procState as KernelVehicleState['procState'],
+      ...(state && { state: state as KernelVehicleState['state'] }),
+      ...(procState && {
+        procState: procState as KernelVehicleState['procState'],
       }),
-      ...(raw.integrationLevel && {
+      ...(typeof raw.integrationLevel === 'string' && {
         integrationLevel:
           raw.integrationLevel as KernelVehicleState['integrationLevel'],
       }),
@@ -218,11 +225,20 @@ export class KernelEventListenerService
     const previous = existing;
     this.vehicleStateStore.set(raw.name, incoming);
 
-    const wasAvailable = this.isDispatchAvailable(previous);
     const nowAvailable = this.isDispatchAvailable(incoming);
+    // Fire on any state change that lands on an available state — not only the
+    // not-available→available edge. A vehicle settling AWAITING_ORDER→IDLE
+    // (both already "available") would otherwise be missed and a freed vehicle
+    // never re-dispatched. procState/integrationLevel only, so plain position
+    // updates while idle don't spam the dispatch cycle.
+    const stateChanged =
+      previous?.procState !== incoming.procState ||
+      previous?.integrationLevel !== incoming.integrationLevel;
 
-    if (!wasAvailable && nowAvailable) {
-      this.logger.log(`Vehicle "${incoming.name}" available`);
+    if (nowAvailable && stateChanged) {
+      this.logger.log(
+        `Vehicle "${incoming.name}" available (${previous?.procState ?? 'unknown'} → ${incoming.procState})`,
+      );
       this.eventEmitter.emit(
         FMS_EVENTS.VEHICLE_AVAILABLE,
         new FmsVehicleAvailableEvent(incoming.name),
@@ -236,5 +252,23 @@ export class KernelEventListenerService
       (state.procState === 'IDLE' || state.procState === 'AWAITING_ORDER') &&
       state.integrationLevel === 'TO_BE_UTILIZED'
     );
+  }
+
+  /**
+   * openTCS serializes enum fields differently per channel: the REST API sends
+   * a plain string ("IDLE"), while the SSE event wraps it in a timestamped
+   * object ({ state|procState: "IDLE", timestamp }). Accept either form and
+   * pull out the enum string (the first non-timestamp string property), so the
+   * exact inner key name doesn't matter.
+   */
+  private unwrapEnum(value: unknown): string | undefined {
+    if (typeof value === 'string') return value;
+    if (value && typeof value === 'object') {
+      for (const [key, inner] of Object.entries(value)) {
+        if (key === 'timestamp') continue;
+        if (typeof inner === 'string') return inner;
+      }
+    }
+    return undefined;
   }
 }
