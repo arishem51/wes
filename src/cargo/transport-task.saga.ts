@@ -65,6 +65,16 @@ export class TransportTaskSaga {
     );
     if (!task) return;
 
+    // Idempotency: the status advance below normally filters re-fired TO1
+    // events, but there's a window between creating TO2 and committing the
+    // status change. If TO2 already exists, this is a duplicate — bail.
+    if (task.metadata?.to2Name) {
+      this.logger.debug(
+        `Task ${task.id}: TO2 already created — ignoring duplicate TO1 finished`,
+      );
+      return;
+    }
+
     const approachLocationName = task.metadata?.approachLocationName;
     if (!approachLocationName) {
       this.logger.warn(
@@ -106,6 +116,17 @@ export class TransportTaskSaga {
       TaskStatus.DELIVERING,
     );
     if (!task) return;
+
+    // Idempotency: TO2→TO3 doesn't advance the task status (both legs are
+    // DELIVERING), so a re-fired TO2 FINISHED event still matches this task.
+    // If TO3 already exists, this is a duplicate — bail before creating it
+    // again (openTCS would reject the repeated name with ObjectExistsException).
+    if (task.metadata?.to3Name) {
+      this.logger.debug(
+        `Task ${task.id}: TO3 already created — ignoring duplicate TO2 finished`,
+      );
+      return;
+    }
 
     const cargo = await this.cargoOf(task);
     if (!cargo) {
