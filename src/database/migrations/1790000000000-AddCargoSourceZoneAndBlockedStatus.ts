@@ -9,9 +9,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * PostgreSQL 16 allows ALTER TYPE ... ADD VALUE inside a transaction; the new
  * value is not used within this migration, so it is safe here.
  */
-export class AddCargoSourceZoneAndBlockedStatus1790000000000
-  implements MigrationInterface
-{
+export class AddCargoSourceZoneAndBlockedStatus1790000000000 implements MigrationInterface {
   name = 'AddCargoSourceZoneAndBlockedStatus1790000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

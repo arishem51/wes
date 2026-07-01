@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import {
   TransportTaskEntity,
   TaskStatus,
@@ -9,8 +9,10 @@ import {
   TASK_META,
 } from './entities/transport-task.entity';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
+import { ZoneEntity } from '../zones/entities/zone.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { TransportTaskService } from './transport-task.service';
+import { DeliverySlotEngine } from './delivery-slot.engine';
 import { FMS_EVENTS, FmsTransportOrderFinishedEvent } from './domain/events';
 
 /**
@@ -32,8 +34,13 @@ export class TransportTaskSaga {
     private readonly taskRepo: Repository<TransportTaskEntity>,
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
+    @InjectRepository(ZoneEntity)
+    private readonly zoneRepo: Repository<ZoneEntity>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     private readonly kernelApi: KernelApiService,
     private readonly transportTask: TransportTaskService,
+    private readonly deliverySlotEngine: DeliverySlotEngine,
   ) {}
 
   @OnEvent(FMS_EVENTS.TRANSPORT_ORDER_FINISHED)
@@ -101,10 +108,8 @@ export class TransportTaskSaga {
     if (!task) return;
 
     const cargo = await this.cargoOf(task);
-    if (!cargo?.destinationLocationName) {
-      this.logger.warn(
-        `Task ${task.id} missing destination location — marking FAILED`,
-      );
+    if (!cargo) {
+      this.logger.warn(`Task ${task.id} has no cargo — marking FAILED`);
       await this.transportTask.changeStatus(task, TaskStatus.FAILED);
       return;
     }
@@ -118,10 +123,26 @@ export class TransportTaskSaga {
       return;
     }
 
+    // Commit the concrete drop-off slot now (barrier): the vehicle is parked at
+    // the zone's approach head, so occupancy reflects physical reality and the
+    // fill order stays correct on one-way lanes. Idempotent — a re-fired event
+    // reuses the already-committed slot.
+    let slot = cargo.destinationLocationName;
+    if (!slot) {
+      slot = await this.commitDropoffSlot(cargo);
+      if (!slot) {
+        this.logger.warn(
+          `Task ${task.id}: no drop-off slot available at barrier — marking FAILED`,
+        );
+        await this.transportTask.changeStatus(task, TaskStatus.FAILED);
+        return;
+      }
+    }
+
     const to3Name = `TO3-${task.id}`;
     const created = await this.createNextOrder(
       to3Name,
-      cargo.destinationLocationName,
+      slot,
       'DROP_OFF',
       vehicle,
     );
@@ -131,8 +152,55 @@ export class TransportTaskSaga {
     task.metadata = { ...task.metadata, to3Name };
     await this.taskRepo.save(task);
     this.logger.log(
-      `Task ${task.id}: created ${to3Name} (drop-off at ${cargo.destinationLocationName})`,
+      `Task ${task.id}: created ${to3Name} (drop-off at ${slot})`,
     );
+  }
+
+  /**
+   * Atomically pick + reserve a concrete drop-off slot for a seat-reserved cargo.
+   * A per-zone advisory lock serializes concurrent barriers so two vehicles never
+   * commit the same slot; findSlot reads committed occupancy only (reserved
+   * cargos with a null slot don't consume a specific slot). Returns the slot
+   * name, or null when the zone is full / misconfigured.
+   */
+  private async commitDropoffSlot(cargo: CargoEntity): Promise<string | null> {
+    if (!cargo.destinationZoneId) {
+      this.logger.warn(`Cargo ${cargo.id} has no destination zone`);
+      return null;
+    }
+    const zone = await this.zoneRepo.findOne({
+      where: { id: cargo.destinationZoneId },
+      relations: { members: true },
+    });
+    if (!zone) {
+      this.logger.warn(
+        `Cargo ${cargo.id}: destination zone ${cargo.destinationZoneId} not found`,
+      );
+      return null;
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      // Held until the transaction commits, so the next barrier's findSlot sees
+      // this cargo's committed slot. (findSlot itself reads via its own repo at
+      // READ COMMITTED — safe because the lock serializes commit order.)
+      await manager.query(
+        'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
+        [cargo.destinationZoneId],
+      );
+      const repo = manager.getRepository(CargoEntity);
+      // Re-read under the lock: a concurrent / re-fired barrier may have already
+      // committed a slot for this cargo — reuse it instead of double-assigning.
+      const fresh = await repo.findOne({ where: { id: cargo.id } });
+      if (fresh?.destinationLocationName) {
+        cargo.destinationLocationName = fresh.destinationLocationName;
+        return fresh.destinationLocationName;
+      }
+      const slot = await this.deliverySlotEngine.findSlot(zone);
+      if (!slot) return null;
+      await repo.update(cargo.id, { destinationLocationName: slot });
+      cargo.destinationLocationName = slot;
+      return slot;
+    });
   }
 
   private async onDropOffFinished(toName: string): Promise<void> {

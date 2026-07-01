@@ -98,7 +98,7 @@ src/cargo/
   release-engine.service.ts      # CREATED → READY_TO_ASSIGN | BLOCKED
   assignment-engine.service.ts   # READY_TO_ASSIGN → PICKING_UP (+ creates TO1)
   dispatch-scheduler.service.ts  # debounced flush: release → assign (@OnEvent)
-  delivery-slot.engine.ts        # picks a free drop-off slot in a zone
+  delivery-slot.engine.ts        # picks a free drop-off slot in a zone (at the TO2 barrier)
   domain/                        # PURE — no NestJS, no TypeORM
     events.ts                    # event names + payload classes
     transport-task.state-machine.ts
@@ -229,6 +229,17 @@ approach (a NOP move to the drop-off zone's approach location), `TO3` = drop-off
 The order-name prefix (`TO1-`/`TO2-`/`TO3-`) tells the saga which leg finished;
 the names are stored in `task.metadata.{to1Name,to2Name,to3Name}`.
 
+**Drop-off slot is late-bound.** Creating a request only *reserves a seat* in the
+destination zone (`cargo.destination_zone_id`, capacity-checked against the zone's
+member count); `cargo.destination_location_name` stays null. The concrete slot is
+committed at the **TO2 barrier** (`TransportTaskSaga.commitDropoffSlot` →
+`DeliverySlotEngine.findSlot`), under a per-zone advisory lock, when the vehicle is
+parked at the zone's approach head and occupancy reflects physical reality — this
+keeps the fill order correct on one-way lanes. `TO1` (pick-up) therefore only needs
+the source location. The zone's parent `zone_<id>` location links to the zone's
+**feeder points** (aisle heads), not every member, so the NOP stops at the
+entry-most head from which all slots stay forward-reachable.
+
 ### 4.3 State machine interface
 
 ```typescript
@@ -306,10 +317,21 @@ eligible AGV =  isDispatchEnabled = true
             AND not already on a PICKING_UP/DELIVERING task
 ```
 
-`pickVehicle()` returns the lowest-named eligible vehicle (deterministic). Within
-one flush a vehicle is never handed two tasks. **`AgvEntity.name` must equal the
-openTCS vehicle name** — that is the join key. An empty `agvs` table ⇒ nothing
-dispatches (register the fleet first).
+Among the eligible AGVs, `pickNearestVehicle()` picks the one closest to the
+cargo's source point: `RoutingService` builds an undirected weighted graph from
+the plant-model paths (`cargo/domain/routing.ts`) and `shortestDistancesFrom()`
+(Dijkstra) gives the road distance from the pickup point to each vehicle's
+`currentPosition`. Ties, an unknown/unreachable position, or an unavailable plant
+model fall back to `pickVehicle()` (lowest-named, deterministic). Within one flush
+a vehicle is never handed two tasks. **`AgvEntity.name` must equal the openTCS
+vehicle name** — that is the join key. An empty `agvs` table ⇒ nothing dispatches
+(register the fleet first).
+
+> Distance is the road-graph shortest path (Dijkstra), not straight-line — it
+> respects aisles/walls. Task order stays FIFO (`createdAt ASC`); this is a
+> per-task greedy nearest pick. A global-optimum strategy (e.g. Hungarian over a
+> vehicle×task cost matrix built from the same `shortestDistancesFrom`) can
+> replace the selection loop later without touching the graph or eligibility.
 
 ### 6.2 Battery management
 - Battery level is read from `KernelVehicleState.energyLevel` (FMS telemetry); WES

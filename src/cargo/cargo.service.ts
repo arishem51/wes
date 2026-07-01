@@ -3,8 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import {
   TransportTaskEntity,
@@ -13,7 +13,6 @@ import {
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { TransportTaskService } from './transport-task.service';
 import { TransportTaskStateMachine } from './domain/transport-task.state-machine';
-import { DeliverySlotEngine } from './delivery-slot.engine';
 import {
   ZoneEntity,
   ZoneStatus,
@@ -35,8 +34,9 @@ export class CargoService {
     private readonly taskRepo: Repository<TransportTaskEntity>,
     @InjectRepository(ZoneEntity)
     private readonly zoneRepo: Repository<ZoneEntity>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     private readonly kernelApi: KernelApiService,
-    private readonly deliverySlotEngine: DeliverySlotEngine,
     private readonly transportTask: TransportTaskService,
   ) {}
 
@@ -76,40 +76,71 @@ export class CargoService {
       );
     }
 
-    const slotLocationName = await this.deliverySlotEngine.findSlot(zone);
-    if (!slotLocationName) {
-      throw new BadRequestException(
-        'Khu trả hàng đã đầy, không còn vị trí trống.',
-      );
-    }
-
     // Pickup zone the source belongs to (if any) — drives the row-dependency
     // rule at release time. Null when the source point isn't in a PICKUP zone.
     const sourceZoneId = await this.resolvePickupZoneId(pickupLocationName);
 
-    const cargo = this.cargoRepo.create({
-      itemCode: dto.itemCode ?? `ITEM-${Date.now().toString(36).toUpperCase()}`,
-      sourcePointName: dto.sourcePointName,
-      sourcePickupLocationName: pickupLocationName,
-      destinationLocationName: slotLocationName,
-      sourceZoneId,
-      status: CargoStatus.ACTIVE,
-      createdBy: userId,
-    });
-    const saved = await this.cargoRepo.save(cargo);
+    // Reserve a *seat* (capacity) in the drop-off zone now, but defer choosing
+    // the concrete slot to the TO2 barrier (TransportTaskSaga.commitDropoffSlot),
+    // when occupancy reflects the vehicle's actual arrival — required for correct
+    // fill order on one-way lanes. A reserved cargo has destinationZoneId set and
+    // destinationLocationName still null.
+    //
+    // The capacity check + insert run under the SAME per-zone advisory lock as
+    // the barrier commit, so concurrent requests can't both pass the check and
+    // over-admit past the zone's capacity.
+    const { saved, task } = await this.dataSource.transaction(
+      async (manager) => {
+        await manager.query(
+          'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
+          [zone.id],
+        );
+        const cargoRepo = manager.getRepository(CargoEntity);
+        const occupied = await cargoRepo.count({
+          where: {
+            destinationZoneId: zone.id,
+            status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]),
+          },
+        });
+        if (occupied >= zone.members.length) {
+          throw new BadRequestException(
+            'Khu trả hàng đã đầy, không còn vị trí trống.',
+          );
+        }
 
-    const requestCode = `TR-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 7)}`;
-    const task = this.taskRepo.create({
-      requestCode,
-      cargoId: saved.id,
-      status: TaskStatus.CREATED,
-      metadata: {
-        approachLocationName: zone.approachLocationName ?? undefined,
+        const saved = await cargoRepo.save(
+          cargoRepo.create({
+            itemCode:
+              dto.itemCode ?? `ITEM-${Date.now().toString(36).toUpperCase()}`,
+            sourcePointName: dto.sourcePointName,
+            sourcePickupLocationName: pickupLocationName,
+            destinationZoneId: zone.id,
+            destinationLocationName: null,
+            sourceZoneId,
+            status: CargoStatus.ACTIVE,
+            createdBy: userId,
+          }),
+        );
+
+        const requestCode = `TR-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 7)}`;
+        const task = await manager.getRepository(TransportTaskEntity).save(
+          manager.getRepository(TransportTaskEntity).create({
+            requestCode,
+            cargoId: saved.id,
+            status: TaskStatus.CREATED,
+            metadata: {
+              approachLocationName: zone.approachLocationName ?? undefined,
+            },
+          }),
+        );
+
+        return { saved, task };
       },
-    });
-    await this.taskRepo.save(task);
+    );
+
+    // Emit after commit so dispatch listeners see the persisted task/cargo.
     this.transportTask.publishCreated(task);
 
     return saved;

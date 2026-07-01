@@ -12,7 +12,13 @@ import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type { KernelVehicleState } from '../opentcs/kernel-api.service';
 import { TransportTaskService } from './transport-task.service';
 import { PickupDependencyService } from './pickup-dependency.service';
-import { VehicleCandidate, pickVehicle } from './domain/dispatch.policy';
+import { RoutingService } from './routing.service';
+import {
+  VehicleCandidate,
+  pickVehicle,
+  pickNearestVehicle,
+} from './domain/dispatch.policy';
+import { RoadGraph, shortestDistancesFrom } from './domain/routing';
 
 const BUSY_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
 
@@ -39,6 +45,7 @@ export class AssignmentEngineService {
     private readonly vehicleStore: VehicleStateStore,
     private readonly transportTask: TransportTaskService,
     private readonly pickupDependency: PickupDependencyService,
+    private readonly routing: RoutingService,
   ) {}
 
   async run(): Promise<void> {
@@ -54,11 +61,15 @@ export class AssignmentEngineService {
         candidates
           .map(
             (c) =>
-              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},e:${c.energyLevel}/${c.operationalThreshold}}`,
+              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},e:${c.energyLevel}/${c.operationalThreshold},pos:${c.currentPosition ?? '?'}}`,
           )
           .join(' ') +
         ']',
     );
+
+    // One graph for the whole cycle; null when the plant model is unavailable,
+    // in which case selection falls back to deterministic name order.
+    const graph = await this.routing.getRoadGraph();
 
     for (const task of tasks) {
       // Guard: the lane may have become blocked since release decided this
@@ -69,15 +80,36 @@ export class AssignmentEngineService {
         continue;
       }
 
-      const vehicle = pickVehicle(candidates);
+      const cargo = task.cargoId
+        ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
+        : null;
+
+      const vehicle = this.selectVehicle(candidates, graph, cargo);
       if (!vehicle) break; // no eligible AGV right now — try again next cycle
 
-      const assigned = await this.assign(task, vehicle.name);
+      const assigned = await this.assign(task, cargo, vehicle.name);
       if (assigned) {
         // Don't hand the same vehicle two tasks in one cycle.
         vehicle.hasActiveTask = true;
       }
     }
+  }
+
+  /**
+   * Pick the nearest eligible vehicle to the cargo's source point via Dijkstra
+   * over the road graph. Falls back to name-order picking when the graph or the
+   * cargo's source point is unavailable (§6.1).
+   */
+  private selectVehicle(
+    candidates: VehicleCandidate[],
+    graph: RoadGraph | null,
+    cargo: CargoEntity | null,
+  ): VehicleCandidate | null {
+    if (graph && cargo?.sourcePointName) {
+      const distances = shortestDistancesFrom(graph, cargo.sourcePointName);
+      return pickNearestVehicle(candidates, distances);
+    }
+    return pickVehicle(candidates);
   }
 
   private async buildCandidates(): Promise<VehicleCandidate[]> {
@@ -93,6 +125,7 @@ export class AssignmentEngineService {
         available: isFmsDispatchable(fms),
         energyLevel: fms?.energyLevel ?? 0,
         operationalThreshold: agv.operationalBatteryThreshold,
+        currentPosition: fms?.currentPosition ?? null,
         hasActiveTask: busy.has(agv.name),
       };
     });
@@ -112,14 +145,13 @@ export class AssignmentEngineService {
 
   private async assign(
     task: TransportTaskEntity,
+    cargo: CargoEntity | null,
     vehicleName: string,
   ): Promise<boolean> {
-    const cargo = task.cargoId
-      ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
-      : null;
-
-    if (!cargo?.sourcePickupLocationName || !cargo?.destinationLocationName) {
-      this.logger.warn(`Task ${task.id} missing location names — skipping`);
+    // TO1 (PICK_UP) only needs the source; the drop-off slot is committed later,
+    // at the TO2 barrier, so destinationLocationName is intentionally still null.
+    if (!cargo?.sourcePickupLocationName) {
+      this.logger.warn(`Task ${task.id} missing pickup location — skipping`);
       return false;
     }
 

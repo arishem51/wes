@@ -1,4 +1,8 @@
-import { findBlocker, isBlocked, PickupCandidate } from './pickup-dependency.policy';
+import {
+  findBlocker,
+  isBlocked,
+  PickupCandidate,
+} from './pickup-dependency.policy';
 
 const c = (
   taskId: string,
