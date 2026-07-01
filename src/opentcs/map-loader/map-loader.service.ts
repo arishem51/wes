@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { AxiosError } from 'axios';
 import { KernelApiService } from '../kernel-api.service';
 import { parseOpenTcsXml, PlantModelDto } from './opentcs-xml.parser';
+import { applySingleVehicleBlocks } from '../domain/apply-blocks';
 
 @Injectable()
 export class MapLoaderService implements OnApplicationBootstrap {
@@ -48,6 +49,11 @@ export class MapLoaderService implements OnApplicationBootstrap {
       );
       return;
     }
+
+    // Serialise single-file / dead-end lanes to prevent multi-AGV deadlock
+    // (SINGLE_VEHICLE_ONLY blocks derived from the path graph).
+    const blockCount = applySingleVehicleBlocks(model).blocks.length;
+    this.logger.log(`Generated ${blockCount} single-vehicle lane block(s)`);
 
     try {
       await this.kernelApi.putPlantModel(model);
