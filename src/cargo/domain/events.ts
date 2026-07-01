@@ -8,6 +8,7 @@ export const TRANSPORT_TASK_EVENTS = {
 
 export const FMS_EVENTS = {
   TRANSPORT_ORDER_FINISHED: 'fms.transport-order.finished',
+  TRANSPORT_ORDER_FAILED: 'fms.transport-order.failed',
   VEHICLE_AVAILABLE: 'fms.vehicle.available',
 } as const;
 
@@ -22,6 +23,13 @@ export class TransportTaskStatusChangedEvent {
 
 export class FmsTransportOrderFinishedEvent {
   constructor(readonly orderName: string) {}
+}
+
+export class FmsTransportOrderFailedEvent {
+  constructor(
+    readonly orderName: string,
+    readonly reason: string,
+  ) {}
 }
 
 export class FmsVehicleAvailableEvent {

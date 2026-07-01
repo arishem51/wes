@@ -18,12 +18,15 @@ export enum TaskStatus {
 
 export interface TaskMetadata {
   assignedVehicleName?: string;
+  /** The single merged OpenTCS order (PICK_UP + DROP_OFF) for this task. */
+  orderName?: string;
   to1Name?: string;
   to2Name?: string;
 }
 
 export const TASK_META = {
   ASSIGNED_VEHICLE_NAME: 'assignedVehicleName',
+  ORDER_NAME: 'orderName',
   TO1_NAME: 'to1Name',
   TO2_NAME: 'to2Name',
 } as const satisfies Record<string, keyof TaskMetadata>;

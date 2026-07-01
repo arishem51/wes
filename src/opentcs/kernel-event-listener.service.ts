@@ -10,6 +10,7 @@ import * as https from 'https';
 import {
   FMS_EVENTS,
   FmsTransportOrderFinishedEvent,
+  FmsTransportOrderFailedEvent,
   FmsVehicleAvailableEvent,
 } from '../cargo/domain/events';
 
@@ -152,13 +153,19 @@ export class KernelEventListenerService
     const name = current?.name;
     const state = current?.state;
 
-    if (!name || state !== 'FINISHED') return;
+    if (!name || !name.startsWith('TASK-')) return;
 
-    if (name.startsWith('TO1-') || name.startsWith('TO2-')) {
+    if (state === 'FINISHED') {
       this.logger.log(`Transport order "${name}" FINISHED`);
       this.eventEmitter.emit(
         FMS_EVENTS.TRANSPORT_ORDER_FINISHED,
         new FmsTransportOrderFinishedEvent(name),
+      );
+    } else if (state === 'UNROUTABLE' || state === 'FAILED') {
+      this.logger.warn(`Transport order "${name}" ${state} — cannot be delivered`);
+      this.eventEmitter.emit(
+        FMS_EVENTS.TRANSPORT_ORDER_FAILED,
+        new FmsTransportOrderFailedEvent(name, state),
       );
     }
   }

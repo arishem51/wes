@@ -40,6 +40,17 @@ export class CargoService {
       );
     }
 
+    // Reject a destination the fleet can never reach (e.g. an isolated point),
+    // so it fails fast here instead of becoming an UNROUTABLE order later.
+    const destinationReachable = await this.kernelApi.isLocationReachable(
+      dto.destinationLocationName,
+    );
+    if (!destinationReachable) {
+      throw new BadRequestException(
+        `Điểm đến "${dto.destinationLocationName}" không có đường tới được trong bản đồ — không thể giao hàng.`,
+      );
+    }
+
     const occupiedSource = await this.cargoRepo.findOne({
       where: {
         sourcePointName: dto.sourcePointName,
@@ -120,9 +131,9 @@ export class CargoService {
       }
 
       if (task.status === TaskStatus.PICKING_UP) {
-        const toName = task.metadata?.to1Name;
-        if (toName) {
-          await this.kernelApi.withdrawTransportOrder(toName);
+        const orderName = task.metadata?.orderName ?? task.metadata?.to1Name;
+        if (orderName) {
+          await this.kernelApi.withdrawTransportOrder(orderName);
         }
       }
 

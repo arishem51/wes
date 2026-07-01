@@ -8,10 +8,17 @@ import {
   TASK_META,
 } from './entities/transport-task.entity';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
-import { KernelApiService } from '../opentcs/kernel-api.service';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
-import { FMS_EVENTS, FmsTransportOrderFinishedEvent } from './domain/events';
+import {
+  FMS_EVENTS,
+  FmsTransportOrderFinishedEvent,
+  FmsTransportOrderFailedEvent,
+} from './domain/events';
 
+/**
+ * Completes a task when its merged OpenTCS order (PICK_UP + DROP_OFF) finishes.
+ * With one order per task the whole delivery is a single "order finished" event.
+ */
 @Injectable()
 export class EventProcessorService {
   private readonly logger = new Logger(EventProcessorService.name);
@@ -21,7 +28,6 @@ export class EventProcessorService {
     private readonly taskRepo: Repository<TransportTaskEntity>,
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
-    private readonly kernelApi: KernelApiService,
     private readonly dispatchScheduler: DispatchSchedulerService,
   ) {}
 
@@ -29,74 +35,21 @@ export class EventProcessorService {
   async onTransportOrderFinished(
     event: FmsTransportOrderFinishedEvent,
   ): Promise<void> {
-    const { orderName } = event;
-    if (orderName.startsWith('TO1-')) {
-      await this.onPickUpToFinished(orderName);
-      this.dispatchScheduler.schedule();
-    } else if (orderName.startsWith('TO2-')) {
-      await this.onDropOffToFinished(orderName);
+    if (!event.orderName.startsWith('TASK-')) {
+      return;
     }
+    await this.onTaskOrderFinished(event.orderName);
   }
 
-  private async onPickUpToFinished(toName: string): Promise<void> {
+  private async onTaskOrderFinished(orderName: string): Promise<void> {
     const task = await this.taskRepo
       .createQueryBuilder('t')
-      .where(`t.metadata->>'${TASK_META.TO1_NAME}' = :name`, { name: toName })
+      .where(`t.metadata->>'${TASK_META.ORDER_NAME}' = :name`, { name: orderName })
       .andWhere('t.status = :status', { status: TaskStatus.PICKING_UP })
       .getOne();
 
     if (!task) {
-      this.logger.debug(`No PICKING_UP task found for TO1 "${toName}"`);
-      return;
-    }
-
-    const cargo = task.cargoId
-      ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
-      : null;
-
-    if (!cargo?.destinationLocationName) {
-      this.logger.warn(`Task ${task.id} missing destination — marking FAILED`);
-      task.status = TaskStatus.FAILED;
-      await this.taskRepo.save(task);
-      return;
-    }
-
-    const to2Name = `TO2-${task.id}`;
-    const vehicle = task.metadata?.assignedVehicleName ?? 'Vehicle-0001';
-
-    try {
-      await this.kernelApi.createTransportOrder(
-        to2Name,
-        [
-          {
-            locationName: cargo.destinationLocationName,
-            operation: 'DROP_OFF',
-          },
-        ],
-        vehicle,
-      );
-    } catch (err) {
-      this.logger.error(
-        `Failed to create TO2 for task ${task.id}: ${(err as Error).message}`,
-      );
-      return;
-    }
-
-    task.status = TaskStatus.DELIVERING;
-    task.metadata = { ...task.metadata, to2Name };
-    await this.taskRepo.save(task);
-    this.logger.log(`Task ${task.id} → DELIVERING, created ${to2Name}`);
-  }
-
-  private async onDropOffToFinished(toName: string): Promise<void> {
-    const task = await this.taskRepo
-      .createQueryBuilder('t')
-      .where(`t.metadata->>'${TASK_META.TO2_NAME}' = :name`, { name: toName })
-      .andWhere('t.status = :status', { status: TaskStatus.DELIVERING })
-      .getOne();
-
-    if (!task) {
-      this.logger.debug(`No DELIVERING task found for TO2 "${toName}"`);
+      this.logger.debug(`No in-progress task for order "${orderName}"`);
       return;
     }
 
@@ -109,7 +62,45 @@ export class EventProcessorService {
         status: CargoStatus.DELIVERED,
       });
     }
-    this.logger.log(`Task ${task.id} → DELIVERY_COMPLETED`);
+    this.logger.log(`Task ${task.id} → DELIVERY_COMPLETED (${orderName})`);
+    // A vehicle just freed up — nudge the scheduler to dispatch waiting tasks.
+    this.dispatchScheduler.schedule();
+  }
+
+  /**
+   * Recovery: the kernel could not route/execute the order (e.g. destination is
+   * an isolated point). Fail the task and release the cargo so nothing stays
+   * stuck at PICKING_UP forever.
+   */
+  @OnEvent(FMS_EVENTS.TRANSPORT_ORDER_FAILED)
+  async onTransportOrderFailed(
+    event: FmsTransportOrderFailedEvent,
+  ): Promise<void> {
+    if (!event.orderName.startsWith('TASK-')) {
+      return;
+    }
+    const task = await this.taskRepo
+      .createQueryBuilder('t')
+      .where(`t.metadata->>'${TASK_META.ORDER_NAME}' = :name`, {
+        name: event.orderName,
+      })
+      .andWhere('t.status = :status', { status: TaskStatus.PICKING_UP })
+      .getOne();
+
+    if (!task) {
+      return;
+    }
+
+    task.status = TaskStatus.FAILED;
+    await this.taskRepo.save(task);
+    if (task.cargoId) {
+      await this.cargoRepo.update(task.cargoId, {
+        status: CargoStatus.CANCELLED,
+      });
+    }
+    this.logger.warn(
+      `Task ${task.id} → FAILED (${event.orderName}: ${event.reason})`,
+    );
     this.dispatchScheduler.schedule();
   }
 }

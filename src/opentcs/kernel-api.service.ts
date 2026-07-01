@@ -319,14 +319,20 @@ export class KernelApiService {
   async createTransportOrder(
     name: string,
     destinations: Array<{ locationName: string; operation: string }>,
-    intendedVehicle: string,
+    intendedVehicle?: string,
   ): Promise<void> {
+    // Omit intendedVehicle → the kernel (DefaultDispatcher) assigns a free
+    // vehicle itself and FMSRouter routes it with MAPF.
+    const body: Record<string, unknown> = { destinations };
+    if (intendedVehicle) body.intendedVehicle = intendedVehicle;
     await axios.post(
       `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}`,
-      { destinations, intendedVehicle },
+      body,
       { timeout: 10_000 },
     );
-    this.logger.log(`Created TO "${name}" → ${intendedVehicle}`);
+    this.logger.log(
+      `Created TO "${name}"${intendedVehicle ? ` → ${intendedVehicle}` : ' (kernel-assigned)'}`,
+    );
     await this.triggerDispatcher();
   }
 
@@ -341,11 +347,21 @@ export class KernelApiService {
   }
 
   async withdrawTransportOrder(name: string): Promise<void> {
-    await axios.post(
-      `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}/withdrawal?immediate=true`,
-      null,
-      { timeout: 5_000 },
-    );
+    try {
+      await axios.post(
+        `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}/withdrawal?immediate=true`,
+        null,
+        { timeout: 5_000 },
+      );
+    } catch (err) {
+      // The order no longer exists (e.g. the kernel was restarted) — there is
+      // nothing to withdraw, so treat it as already gone instead of throwing.
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        this.logger.debug(`Withdraw skipped — order "${name}" no longer exists`);
+        return;
+      }
+      throw err;
+    }
   }
 
   async getTransportOrderState(name: string): Promise<string | null> {
@@ -418,6 +434,37 @@ export class KernelApiService {
     }
 
     return Object.keys(location.links)[0] ?? null;
+  }
+
+  /**
+   * Whether a vehicle can reach the point a location is attached to. Catches
+   * isolated points (no paths) so cargo to an undeliverable destination is
+   * rejected up front instead of becoming an UNROUTABLE order.
+   */
+  async isLocationReachable(locationName: string): Promise<boolean> {
+    const pointName = await this.findPointForLocation(locationName);
+    if (!pointName) return false;
+
+    // NOTE: the web-API plant model names these fields srcPointName/destPointName
+    // (not sourcePoint/destinationPoint).
+    const model = (await this.getPlantModel()) as {
+      paths?: Array<{
+        srcPointName?: string;
+        destPointName?: string;
+        maxVelocity?: number;
+        maxReverseVelocity?: number;
+      }>;
+    } | null;
+    const paths = Array.isArray(model?.paths) ? model.paths : [];
+
+    const traversable = (v: number | undefined): boolean =>
+      v === undefined || v !== 0;
+    // Arrive via a forward edge into the point, or the reverse of an edge out of it.
+    return paths.some(
+      (p) =>
+        (p.destPointName === pointName && traversable(p.maxVelocity)) ||
+        (p.srcPointName === pointName && traversable(p.maxReverseVelocity)),
+    );
   }
 
   async setVehiclePosition(
