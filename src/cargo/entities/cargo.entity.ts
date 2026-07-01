@@ -48,6 +48,13 @@ export class CargoEntity {
   @Column({ name: 'source_zone_id', type: 'uuid', nullable: true })
   sourceZoneId!: string | null;
 
+  /**
+   * Reserved drop-off zone. Set at request creation; `destinationLocationName`
+   * stays null until the concrete slot is committed at the TO2 barrier.
+   */
+  @Column({ name: 'destination_zone_id', type: 'uuid', nullable: true })
+  destinationZoneId!: string | null;
+
   @Column({
     type: 'enum',
     enum: CargoStatus,

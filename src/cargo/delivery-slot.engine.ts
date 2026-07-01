@@ -4,9 +4,9 @@ import { In, Repository } from 'typeorm';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
+import { computeEgressPoints, hopsToExit } from '../zones/domain/zone-topology';
 
 const LOCATION_PREFIX = 'location_';
-const GRID_ROUND = 1000;
 
 interface PointCoords {
   x: number;
@@ -97,21 +97,16 @@ export class DeliverySlotEngine {
       `findSlot: zone="${zone.name}" members=${zone.members.length} points=${rawPoints.length} paths=${rawPaths.length} locations=${rawLocations.length} memberPointNames=[${[...memberPointNames].join(',')}]`,
     );
 
-    // Aisle reference = source points of paths entering zone from outside
-    const aisleRefCoords: PointCoords[] = [];
-    for (const path of rawPaths) {
-      const dest = path.destPointName as string | undefined;
-      const src = path.srcPointName as string | undefined;
-      if (!dest || !src) continue;
-      if (memberPointNames.has(dest) && !memberPointNames.has(src)) {
-        const srcCoords = pointMap.get(src);
-        if (srcCoords) aisleRefCoords.push(srcCoords);
-      }
-    }
+    // Exit reference = egress points (member → outside): where the flow leaves
+    // the zone toward the exit. We fill slots FARTHEST from the exit first, so a
+    // later drop never sits between an earlier one and the exit — physically the
+    // parked cargo would block the vehicle, even though openTCS routing ignores
+    // it.
+    const egress = computeEgressPoints(rawPaths, memberPointNames);
 
-    if (aisleRefCoords.length === 0) {
+    if (egress.length === 0) {
       this.logger.warn(
-        `Zone "${zone.name}": no external inbound paths found, falling back to first empty slot`,
+        `Zone "${zone.name}": no egress path found, falling back to first empty slot`,
       );
       const memberNames = zone.members.map((m) => m.locationName);
       const occupied = await this.cargoRepo.find({
@@ -126,10 +121,10 @@ export class DeliverySlotEngine {
       return memberNames.find((n) => !occupiedSet.has(n)) ?? null;
     }
 
-    const aisleCenter: PointCoords = {
-      x: aisleRefCoords.reduce((s, p) => s + p.x, 0) / aisleRefCoords.length,
-      y: aisleRefCoords.reduce((s, p) => s + p.y, 0) / aisleRefCoords.length,
-    };
+    // Flow-hops from each slot to the exit; larger = farther from exit (filled
+    // first). Slots with no path to the exit are dropped — a vehicle would be
+    // stranded there.
+    const hops = hopsToExit(rawPaths, memberPointNames, egress);
 
     const slots: MemberSlot[] = [];
     for (const member of zone.members) {
@@ -141,15 +136,18 @@ export class DeliverySlotEngine {
         this.logger.warn(`No point for location "${member.locationName}"`);
         continue;
       }
-      const dx = coords.x - aisleCenter.x;
-      const dy = coords.y - aisleCenter.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const columnKey = Math.round(dist / GRID_ROUND) * GRID_ROUND;
+      const h = hops.get(pointName);
+      if (h == null) {
+        this.logger.warn(
+          `Slot "${member.locationName}" cannot reach the exit — skipping`,
+        );
+        continue;
+      }
       slots.push({
         locationName: member.locationName,
         x: coords.x,
         y: coords.y,
-        columnKey,
+        columnKey: h,
       });
     }
 
@@ -163,7 +161,8 @@ export class DeliverySlotEngine {
       col.sort((a, b) => a.y - b.y || a.x - b.x);
     }
 
-    // Descending distance → columns[0] = innermost, columns[N-1] = outermost
+    // Descending hops-to-exit → columns[0] = farthest from exit (fill first),
+    // columns[N-1] = nearest the exit (fill last).
     const columns = [...columnMap.entries()]
       .sort((a, b) => b[0] - a[0])
       .map(([, members]) => members);
@@ -184,7 +183,8 @@ export class DeliverySlotEngine {
       (col) => col.filter((s) => occupiedSet.has(s.locationName)).length,
     );
 
-    // Cascade: outermost always valid; column i valid if i+1 valid AND count[i]-count[i+1] <= 1
+    // Cascade: nearest-exit column always valid; a farther column i is valid if
+    // the next-nearer one (i+1) is valid AND count[i]-count[i+1] <= 1
     const valid = new Array<boolean>(N).fill(false);
     valid[N - 1] = true;
     for (let i = N - 2; i >= 0; i--) {
@@ -199,7 +199,7 @@ export class DeliverySlotEngine {
     );
     if (selectedIdx === -1) return null;
 
-    // Innermost valid column first; if full, try next valid column outward
+    // Farthest-from-exit valid column first; if full, try the next nearer one
     for (let i = selectedIdx; i < N; i++) {
       const emptySlot = columns[i].find(
         (s) => !occupiedSet.has(s.locationName),

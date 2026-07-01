@@ -12,6 +12,11 @@ import { ZoneMemberEntity } from './entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { savePlantModel } from '../opentcs/save-plant-model';
 import type { CreateZoneDto } from './zone.dto';
+import {
+  checkZoneReachability,
+  computeFeederPoints,
+  type PlantPath,
+} from './domain/zone-topology';
 
 export const LOCATION_PREFIX = 'location_';
 export const ZONE_PREFIX = 'zone_';
@@ -58,6 +63,12 @@ export class ZoneService {
 
   async create(dto: CreateZoneDto): Promise<ZoneEntity> {
     this.validateMembers(dto);
+
+    if (dto.type === ZoneType.DROPOFF) {
+      await this.assertDropoffZoneReachable(
+        dto.members.map((member) => member.locationName),
+      );
+    }
 
     const savedZoneId = await this.dataSource.transaction(async (manager) => {
       const zoneRepo = manager.getRepository(ZoneEntity);
@@ -149,9 +160,23 @@ export class ZoneService {
       'Drop off',
       locationMeta,
     );
-    const parentLinkedPoints = [
-      ...new Set(pointSummaries.map((p) => p.pointName)),
-    ];
+    const memberPointNames = new Set(pointSummaries.map((p) => p.pointName));
+    // The parent `zone_<id>` location is the NOP approach target. Link it to the
+    // zone's feeder points (aisle heads) — not every member — so the router
+    // stops at the entry-most head, keeping all slots forward-reachable instead
+    // of greedily stopping at the nearest member deep inside a lane (which forces
+    // a detour on one-way maps). Fall back to all members if the map exposes no
+    // external inbound path, so the parent never ends up with zero links.
+    let parentLinkedPoints = computeFeederPoints(
+      (context.model.paths as PlantPath[] | undefined) ?? [],
+      memberPointNames,
+    );
+    if (parentLinkedPoints.length === 0) {
+      this.logger.warn(
+        `Zone "${parentLocationName}": no external inbound (feeder) path found — linking parent to all member points`,
+      );
+      parentLinkedPoints = [...memberPointNames];
+    }
     const positionedPoints = pointSummaries.filter((p) => p.hasPosition);
     const sumX = positionedPoints.reduce((sum, point) => sum + point.x, 0);
     const sumY = positionedPoints.reduce((sum, point) => sum + point.y, 0);
@@ -301,6 +326,52 @@ export class ZoneService {
     return locationName.startsWith(LOCATION_PREFIX)
       ? locationName.slice(LOCATION_PREFIX.length)
       : locationName;
+  }
+
+  /**
+   * Rejects a dropoff zone whose layout would strand a vehicle: every member
+   * slot must be forward-reachable from the zone's feeder (approach) points on
+   * the kernel path graph. Reachable-but-long-detour only warns. Relies on
+   * loadKernelModelContext to throw ServiceUnavailableException if the kernel is
+   * down — a missing model must not be read as "unreachable".
+   */
+  private async assertDropoffZoneReachable(
+    memberLocationNames: string[],
+  ): Promise<void> {
+    const context = await this.loadKernelModelContext();
+    const paths = (context.model.paths as PlantPath[] | undefined) ?? [];
+    const pointToLocation = new Map(
+      memberLocationNames.map((name) => [
+        this.getPointNameFromLocation(name),
+        name,
+      ]),
+    );
+    const memberPointNames = new Set(pointToLocation.keys());
+
+    const { feeders, unreachable, maxHops } = checkZoneReachability(
+      paths,
+      memberPointNames,
+    );
+
+    if (feeders.length === 0) {
+      this.logger.warn(
+        `Zone reachability: no feeder (external inbound) path for members [${memberLocationNames.join(', ')}] — cannot verify; approach will link all members`,
+      );
+      return;
+    }
+
+    if (unreachable.length > 0) {
+      const names = unreachable.map((pt) => pointToLocation.get(pt) ?? pt);
+      throw new BadRequestException(
+        `Layout khu trả hàng không hợp lệ: các vị trí ${names.join(', ')} không thể tới được từ điểm vào của khu — sẽ khiến AGV đi vòng hoặc kẹt. Hãy điều chỉnh danh sách vị trí hoặc bản đồ.`,
+      );
+    }
+
+    if (maxHops > memberPointNames.size) {
+      this.logger.warn(
+        `Zone reachability: layout reachable but with a long detour (maxHops=${maxHops}, members=${memberPointNames.size})`,
+      );
+    }
   }
 
   private getLocationMeta(
