@@ -1,19 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
 import { DataSource, Repository } from 'typeorm';
 import {
   TransportTaskEntity,
   TaskStatus,
-  TaskMetadata,
-  TASK_META,
 } from './entities/transport-task.entity';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { TransportTaskService } from './transport-task.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
-import { FMS_EVENTS, FmsTransportOrderFinishedEvent } from './domain/events';
+import {
+  FMS_EVENTS,
+  FmsTransportOrderFinishedEvent,
+  ORDER_PROP,
+  TaskLeg,
+} from './domain/events';
 
 /**
  * Drives a transport task through its physical legs in openTCS:
@@ -22,8 +26,9 @@ import { FMS_EVENTS, FmsTransportOrderFinishedEvent } from './domain/events';
  *   TO2 (approach) done → create TO3 (still DELIVERING)
  *   TO3 (DROP_OFF) done → task → DELIVERY_COMPLETED, cargo → DELIVERED
  *
- * The kernel only tells us "order X FINISHED"; the prefix of X decides
- * which leg just completed.
+ * The kernel tells us "order X FINISHED" along with the wes:taskId / wes:leg
+ * properties WES stamped on it; the leg decides which step just completed and
+ * the task id identifies the task — the order name itself is opaque.
  */
 @Injectable()
 export class TransportTaskSaga {
@@ -47,22 +52,18 @@ export class TransportTaskSaga {
   async onTransportOrderFinished(
     event: FmsTransportOrderFinishedEvent,
   ): Promise<void> {
-    const { orderName } = event;
-    if (orderName.startsWith('TO1-')) {
-      await this.onPickupFinished(orderName);
-    } else if (orderName.startsWith('TO2-')) {
-      await this.onApproachFinished(orderName);
-    } else if (orderName.startsWith('TO3-')) {
-      await this.onDropOffFinished(orderName);
+    switch (event.leg) {
+      case 'PICKUP':
+        return this.onPickupFinished(event.taskId);
+      case 'APPROACH':
+        return this.onApproachFinished(event.taskId);
+      case 'DROPOFF':
+        return this.onDropOffFinished(event.taskId);
     }
   }
 
-  private async onPickupFinished(toName: string): Promise<void> {
-    const task = await this.findTaskByOrder(
-      TASK_META.TO1_NAME,
-      toName,
-      TaskStatus.PICKING_UP,
-    );
+  private async onPickupFinished(taskId: string): Promise<void> {
+    const task = await this.findTask(taskId, TaskStatus.PICKING_UP);
     if (!task) return;
 
     // Idempotency: the status advance below normally filters re-fired TO1
@@ -93,12 +94,13 @@ export class TransportTaskSaga {
       return;
     }
 
-    const to2Name = `TO2-${task.id}`;
+    const to2Name = `APPROACH-${randomUUID()}`;
     const created = await this.createNextOrder(
       to2Name,
       approachLocationName,
       'NOP',
       vehicle,
+      { taskId: task.id, leg: 'APPROACH' },
     );
     if (!created) return;
 
@@ -109,12 +111,8 @@ export class TransportTaskSaga {
     );
   }
 
-  private async onApproachFinished(toName: string): Promise<void> {
-    const task = await this.findTaskByOrder(
-      TASK_META.TO2_NAME,
-      toName,
-      TaskStatus.DELIVERING,
-    );
+  private async onApproachFinished(taskId: string): Promise<void> {
+    const task = await this.findTask(taskId, TaskStatus.DELIVERING);
     if (!task) return;
 
     // Idempotency: TO2→TO3 doesn't advance the task status (both legs are
@@ -160,12 +158,13 @@ export class TransportTaskSaga {
       }
     }
 
-    const to3Name = `TO3-${task.id}`;
+    const to3Name = `DROPOFF-${randomUUID()}`;
     const created = await this.createNextOrder(
       to3Name,
       slot,
       'DROP_OFF',
       vehicle,
+      { taskId: task.id, leg: 'DROPOFF' },
     );
     if (!created) return;
 
@@ -224,12 +223,8 @@ export class TransportTaskSaga {
     });
   }
 
-  private async onDropOffFinished(toName: string): Promise<void> {
-    const task = await this.findTaskByOrder(
-      TASK_META.TO3_NAME,
-      toName,
-      TaskStatus.DELIVERING,
-    );
+  private async onDropOffFinished(taskId: string): Promise<void> {
+    const task = await this.findTask(taskId, TaskStatus.DELIVERING);
     if (!task) return;
 
     task.completedAt = new Date();
@@ -243,20 +238,16 @@ export class TransportTaskSaga {
     this.logger.log(`Task ${task.id} → DELIVERY_COMPLETED`);
   }
 
-  private findTaskByOrder(
-    metaKey: keyof TaskMetadata,
-    orderName: string,
+  private findTask(
+    taskId: string,
     requiredStatus: TaskStatus,
   ): Promise<TransportTaskEntity | null> {
     return this.taskRepo
-      .createQueryBuilder('t')
-      .where(`t.metadata->>'${metaKey}' = :name`, { name: orderName })
-      .andWhere('t.status = :status', { status: requiredStatus })
-      .getOne()
+      .findOne({ where: { id: taskId, status: requiredStatus } })
       .then((task) => {
         if (!task) {
           this.logger.debug(
-            `No ${requiredStatus} task found for order "${orderName}"`,
+            `No ${requiredStatus} task found for id "${taskId}"`,
           );
         }
         return task;
@@ -268,12 +259,14 @@ export class TransportTaskSaga {
     locationName: string,
     operation: string,
     vehicle: string,
+    props: { taskId: string; leg: TaskLeg },
   ): Promise<boolean> {
     try {
       await this.kernelApi.createTransportOrder(
         orderName,
         [{ locationName, operation }],
         vehicle,
+        { [ORDER_PROP.TASK_ID]: props.taskId, [ORDER_PROP.LEG]: props.leg },
       );
       return true;
     } catch (err) {

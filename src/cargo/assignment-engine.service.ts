@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
 import { In, Repository } from 'typeorm';
+import { ORDER_PROP } from './domain/events';
 import {
   TransportTaskEntity,
   TaskStatus,
@@ -155,7 +157,10 @@ export class AssignmentEngineService {
       return false;
     }
 
-    const to1Name = `TO1-${task.id}`;
+    // Opaque unique name so re-assigning a task (e.g. after a preempt) never
+    // collides with the withdrawn order still held in openTCS. The task is
+    // correlated back via the wes:taskId property, not the name.
+    const to1Name = `PICKUP-${randomUUID()}`;
     try {
       await this.kernelApi.createTransportOrder(
         to1Name,
@@ -166,6 +171,7 @@ export class AssignmentEngineService {
           },
         ],
         vehicleName,
+        { [ORDER_PROP.TASK_ID]: task.id, [ORDER_PROP.LEG]: 'PICKUP' },
       );
     } catch (err) {
       this.logger.error(

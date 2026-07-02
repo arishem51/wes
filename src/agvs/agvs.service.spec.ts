@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { AgvsService } from './agvs.service';
 import { AgvEntity } from './entities/agv.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 
 type MockRepo = {
   find: jest.Mock;
@@ -37,6 +38,7 @@ describe('AgvsService', () => {
   let service: AgvsService;
   let repo: MockRepo;
   let kernelApi: { getVehicles: jest.Mock };
+  let vehicleStore: { getAll: jest.Mock; isConnected: jest.Mock };
 
   beforeEach(async () => {
     repo = {
@@ -48,12 +50,19 @@ describe('AgvsService', () => {
       remove: jest.fn(),
     };
     kernelApi = { getVehicles: jest.fn() };
+    // Kernel status is derived from the SSE-backed VehicleStateStore, not a
+    // REST call. Default to reachable/empty; individual tests override.
+    vehicleStore = {
+      getAll: jest.fn().mockReturnValue([]),
+      isConnected: jest.fn().mockReturnValue(true),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AgvsService,
         { provide: getRepositoryToken(AgvEntity), useValue: repo },
         { provide: KernelApiService, useValue: kernelApi },
+        { provide: VehicleStateStore, useValue: vehicleStore },
       ],
     }).compile();
 
@@ -64,7 +73,7 @@ describe('AgvsService', () => {
     it('paginates results and reports kernel status', async () => {
       const agv = makeAgv();
       repo.findAndCount.mockResolvedValue([[agv], 1]);
-      kernelApi.getVehicles.mockResolvedValue([
+      vehicleStore.getAll.mockReturnValue([
         { name: agv.name, integrationLevel: 'TO_BE_UTILIZED' },
       ]);
 
@@ -83,7 +92,7 @@ describe('AgvsService', () => {
     it('marks kernelStatus as unknown when kernel is unreachable', async () => {
       const agv = makeAgv();
       repo.findAndCount.mockResolvedValue([[agv], 1]);
-      kernelApi.getVehicles.mockRejectedValue(new Error('unreachable'));
+      vehicleStore.isConnected.mockReturnValue(false);
 
       const result = await service.list();
 
@@ -94,7 +103,7 @@ describe('AgvsService', () => {
     it('marks kernelStatus as reachable when vehicle is not TO_BE_UTILIZED', async () => {
       const agv = makeAgv();
       repo.findAndCount.mockResolvedValue([[agv], 1]);
-      kernelApi.getVehicles.mockResolvedValue([
+      vehicleStore.getAll.mockReturnValue([
         { name: agv.name, integrationLevel: 'TO_BE_IGNORED' },
       ]);
 
@@ -106,7 +115,7 @@ describe('AgvsService', () => {
     it('marks kernelStatus as unreachable when name does not match any kernel vehicle', async () => {
       const agv = makeAgv();
       repo.findAndCount.mockResolvedValue([[agv], 1]);
-      kernelApi.getVehicles.mockResolvedValue([
+      vehicleStore.getAll.mockReturnValue([
         { name: 'OTHER-AGV', integrationLevel: 'TO_BE_UTILIZED' },
       ]);
 
@@ -117,7 +126,6 @@ describe('AgvsService', () => {
 
     it('applies search filter across code and name', async () => {
       repo.findAndCount.mockResolvedValue([[], 0]);
-      kernelApi.getVehicles.mockResolvedValue([]);
 
       await service.list({ search: 'agv-1' });
 
@@ -130,7 +138,6 @@ describe('AgvsService', () => {
     it('returns the AGV with kernel status when found', async () => {
       const agv = makeAgv();
       repo.findOne.mockResolvedValue(agv);
-      kernelApi.getVehicles.mockResolvedValue([]);
 
       const result = await service.findOne(agv.id);
 

@@ -12,6 +12,19 @@ export const FMS_EVENTS = {
   VEHICLE_AVAILABLE: 'fms.vehicle.available',
 } as const;
 
+/**
+ * The physical leg an openTCS order represents. Carried on the order as a
+ * property (see ORDER_PROP) so the saga routes finished orders by leg + task id
+ * instead of parsing the order name — order names are opaque unique tokens.
+ */
+export type TaskLeg = 'PICKUP' | 'APPROACH' | 'DROPOFF';
+
+/** openTCS transport-order property keys WES sets to correlate orders to tasks. */
+export const ORDER_PROP = {
+  TASK_ID: 'wes:taskId',
+  LEG: 'wes:leg',
+} as const;
+
 export class TransportTaskCreatedEvent {
   constructor(
     readonly taskId: string,
@@ -43,7 +56,11 @@ export class TransportTaskFailedEvent {
 }
 
 export class FmsTransportOrderFinishedEvent {
-  constructor(readonly orderName: string) {}
+  constructor(
+    readonly orderName: string,
+    readonly taskId: string,
+    readonly leg: TaskLeg,
+  ) {}
 }
 
 export class FmsVehicleAvailableEvent {

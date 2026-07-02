@@ -330,10 +330,21 @@ export class KernelApiService {
     name: string,
     destinations: Array<{ locationName: string; operation: string }>,
     intendedVehicle: string,
+    properties?: Record<string, string>,
   ): Promise<void> {
+    // openTCS wants properties as an array of {key,value} on write (it is echoed
+    // back as an object map over SSE — see the listener). Omit the field entirely
+    // when there are none so we don't send `properties: []` needlessly.
+    const body: Record<string, unknown> = { destinations, intendedVehicle };
+    if (properties) {
+      body.properties = Object.entries(properties).map(([key, value]) => ({
+        key,
+        value,
+      }));
+    }
     await axios.post(
       `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}`,
-      { destinations, intendedVehicle },
+      body,
       { timeout: 10_000 },
     );
     this.logger.log(`Created TO "${name}" → ${intendedVehicle}`);

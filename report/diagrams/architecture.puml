@@ -1,0 +1,123 @@
+@startuml architecture
+' Section 1.1 Software Architecture — SWES (Smart Warehouse Execution System)
+' Render: java -jar plantuml.jar -tpng architecture.puml
+skinparam backgroundColor #FFFFFF
+skinparam linetype ortho
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam nodesep 30
+skinparam ranksep 50
+top to bottom direction
+
+skinparam rectangle {
+  BackgroundColor #DDEEFF
+  BorderColor #336699
+}
+skinparam package {
+  BackgroundColor #FDFDFD
+  BorderColor #7B1FA2
+  FontStyle bold
+}
+skinparam database {
+  BackgroundColor #FFF5CC
+  BorderColor #CC9900
+}
+skinparam node {
+  BackgroundColor #E8F5E9
+  BorderColor #388E3C
+}
+skinparam cloud {
+  BackgroundColor #FCE4EC
+  BorderColor #C62828
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+}
+
+' ── Actors ───────────────────────────────────────────
+actor "Admin" as Admin
+actor "Operator" as Operator
+rectangle "Barcode Scanner\n/ Handheld App" as Scanner
+
+' ── Client ───────────────────────────────────────────
+rectangle "wes-client\nReact SPA (Vite + MUI)" as ReactSPA
+
+' ── Backend ──────────────────────────────────────────
+package "SWES Backend — NestJS Modular Monolith (wes)" {
+
+  package "Presentation Layer (REST Controllers)" {
+    rectangle "AuthController\nAccountController\nAdminUsersController" as AuthCtrl
+    rectangle "AgvsController" as AgvsCtrl
+    rectangle "MapsController\nZoneController" as MapsCtrl
+    rectangle "CargoController" as CargoCtrl
+  }
+
+  package "Application Layer (Business Services)" as AppLayer {
+    rectangle "CargoService\nTransportTaskService" as CargoSvc
+    rectangle "Dispatch Orchestration\n─────────────\nDispatchSchedulerService\nReleaseEngineService\nPickupDependencyService\nAssignmentEngineService\nTransportTaskSaga\nDeliverySlotEngine\nRoutingService\nZoneGeometryService" as Dispatch
+    rectangle "AgvsService" as AgvsSvc
+    rectangle "MapsService\nZoneService" as MapsSvc
+    rectangle "AuthService, TokenService\nUsersService, AccountService\nAdminUsersService" as AuthSvc
+    rectangle "MailService" as MailSvc
+  }
+
+  rectangle "In-process Event Bus\n(@nestjs/event-emitter)" as EventBus #FFF9C4
+
+  package "Anti-Corruption Layer (opentcs/)" {
+    rectangle "KernelApiService\n(REST client)" as KernelApi
+    rectangle "KernelEventListenerService\n(SSE subscriber)" as SSEListener
+    rectangle "VehicleStateStore\n(live telemetry cache)" as VehStore
+    rectangle "KernelSyncService\nMapLoaderService" as KernelSync
+  }
+}
+
+' ── External systems ─────────────────────────────────
+database "PostgreSQL" as DB
+node "FMS (openTCS Kernel)\nopentcs-integration-FMS" as FMS
+node "AGV Fleet" as AGV
+cloud "Gmail Service" as Gmail
+
+' ── Actor → Client ───────────────────────────────────
+Admin    --> ReactSPA : uses
+Operator --> ReactSPA : uses
+
+' ── Client / Scanner → Controllers ───────────────────
+ReactSPA --> AuthCtrl : HTTPS REST
+ReactSPA --> AgvsCtrl : HTTPS REST
+ReactSPA --> MapsCtrl : HTTPS REST\n+ SSE /maps/kernel/sse
+ReactSPA --> CargoCtrl : HTTPS REST
+Scanner  --> CargoCtrl : HTTPS REST\n(create cargo / request)
+
+' ── Controllers → Services ───────────────────────────
+AuthCtrl  --> AuthSvc
+AgvsCtrl  --> AgvsSvc
+MapsCtrl  --> MapsSvc
+CargoCtrl --> CargoSvc
+AuthSvc   --> MailSvc : OTP / reset
+
+' ── Event bus wiring ─────────────────────────────────
+CargoSvc    --> EventBus : emit transport-task.*
+SSEListener --> EventBus : emit fms.*
+EventBus    --> Dispatch : @OnEvent
+
+' ── Dispatch → ACL ───────────────────────────────────
+Dispatch --> KernelApi : create Transport Order\n(intendedVehicle pre-assigned)
+Dispatch --> VehStore  : read live vehicle state
+CargoSvc --> Dispatch : (TransportTaskService is\nthe single status writer)
+
+' ── Services → DB ────────────────────────────────────
+AppLayer --> DB : TypeORM\n(entities / repositories)
+
+' ── ACL ↔ FMS ────────────────────────────────────────
+KernelApi   --> FMS : REST /v1/*
+KernelSync  --> KernelApi : push plant model / sync
+SSEListener <-- FMS : SSE /v1/sse\n(vehicles, transportOrders)
+SSEListener --> VehStore : update cache
+
+' ── FMS ↔ AGV hardware ───────────────────────────────
+FMS <--> AGV : vehicle comm adapter\n(movement commands / telemetry)
+
+' ── Mail ─────────────────────────────────────────────
+MailSvc --> Gmail : SMTP/API\n(OTP, reset link)
+
+@enduml

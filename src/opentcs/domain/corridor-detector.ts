@@ -29,7 +29,9 @@
  * traversable topology.
  *
  * Pure: no I/O. Feed it the plant model's paths; get back block definitions to
- * drop into `PlantModelDto.blocks` before pushing to the kernel.
+ * drop into `PlantModelDto.blocks` before pushing to the kernel. Pass
+ * `reservedPoints` (the points already inside hand-authored blocks) to skip
+ * lanes an operator has already blocked, so generation never double-covers them.
  */
 
 /** Minimal path shape the detector needs (matches PathDto and the kernel's
@@ -58,6 +60,7 @@ function pairKey(a: string, b: string): string {
 
 export function detectSingleVehicleBlocks(
   paths: readonly CorridorPath[],
+  reservedPoints: ReadonlySet<string> = new Set(),
 ): SingleVehicleBlock[] {
   // 1. Undirected adjacency + the path name(s) spanning each undirected pair.
   //    A single-file lane with reverse travel has two path objects (fwd + rev)
@@ -175,6 +178,16 @@ export function detectSingleVehicleBlocks(
     const hasDeadEnd =
       degree(nodes[0]) === 1 || degree(nodes[nodes.length - 1]) === 1;
     if (!hasDeadEnd) continue;
+
+    // Skip lanes an operator already blocked by hand: a lane is uniquely
+    // identified by its dead-end tip, so if that tip is a member of a reserved
+    // (manual) block, this lane is covered. Regenerating it would double-cover
+    // the column (manual block + SVB-*). A tip that later loses its manual
+    // block simply drops out of `reservedPoints` and gets regenerated.
+    const laneDeadEnds = [nodes[0], nodes[nodes.length - 1]].filter(
+      (n) => degree(n) === 1,
+    );
+    if (laneDeadEnds.some((n) => reservedPoints.has(n))) continue;
 
     // Every corridor point, INCLUDING the mouth junction — a waiting vehicle
     // must not be able to camp on the mouth and trap the vehicle reversing out.

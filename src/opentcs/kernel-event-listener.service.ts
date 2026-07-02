@@ -11,6 +11,8 @@ import {
   FMS_EVENTS,
   FmsTransportOrderFinishedEvent,
   FmsVehicleAvailableEvent,
+  ORDER_PROP,
+  TaskLeg,
 } from '../cargo/domain/events';
 import { KernelApiService } from './kernel-api.service';
 import type { KernelVehicleState } from './kernel-api.service';
@@ -178,10 +180,34 @@ export class KernelEventListenerService
     if (!name || state !== 'FINISHED') return;
 
     this.logger.log(`Transport order "${name}" FINISHED`);
+
+    // Route by the WES leg + task id carried on the order's properties, not by
+    // the order name (names are opaque unique tokens). Orders WES did not create
+    // (e.g. kernel-issued Move-* / charging orders) lack these props — ignore them.
+    const props = this.orderProps(current.properties);
+    const taskId = props[ORDER_PROP.TASK_ID];
+    const leg = props[ORDER_PROP.LEG];
+    if (!taskId || !this.isTaskLeg(leg)) return;
+
     this.eventEmitter.emit(
       FMS_EVENTS.TRANSPORT_ORDER_FINISHED,
-      new FmsTransportOrderFinishedEvent(name),
+      new FmsTransportOrderFinishedEvent(name, taskId, leg),
     );
+  }
+
+  // Over SSE, order `properties` arrive as an object map ({ key: value }) —
+  // unlike the array form used when writing an order. Read defensively.
+  private orderProps(value: unknown): Record<string, string> {
+    if (value === null || typeof value !== 'object') return {};
+    const out: Record<string, string> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof val === 'string') out[key] = val;
+    }
+    return out;
+  }
+
+  private isTaskLeg(value: string | undefined): value is TaskLeg {
+    return value === 'PICKUP' || value === 'APPROACH' || value === 'DROPOFF';
   }
 
   private handleVehicle(payload: KernelSsePayload): void {

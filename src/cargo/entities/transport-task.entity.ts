@@ -26,15 +26,6 @@ export interface TaskMetadata {
   blockedReason?: string;
 }
 
-export const TASK_META = {
-  ASSIGNED_VEHICLE_NAME: 'assignedVehicleName',
-  TO1_NAME: 'to1Name',
-  TO2_NAME: 'to2Name',
-  TO3_NAME: 'to3Name',
-  APPROACH_LOCATION_NAME: 'approachLocationName',
-  BLOCKED_REASON: 'blockedReason',
-} as const satisfies Record<string, keyof TaskMetadata>;
-
 @Entity('transport_requests')
 export class TransportTaskEntity {
   @PrimaryGeneratedColumn('uuid')
