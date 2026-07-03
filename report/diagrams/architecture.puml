@@ -1,38 +1,18 @@
 @startuml architecture
 ' Section 1.1 Software Architecture — SWES (Smart Warehouse Execution System)
 ' Render: java -jar plantuml.jar -tpng architecture.puml
-skinparam backgroundColor #FFFFFF
-skinparam linetype ortho
-skinparam defaultFontName Arial
+' Style follows the template's architecture sample: one light-purple
+' system container, white rounded boxes, black borders and arrows.
+!include style-template.iuml
 skinparam defaultFontSize 11
 skinparam nodesep 30
 skinparam ranksep 50
-top to bottom direction
-
-skinparam rectangle {
-  BackgroundColor #DDEEFF
-  BorderColor #336699
-}
-skinparam package {
-  BackgroundColor #FDFDFD
-  BorderColor #7B1FA2
-  FontStyle bold
-}
-skinparam database {
-  BackgroundColor #FFF5CC
-  BorderColor #CC9900
-}
-skinparam node {
-  BackgroundColor #E8F5E9
-  BorderColor #388E3C
-}
+skinparam roundCorner 10
 skinparam cloud {
-  BackgroundColor #FCE4EC
-  BorderColor #C62828
-}
-skinparam actor {
   BackgroundColor #FFFFFF
+  BorderColor #000000
 }
+top to bottom direction
 
 ' ── Actors ───────────────────────────────────────────
 actor "Admin" as Admin
@@ -43,7 +23,7 @@ rectangle "Barcode Scanner\n/ Handheld App" as Scanner
 rectangle "wes-client\nReact SPA (Vite + MUI)" as ReactSPA
 
 ' ── Backend ──────────────────────────────────────────
-package "SWES Backend — NestJS Modular Monolith (wes)" {
+package "SWES Backend — NestJS Modular Monolith (wes)" #E1D5E7 {
 
   package "Presentation Layer (REST Controllers)" {
     rectangle "AuthController\nAccountController\nAdminUsersController" as AuthCtrl
@@ -61,13 +41,14 @@ package "SWES Backend — NestJS Modular Monolith (wes)" {
     rectangle "MailService" as MailSvc
   }
 
-  rectangle "In-process Event Bus\n(@nestjs/event-emitter)" as EventBus #FFF9C4
+  rectangle "In-process Event Bus\n(@nestjs/event-emitter)" as EventBus
 
   package "Anti-Corruption Layer (opentcs/)" {
     rectangle "KernelApiService\n(REST client)" as KernelApi
     rectangle "KernelEventListenerService\n(SSE subscriber)" as SSEListener
     rectangle "VehicleStateStore\n(live telemetry cache)" as VehStore
     rectangle "KernelSyncService\nMapLoaderService" as KernelSync
+    rectangle "FleetTelemetryService\n(KPI instrumentation)" as FleetTel
   }
 }
 
@@ -113,6 +94,8 @@ KernelApi   --> FMS : REST /v1/*
 KernelSync  --> KernelApi : push plant model / sync
 SSEListener <-- FMS : SSE /v1/sse\n(vehicles, transportOrders)
 SSEListener --> VehStore : update cache
+VehStore --> FleetTel : vehicle updates (observe)
+FleetTel --> DB : batch-write\nstate transitions
 
 ' ── FMS ↔ AGV hardware ───────────────────────────────
 FMS <--> AGV : vehicle comm adapter\n(movement commands / telemetry)

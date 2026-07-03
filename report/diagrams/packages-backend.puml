@@ -1,0 +1,49 @@
+@startuml packages-backend
+' Section 1.2 Package Diagram — wes backend (NestJS)
+' Render: java -jar plantuml.jar -tpng packages-backend.puml
+
+!include style-template.iuml
+skinparam nodesep 35
+skinparam ranksep 45
+skinparam packageStyle folder
+
+package "auth" as auth {}
+package "account" as account {}
+package "users" as users {}
+package "admin_users" as adminusers {}
+package "mail" as mail {}
+
+package "agvs" as agvs {}
+package "maps" as maps {}
+package "zones" as zones {}
+
+package "cargo" as cargo {
+  package "domain" as cargodomain #FFFFFF {}
+  package "entities" as cargoentities #FFFFFF {}
+}
+
+package "opentcs (ACL)" as opentcs {
+  package "map_loader" as maploader #FFFFFF {}
+}
+
+package "database" as database {}
+
+' ── real module dependencies (from @Module imports) ──
+adminusers --> users
+adminusers --> auth
+adminusers --> mail
+account --> users
+account --> auth
+auth --> users
+auth --> mail
+
+agvs --> opentcs
+cargo --> opentcs
+maps --> opentcs
+
+' entity reuse (dashed = compile-time entity import)
+maps ..> cargo : CargoEntity
+cargo ..> zones : ZoneEntity
+cargo ..> agvs : AgvEntity
+
+@enduml

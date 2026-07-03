@@ -62,7 +62,10 @@ export class ReleaseEngineService {
           ...task.metadata,
           blockedReason: reason ?? undefined,
         };
-        await this.transportTask.changeStatus(task, TaskStatus.BLOCKED);
+        await this.transportTask.changeStatus(task, TaskStatus.BLOCKED, {
+          trigger: 'RELEASE_ENGINE',
+          reason,
+        });
         this.logger.log(`Task ${task.id} → BLOCKED (${reason})`);
         break;
       case TaskStatus.PICKING_UP:
@@ -96,7 +99,9 @@ export class ReleaseEngineService {
     if (task.metadata?.blockedReason) {
       task.metadata = { ...task.metadata, blockedReason: undefined };
     }
-    await this.transportTask.changeStatus(task, TaskStatus.READY_TO_ASSIGN);
+    await this.transportTask.changeStatus(task, TaskStatus.READY_TO_ASSIGN, {
+      trigger: 'RELEASE_ENGINE',
+    });
   }
 
   /**
@@ -110,6 +115,9 @@ export class ReleaseEngineService {
     reason: string | null,
   ): Promise<void> {
     const to1Name = task.metadata?.to1Name;
+    // Captured before the metadata wipe below, so the transition log still
+    // knows which vehicle was preempted.
+    const vehicleName = task.metadata?.assignedVehicleName ?? null;
     if (to1Name) {
       try {
         await this.kernelApi.withdrawTransportOrder(to1Name, false);
@@ -128,7 +136,12 @@ export class ReleaseEngineService {
     };
     task.assignedAt = null;
     task.startedAt = null;
-    await this.transportTask.changeStatus(task, TaskStatus.BLOCKED);
+    await this.transportTask.changeStatus(task, TaskStatus.BLOCKED, {
+      trigger: 'RELEASE_ENGINE',
+      reason,
+      vehicleName,
+      context: { preempted: true, withdrawnOrder: to1Name ?? null },
+    });
     this.logger.log(`Task ${task.id} PREEMPTED → BLOCKED (${reason})`);
   }
 }

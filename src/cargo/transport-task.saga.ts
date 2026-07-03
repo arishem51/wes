@@ -81,7 +81,10 @@ export class TransportTaskSaga {
       this.logger.warn(
         `Task ${task.id} has no approach location — marking FAILED`,
       );
-      await this.transportTask.changeStatus(task, TaskStatus.FAILED);
+      await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
+        trigger: 'SAGA',
+        reason: 'no approach location',
+      });
       return;
     }
 
@@ -90,7 +93,10 @@ export class TransportTaskSaga {
       this.logger.warn(
         `Task ${task.id} has no assigned vehicle — marking FAILED`,
       );
-      await this.transportTask.changeStatus(task, TaskStatus.FAILED);
+      await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
+        trigger: 'SAGA',
+        reason: 'no assigned vehicle at pickup finish',
+      });
       return;
     }
 
@@ -105,7 +111,10 @@ export class TransportTaskSaga {
     if (!created) return;
 
     task.metadata = { ...task.metadata, to2Name };
-    await this.transportTask.changeStatus(task, TaskStatus.DELIVERING);
+    await this.transportTask.changeStatus(task, TaskStatus.DELIVERING, {
+      trigger: 'SAGA',
+      context: { to2Name },
+    });
     this.logger.log(
       `Task ${task.id} → DELIVERING, created ${to2Name} (approach)`,
     );
@@ -129,7 +138,10 @@ export class TransportTaskSaga {
     const cargo = await this.cargoOf(task);
     if (!cargo) {
       this.logger.warn(`Task ${task.id} has no cargo — marking FAILED`);
-      await this.transportTask.changeStatus(task, TaskStatus.FAILED);
+      await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
+        trigger: 'SAGA',
+        reason: 'no cargo',
+      });
       return;
     }
 
@@ -138,7 +150,10 @@ export class TransportTaskSaga {
       this.logger.warn(
         `Task ${task.id} has no assigned vehicle — marking FAILED`,
       );
-      await this.transportTask.changeStatus(task, TaskStatus.FAILED);
+      await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
+        trigger: 'SAGA',
+        reason: 'no assigned vehicle at approach finish',
+      });
       return;
     }
 
@@ -153,7 +168,10 @@ export class TransportTaskSaga {
         this.logger.warn(
           `Task ${task.id}: no drop-off slot available at barrier — marking FAILED`,
         );
-        await this.transportTask.changeStatus(task, TaskStatus.FAILED);
+        await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
+          trigger: 'SAGA',
+          reason: 'no drop-off slot available at barrier',
+        });
         return;
       }
     }
@@ -228,7 +246,9 @@ export class TransportTaskSaga {
     if (!task) return;
 
     task.completedAt = new Date();
-    await this.transportTask.changeStatus(task, TaskStatus.DELIVERY_COMPLETED);
+    await this.transportTask.changeStatus(task, TaskStatus.DELIVERY_COMPLETED, {
+      trigger: 'SAGA',
+    });
 
     if (task.cargoId) {
       await this.cargoRepo.update(task.cargoId, {

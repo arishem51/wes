@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CargoEntity } from './entities/cargo.entity';
 import { TransportTaskEntity } from './entities/transport-task.entity';
+import { TaskStatusTransitionEntity } from './entities/task-status-transition.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { AgvEntity } from '../agvs/entities/agv.entity';
 import { CargoService } from './cargo.service';
@@ -22,6 +23,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     TypeOrmModule.forFeature([
       CargoEntity,
       TransportTaskEntity,
+      TaskStatusTransitionEntity,
       ZoneEntity,
       AgvEntity,
     ]),

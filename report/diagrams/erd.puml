@@ -1,0 +1,238 @@
+@startuml erd
+' Section 1.3 Database Design — ERD generated from TypeORM entities (2026-07-02)
+' Render: java -jar plantuml.jar -tpng erd.puml
+
+hide circle
+hide empty methods
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam linetype ortho
+skinparam shadowing true
+skinparam nodesep 40
+skinparam ranksep 45
+skinparam ArrowColor #444444
+
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #2D6293
+  HeaderBackgroundColor #2D6293
+  FontColor #FFFFFF
+  FontStyle bold
+  AttributeFontColor #222222
+  AttributeFontSize 10
+}
+
+' ── User & Auth ──────────────────────────────────────
+entity "users" as users {
+  * id : uuid <<PK>>
+  --
+  * username : varchar
+  * email : varchar
+  * password_hash : varchar
+  * full_name : varchar
+  phone : varchar
+  shift : varchar
+  avatar_url : text
+  * is_active : boolean
+  * is_locked : boolean
+  * is_invited : boolean
+  lock_reason : text
+  last_login_at : timestamptz
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+entity "roles" as roles {
+  * id : smallserial <<PK>>
+  --
+  * name : user_role_enum
+  description : text
+}
+
+entity "user_roles" as user_roles {
+  * user_id : uuid <<PK,FK>>
+  * role_id : smallint <<PK,FK>>
+  --
+  * assigned_at : timestamptz
+  assigned_by : uuid <<FK>>
+}
+
+entity "refresh_tokens" as refresh_tokens {
+  * id : uuid <<PK>>
+  --
+  * user_id : uuid <<FK>>
+  * token_hash : varchar
+  * expires_at : timestamptz
+  * is_revoked : boolean
+  * created_at : timestamptz
+}
+
+entity "user_sessions" as user_sessions {
+  * id : uuid <<PK>>
+  --
+  * user_id : uuid <<FK>>
+  ip_address : inet
+  user_agent : text
+  * login_at : timestamptz
+  logout_at : timestamptz
+}
+
+entity "password_reset_tokens" as prt {
+  * id : uuid <<PK>>
+  --
+  * user_id : uuid <<FK>>
+  * token_hash : varchar
+  * expires_at : timestamptz
+  used_at : timestamptz
+  * created_at : timestamptz
+}
+
+entity "user_preferences" as user_prefs {
+  * user_id : uuid <<PK,FK>>
+  --
+  * language : varchar
+  * notifications_enabled : boolean
+  * sound_enabled : boolean
+  * updated_at : timestamptz
+}
+
+' ── AGV Fleet ────────────────────────────────────────
+entity "agvs" as agvs {
+  * id : uuid <<PK>>
+  --
+  * code : varchar(100) <<UN>>
+  * name : varchar(100)
+  model : varchar
+  manufacturer : varchar
+  serial_number : varchar
+  * is_dispatch_enabled : boolean
+  * is_ignored : boolean
+  * operational_battery_threshold : smallint
+  * charging_battery_threshold : smallint
+  initial_position : varchar(100)
+  * config : jsonb
+  * created_at : timestamptz
+  * updated_at : timestamptz
+  created_by_id : uuid <<FK>>
+}
+
+' ── Warehouse Topology ───────────────────────────────
+entity "zones" as zones {
+  * id : uuid <<PK>>
+  --
+  * name : varchar(255)
+  * type : zone_type_enum
+  kernel_id : integer <<UN>>
+  approach_location_name : varchar(255)
+  * status : zone_status_enum
+  * created_at : timestamptz
+  * updated_at : timestamptz
+  deleted_at : timestamptz
+}
+
+entity "zone_members" as zone_members {
+  * id : uuid <<PK>>
+  --
+  * zone_id : uuid <<FK>>
+  * location_name : varchar(255)
+  * position_index : int
+  * created_at : timestamptz
+}
+
+entity "map_records" as map_records {
+  * id : uuid <<PK>>
+  --
+  * name : varchar
+  * original_filename : varchar
+  * point_count : int
+  * path_count : int
+  * vehicle_count : int
+  * uploaded_at : timestamptz
+  uploaded_by_id : uuid <<FK>>
+}
+
+' ── Core Business ────────────────────────────────────
+entity "cargos" as cargos {
+  * id : uuid <<PK>>
+  --
+  * item_code : varchar(255)
+  source_point_name : varchar(255)
+  source_pickup_location_name : varchar(255)
+  destination_location_name : varchar(255)
+  source_zone_id : uuid <<FK>>
+  destination_zone_id : uuid <<FK>>
+  * status : cargo_status_enum
+  created_by : uuid <<FK>>
+  * created_at : timestamptz
+  * updated_at : timestamptz
+  deleted_at : timestamptz
+}
+
+entity "transport_requests" as transport_requests {
+  * id : uuid <<PK>>
+  --
+  * request_code : varchar(50) <<UN>>
+  cargo_id : uuid <<FK>>
+  * status : transport_request_status_enum
+  * metadata : jsonb
+  assigned_at : timestamptz
+  started_at : timestamptz
+  completed_at : timestamptz
+  cancelled_at : timestamptz
+  * created_at : timestamptz
+  * updated_at : timestamptz
+}
+
+entity "task_status_transitions" as tst {
+  * id : bigserial <<PK>>
+  --
+  * task_id : uuid <<FK>>
+  from_status : varchar(30)
+  * to_status : varchar(30)
+  trigger : varchar(30)
+  vehicle_name : varchar(50)
+  reason : text
+  * context : jsonb
+  * occurred_at : timestamptz
+}
+
+' ── KPI Instrumentation ──────────────────────────────
+entity "sse_sessions" as sse_sessions {
+  * id : bigserial <<PK>>
+  --
+  * connected_at : timestamptz
+  ended_at : timestamptz
+  end_reason : varchar(100)
+}
+
+entity "vehicle_state_transitions" as vst {
+  * id : bigserial <<PK>>
+  --
+  * session_id : bigint <<FK>>
+  * vehicle_name : varchar(50)
+  point_name : varchar(50)
+  proc_state : varchar(30)
+  vehicle_state : varchar(30)
+  order_name : varchar(80)
+  * occurred_at : timestamptz
+}
+
+' ── Relationships ────────────────────────────────────
+users ||--o{ user_roles
+roles ||--o{ user_roles
+users ||--o{ refresh_tokens
+users ||--o{ user_sessions
+users ||--o{ prt
+users ||--|| user_prefs
+users ||--o{ agvs : created_by
+users ||--o{ map_records : uploaded_by
+users ||--o{ cargos : created_by
+zones ||--o{ zone_members
+zones ||--o{ cargos : source_zone
+zones ||--o{ cargos : destination_zone
+cargos ||--o{ transport_requests
+transport_requests ||--o{ tst
+sse_sessions ||--o{ vst
+
+@enduml

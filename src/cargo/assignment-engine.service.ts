@@ -86,10 +86,14 @@ export class AssignmentEngineService {
         ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
         : null;
 
-      const vehicle = this.selectVehicle(candidates, graph, cargo);
+      const { vehicle, distance } = this.selectVehicle(
+        candidates,
+        graph,
+        cargo,
+      );
       if (!vehicle) break; // no eligible AGV right now — try again next cycle
 
-      const assigned = await this.assign(task, cargo, vehicle.name);
+      const assigned = await this.assign(task, cargo, vehicle.name, distance);
       if (assigned) {
         // Don't hand the same vehicle two tasks in one cycle.
         vehicle.hasActiveTask = true;
@@ -100,18 +104,25 @@ export class AssignmentEngineService {
   /**
    * Pick the nearest eligible vehicle to the cargo's source point via Dijkstra
    * over the road graph. Falls back to name-order picking when the graph or the
-   * cargo's source point is unavailable (§6.1).
+   * cargo's source point is unavailable (§6.1). Also returns the picked
+   * vehicle's graph distance to the source (null on the fallback path) so the
+   * assignment can log it for evaluation.
    */
   private selectVehicle(
     candidates: VehicleCandidate[],
     graph: RoadGraph | null,
     cargo: CargoEntity | null,
-  ): VehicleCandidate | null {
+  ): { vehicle: VehicleCandidate | null; distance: number | null } {
     if (graph && cargo?.sourcePointName) {
       const distances = shortestDistancesFrom(graph, cargo.sourcePointName);
-      return pickNearestVehicle(candidates, distances);
+      const vehicle = pickNearestVehicle(candidates, distances);
+      const distance =
+        vehicle?.currentPosition != null
+          ? (distances.get(vehicle.currentPosition) ?? null)
+          : null;
+      return { vehicle, distance };
     }
-    return pickVehicle(candidates);
+    return { vehicle: pickVehicle(candidates), distance: null };
   }
 
   private async buildCandidates(): Promise<VehicleCandidate[]> {
@@ -149,6 +160,7 @@ export class AssignmentEngineService {
     task: TransportTaskEntity,
     cargo: CargoEntity | null,
     vehicleName: string,
+    distanceToSource: number | null,
   ): Promise<boolean> {
     // TO1 (PICK_UP) only needs the source; the drop-off slot is committed later,
     // at the TO2 barrier, so destinationLocationName is intentionally still null.
@@ -187,7 +199,11 @@ export class AssignmentEngineService {
       assignedVehicleName: vehicleName,
       to1Name,
     };
-    await this.transportTask.changeStatus(task, TaskStatus.PICKING_UP);
+    await this.transportTask.changeStatus(task, TaskStatus.PICKING_UP, {
+      trigger: 'ASSIGNMENT_ENGINE',
+      vehicleName,
+      context: { to1Name, distanceToSource },
+    });
     this.logger.log(
       `Task ${task.id} → PICKING_UP on ${vehicleName} (${to1Name})`,
     );

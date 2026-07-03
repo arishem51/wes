@@ -17,6 +17,7 @@ import {
 import { KernelApiService } from './kernel-api.service';
 import type { KernelVehicleState } from './kernel-api.service';
 import { VehicleStateStore } from './vehicle-state.store';
+import { FleetTelemetryService } from './fleet-telemetry.service';
 
 const RETRY_DELAY_MS = 3_000;
 
@@ -49,6 +50,7 @@ export class KernelEventListenerService
     private readonly eventEmitter: EventEmitter2,
     private readonly vehicleStateStore: VehicleStateStore,
     private readonly kernelApi: KernelApiService,
+    private readonly telemetry: FleetTelemetryService,
   ) {
     this.baseUrl = process.env.OPENTCS_KERNEL_URL ?? 'http://localhost:55200';
   }
@@ -86,6 +88,9 @@ export class KernelEventListenerService
       (res) => {
         this.logger.log(`SSE connected — status ${res.statusCode}`);
         this.vehicleStateStore.setConnected(true);
+        // Telemetry session brackets this connection; rows observed before the
+        // session row lands are buffered and flushed under it.
+        void this.telemetry.openSession();
         void this.seedStore();
         res.setEncoding('utf8');
 
@@ -121,11 +126,13 @@ export class KernelEventListenerService
         res.on('end', () => {
           this.logger.warn('SSE stream ended — reconnecting');
           this.vehicleStateStore.setConnected(false);
+          void this.telemetry.closeSession('stream ended');
           this.scheduleReconnect(RETRY_DELAY_MS);
         });
 
         res.on('error', () => {
           this.vehicleStateStore.setConnected(false);
+          void this.telemetry.closeSession('stream error');
           this.scheduleReconnect(RETRY_DELAY_MS);
         });
       },
@@ -139,6 +146,7 @@ export class KernelEventListenerService
     req.on('error', (err: Error) => {
       this.logger.warn(`SSE request error: ${err.message} — reconnecting`);
       this.vehicleStateStore.setConnected(false);
+      void this.telemetry.closeSession(`request error: ${err.message}`);
       this.scheduleReconnect(RETRY_DELAY_MS);
     });
 
@@ -218,6 +226,12 @@ export class KernelEventListenerService
     // (TimestampedVehicleState/ProcState) — unwrap to the enum string.
     const state = this.unwrapEnum(raw.state);
     const procState = this.unwrapEnum(raw.procState);
+    // Kernel-side observation time for telemetry: prefer the timestamp inside
+    // the wrapped enums; position-only updates carry none → ingest time.
+    const observedAt =
+      this.unwrapTimestamp(raw.state) ??
+      this.unwrapTimestamp(raw.procState) ??
+      new Date().toISOString();
 
     const existing = this.vehicleStateStore.get(raw.name);
     const incoming: KernelVehicleState = {
@@ -246,6 +260,11 @@ export class KernelEventListenerService
         currentPosition:
           typeof raw.currentPosition === 'string' ? raw.currentPosition : null,
       }),
+      ...(raw.transportOrder !== undefined && {
+        transportOrder:
+          typeof raw.transportOrder === 'string' ? raw.transportOrder : null,
+      }),
+      observedAt,
     };
 
     const previous = existing;
@@ -294,6 +313,18 @@ export class KernelEventListenerService
         if (key === 'timestamp') continue;
         if (typeof inner === 'string') return inner;
       }
+    }
+    return undefined;
+  }
+
+  /** The timestamp of a wrapped enum ({ state, timestamp }); epoch or ISO. */
+  private unwrapTimestamp(value: unknown): string | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const ts = (value as Record<string, unknown>).timestamp;
+    if (typeof ts === 'number') return new Date(ts).toISOString();
+    if (typeof ts === 'string') {
+      const parsed = new Date(ts);
+      return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
     }
     return undefined;
   }

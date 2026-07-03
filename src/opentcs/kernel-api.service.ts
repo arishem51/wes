@@ -20,6 +20,10 @@ export interface KernelVehicleState {
   energyLevel: number;
   paused: boolean;
   currentPosition: string | null;
+  /** Name of the transport order the vehicle is processing, when known. */
+  transportOrder?: string | null;
+  /** Kernel-side observation time (ISO) when the SSE payload carries one. */
+  observedAt?: string;
 }
 
 export interface KernelLocationType {
@@ -158,6 +162,8 @@ function toKernelVehicleState(value: unknown): KernelVehicleState | null {
     paused: typeof value.paused === 'boolean' ? value.paused : false,
     currentPosition:
       typeof value.currentPosition === 'string' ? value.currentPosition : null,
+    transportOrder:
+      typeof value.transportOrder === 'string' ? value.transportOrder : null,
   };
 }
 

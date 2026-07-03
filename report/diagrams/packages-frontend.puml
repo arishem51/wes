@@ -1,0 +1,46 @@
+@startuml packages-frontend
+' Section 1.2 Package Diagram — wes-client (React SPA)
+' Render: java -jar plantuml.jar -tpng packages-frontend.puml
+
+!include style-template.iuml
+skinparam nodesep 35
+skinparam ranksep 45
+skinparam packageStyle folder
+
+package "App (entry)\nApp.tsx, main.tsx, i18n.ts" as app {}
+
+package "components" as components {
+  package "AppShell, permissions" as shell #FFFFFF {}
+}
+
+package "features" as features {
+  package "auth" as fauth #FFFFFF {}
+  package "account" as faccount #FFFFFF {}
+  package "agv" as fagv #FFFFFF {}
+  package "cargo" as fcargo #FFFFFF {}
+  package "map" as fmap #FFFFFF {}
+  package "usersAdmin" as fusers #FFFFFF {}
+  package "zones" as fzones #FFFFFF {}
+}
+
+package "api" as api {
+  package "client.ts (axios)" as client #FFFFFF {}
+}
+
+package "types" as types {}
+package "ui" as ui {}
+package "lib" as lib {}
+package "styles" as styles {}
+
+app --> components
+app --> features
+components --> features
+features --> api
+features --> ui
+features --> types
+features --> lib
+api --> client
+api ..> types
+app ..> styles
+
+@enduml

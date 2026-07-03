@@ -187,7 +187,10 @@ export class CargoService {
 
       if (TransportTaskStateMachine.isCancellable(task.status)) {
         task.cancelledAt = new Date();
-        await this.transportTask.changeStatus(task, TaskStatus.CANCELLED);
+        await this.transportTask.changeStatus(task, TaskStatus.CANCELLED, {
+          trigger: 'API',
+          reason: 'cargo deleted',
+        });
       }
     }
 

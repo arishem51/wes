@@ -1,0 +1,71 @@
+' Shared style matching the Draft Report 4 template sample diagrams
+' (draw.io look: white fill, black thin border, drop shadow, monochrome arrows)
+' Usage: !include style-template.iuml
+
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam shadowing true
+skinparam linetype ortho
+
+skinparam ArrowColor #000000
+skinparam ArrowFontSize 11
+
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  BorderThickness 1
+  FontStyle bold
+  AttributeFontSize 11
+}
+
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  BorderThickness 1
+  FontStyle bold
+}
+
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  BorderThickness 1
+}
+
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+}
+
+skinparam database {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+}
+
+skinparam node {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+}
+
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+}
+
+skinparam sequence {
+  ParticipantBackgroundColor #FFFFFF
+  ParticipantBorderColor #000000
+  ParticipantFontStyle bold
+  ActorBackgroundColor #FFFFFF
+  ActorBorderColor #000000
+  LifeLineBorderColor #000000
+  LifeLineBackgroundColor #FFFFFF
+  ArrowColor #000000
+  GroupBorderColor #000000
+  GroupBackgroundColor #FFFFFF
+}
+
+skinparam note {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+}

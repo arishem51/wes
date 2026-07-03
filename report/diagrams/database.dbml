@@ -1,0 +1,240 @@
+// SWES Database Schema — generated from TypeORM entities in wes/src (2026-07-02)
+// Render: paste into https://dbdiagram.io → Export → PNG
+// Solid refs = enforced FK constraints in code (relations); other *_id columns
+// are semantic references (no DB constraint) — drawn for readability.
+
+//// ── User & Auth ─────────────────────────────────────
+
+Table users {
+  id uuid [pk]
+  username varchar [not null]
+  email varchar [not null]
+  password_hash varchar [not null]
+  full_name varchar [not null]
+  phone varchar
+  shift varchar
+  avatar_url text
+  is_active boolean [not null, default: true]
+  is_locked boolean [not null, default: false]
+  is_invited boolean [not null, default: false]
+  lock_reason text
+  last_login_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table roles {
+  id smallserial [pk]
+  name user_role_enum [not null, note: 'ADMIN | OPERATOR']
+  description text
+}
+
+Table user_roles {
+  user_id uuid [pk]
+  role_id smallint [pk]
+  assigned_at timestamptz [not null, default: `now()`]
+  assigned_by uuid
+}
+
+Table refresh_tokens {
+  id uuid [pk]
+  user_id uuid [not null]
+  token_hash varchar [not null]
+  expires_at timestamptz [not null]
+  is_revoked boolean [not null, default: false]
+  created_at timestamptz [not null]
+}
+
+Table user_sessions {
+  id uuid [pk]
+  user_id uuid [not null]
+  ip_address inet
+  user_agent text
+  login_at timestamptz [not null, default: `now()`]
+  logout_at timestamptz
+}
+
+Table password_reset_tokens {
+  id uuid [pk]
+  user_id uuid [not null]
+  token_hash varchar [not null]
+  expires_at timestamptz [not null]
+  used_at timestamptz
+  created_at timestamptz [not null]
+}
+
+Table user_preferences {
+  user_id uuid [pk]
+  language varchar [not null, default: 'vi']
+  notifications_enabled boolean [not null, default: true]
+  sound_enabled boolean [not null, default: false]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+//// ── AGV Fleet ───────────────────────────────────────
+
+Table agvs {
+  id uuid [pk]
+  code varchar(100) [not null, unique, note: 'Must equal the openTCS vehicle name (join key with FMS telemetry)']
+  name varchar(100) [not null]
+  model varchar
+  manufacturer varchar
+  serial_number varchar
+  is_dispatch_enabled boolean [not null, default: true]
+  is_ignored boolean [not null, default: false]
+  operational_battery_threshold smallint [not null, default: 20]
+  charging_battery_threshold smallint [not null, default: 10]
+  initial_position varchar(100)
+  config jsonb [not null, default: '{}']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  created_by_id uuid
+}
+
+//// ── Warehouse Topology ──────────────────────────────
+
+Table zones {
+  id uuid [pk]
+  name varchar(255) [not null]
+  type zone_type_enum [not null, note: 'PICKUP | DROPOFF']
+  kernel_id integer [unique, note: 'Sequential ID used to name openTCS locations; NULL for PICKUP zones']
+  approach_location_name varchar(255)
+  status zone_status_enum [not null, default: 'ACTIVE', note: 'ACTIVE | STALE']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  deleted_at timestamptz [note: 'soft delete']
+}
+
+Table zone_members {
+  id uuid [pk]
+  zone_id uuid [not null]
+  location_name varchar(255) [not null]
+  position_index int [not null]
+  created_at timestamptz [not null]
+}
+
+Table map_records {
+  id uuid [pk]
+  name varchar [not null]
+  original_filename varchar [not null]
+  point_count int [not null, default: 0]
+  path_count int [not null, default: 0]
+  vehicle_count int [not null, default: 0]
+  uploaded_at timestamptz [not null]
+  uploaded_by_id uuid
+}
+
+//// ── Core Business ───────────────────────────────────
+
+Table cargos {
+  id uuid [pk]
+  item_code varchar(255) [not null]
+  source_point_name varchar(255)
+  source_pickup_location_name varchar(255)
+  destination_location_name varchar(255) [note: 'NULL until the concrete drop-off slot is committed at the TO2 barrier']
+  source_zone_id uuid
+  destination_zone_id uuid [note: 'Reserved drop-off zone, set at request creation']
+  status cargo_status_enum [not null, default: 'ACTIVE', note: 'ACTIVE | DELIVERED | CANCELLED']
+  created_by uuid
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  deleted_at timestamptz [note: 'soft delete']
+}
+
+Table transport_requests {
+  id uuid [pk]
+  request_code varchar(50) [not null, unique]
+  cargo_id uuid
+  status transport_request_status_enum [not null, default: 'CREATED', note: 'CREATED | READY_TO_ASSIGN | BLOCKED | PICKING_UP | DELIVERING | DELIVERY_COMPLETED | CANCELLED | FAILED']
+  metadata jsonb [not null, default: '{}', note: 'assignedVehicleName, to1Name/to2Name/to3Name, approachLocationName, blockedReason']
+  assigned_at timestamptz
+  started_at timestamptz
+  completed_at timestamptz
+  cancelled_at timestamptz
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table task_status_transitions {
+  id bigserial [pk]
+  task_id uuid [not null]
+  from_status varchar(30) [note: 'NULL only on the birth row']
+  to_status varchar(30) [not null]
+  trigger varchar(30) [note: 'API | RELEASE_ENGINE | ASSIGNMENT_ENGINE | SAGA']
+  vehicle_name varchar(50)
+  reason text
+  context jsonb [not null, default: '{}']
+  occurred_at timestamptz [not null, default: `now()`]
+  Note: 'Insert-only audit of every task status change; written exclusively by TransportTaskService'
+}
+
+//// ── KPI Instrumentation ─────────────────────────────
+
+Table sse_sessions {
+  id bigserial [pk]
+  connected_at timestamptz [not null, default: `now()`]
+  ended_at timestamptz
+  end_reason varchar(100)
+  Note: 'One row per kernel SSE (re)connect; analysis never computes intervals across two sessions'
+}
+
+Table vehicle_state_transitions {
+  id bigserial [pk]
+  session_id bigint [not null]
+  vehicle_name varchar(50) [not null]
+  point_name varchar(50)
+  proc_state varchar(30)
+  vehicle_state varchar(30)
+  order_name varchar(80)
+  occurred_at timestamptz [not null]
+  Note: 'Insert-only log of observed vehicle state changes, batch-written by FleetTelemetryService'
+}
+
+//// ── Relationships ───────────────────────────────────
+
+// enforced FK constraints (TypeORM relations)
+Ref: user_roles.user_id > users.id [delete: cascade]
+Ref: user_roles.role_id > roles.id
+Ref: zone_members.zone_id > zones.id [delete: cascade]
+
+// semantic references (plain uuid/bigint columns, no DB constraint)
+Ref: refresh_tokens.user_id > users.id
+Ref: user_sessions.user_id > users.id
+Ref: password_reset_tokens.user_id > users.id
+Ref: user_preferences.user_id - users.id
+Ref: user_roles.assigned_by > users.id
+Ref: agvs.created_by_id > users.id
+Ref: map_records.uploaded_by_id > users.id
+Ref: cargos.source_zone_id > zones.id
+Ref: cargos.destination_zone_id > zones.id
+Ref: cargos.created_by > users.id
+Ref: transport_requests.cargo_id > cargos.id
+Ref: task_status_transitions.task_id > transport_requests.id
+Ref: vehicle_state_transitions.session_id > sse_sessions.id
+
+TableGroup user_auth {
+  users
+  roles
+  user_roles
+  refresh_tokens
+  user_sessions
+  password_reset_tokens
+  user_preferences
+}
+
+TableGroup topology {
+  zones
+  zone_members
+  map_records
+}
+
+TableGroup core_business {
+  cargos
+  transport_requests
+  task_status_transitions
+}
+
+TableGroup instrumentation {
+  sse_sessions
+  vehicle_state_transitions
+}
