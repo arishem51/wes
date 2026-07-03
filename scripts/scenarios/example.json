@@ -1,0 +1,8 @@
+{
+  "label": "example_batch3_2burst",
+  "notes": "replace destinationZoneId with real zone UUIDs (GET /api/zones) and sourcePointName with real map points",
+  "cargos": [
+    { "atMs": 0, "sourcePointName": "REPLACE-SOURCE-POINT", "destinationZoneId": "REPLACE-ZONE-UUID", "count": 3 },
+    { "atMs": 8000, "sourcePointName": "REPLACE-SOURCE-POINT", "destinationZoneId": "REPLACE-ZONE-UUID", "count": 3 }
+  ]
+}
