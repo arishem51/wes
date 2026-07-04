@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Subscription } from 'rxjs';
 import type { KernelVehicleState } from './kernel-api.service';
 import { SseSessionEntity } from './entities/sse-session.entity';
@@ -22,7 +22,12 @@ interface VehicleSnapshot {
   order: string | null;
 }
 
-type PendingRow = Omit<VehicleStateTransitionEntity, 'id' | 'sessionId'>;
+// occurred_at is omitted here — it's stamped by Postgres now() at flush time
+// (see flush), so every table shares one clock and window cuts never drift.
+type PendingRow = Omit<
+  VehicleStateTransitionEntity,
+  'id' | 'sessionId' | 'occurredAt'
+>;
 
 /**
  * Evaluation telemetry: records every observed change of a vehicle's
@@ -73,6 +78,12 @@ export class FleetTelemetryService
     // A dangling session means the previous close never ran (shouldn't happen,
     // but a reconnect must not attribute new rows to the old session).
     await this.closeSession('superseded by new connection');
+    // The in-memory close above can only reach this process's own session; a
+    // previous process that exited non-gracefully (crash, start:dev reload)
+    // leaves its session row open forever. A fresh connect owns no live
+    // session, so any still-open row is orphaned — reap them all before
+    // opening the new one (must run before the create below, or it closes it).
+    await this.reapOrphanedSessions();
     try {
       const session = await this.sessionRepo.save(this.sessionRepo.create({}));
       this.sessionId = String(session.id);
@@ -83,6 +94,24 @@ export class FleetTelemetryService
     } catch (err) {
       this.logger.error(
         `Failed to open SSE session: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Close any sse_sessions left open by a prior process that never got to run
+   * closeSession (crash / dev reload). Their exact end time is unknown, so we
+   * stamp now(); analysis partitions by session_id regardless.
+   */
+  private async reapOrphanedSessions(): Promise<void> {
+    try {
+      await this.sessionRepo.update(
+        { endedAt: IsNull() },
+        { endedAt: new Date(), endReason: 'orphaned (process exit)' },
+      );
+    } catch (err) {
+      this.logger.error(
+        `Failed to reap orphaned SSE sessions: ${(err as Error).message}`,
       );
     }
   }
@@ -131,7 +160,11 @@ export class FleetTelemetryService
       procState: snapshot.procState,
       vehicleState: snapshot.state,
       orderName: snapshot.order,
-      occurredAt: state.observedAt ? new Date(state.observedAt) : new Date(),
+      // occurred_at is set by Postgres now() at flush — the host (Node) clock
+      // and the Postgres/Docker clock drift by minutes here, so authoring it in
+      // Node would put telemetry in a different frame than runs. The kernel's
+      // own SSE timestamp is kept in observed_at for skew diagnostics only.
+      observedAt: state.observedAt ? new Date(state.observedAt) : null,
     });
   }
 
@@ -144,7 +177,7 @@ export class FleetTelemetryService
     this.buffer = [];
     try {
       await this.transitionRepo.insert(
-        rows.map((row) => ({ ...row, sessionId })),
+        rows.map((row) => ({ ...row, sessionId, occurredAt: () => 'now()' })),
       );
     } catch (err) {
       this.logger.error(

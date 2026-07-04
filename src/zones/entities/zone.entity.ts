@@ -30,6 +30,10 @@ export class ZoneEntity {
   @Column({ type: 'enum', enum: ZoneType, enumName: 'zone_type_enum' })
   type!: ZoneType;
 
+  /** Hex color (#RRGGBB) used to render the zone's slots on the map. */
+  @Column({ type: 'varchar', length: 9, nullable: true })
+  color!: string | null;
+
   /** Unique sequential ID used to name openTCS locations. NULL for PICKUP zones. */
   @Column({ name: 'kernel_id', type: 'integer', nullable: true, unique: true })
   kernelId!: number | null;

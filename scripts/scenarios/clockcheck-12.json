@@ -1,0 +1,18 @@
+{
+  "label": "clockcheck_12_zoneA2",
+  "notes": "12 cargo burst → empty zone â (36 slots), 5 AGV. Verifies clock fix over a multi-minute run: both task-side AND vehicle-side (f) should now be RELIABLE.",
+  "cargos": [
+    { "atMs": 0, "sourcePointName": "0100", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0106", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0110", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0116", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0120", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0136", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0140", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0155", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0160", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0166", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0170", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" },
+    { "atMs": 0, "sourcePointName": "0176", "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5" }
+  ]
+}

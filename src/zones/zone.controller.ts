@@ -5,12 +5,13 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ZoneService } from './zone.service';
-import { CreateZoneDto } from './zone.dto';
+import { CreateZoneDto, UpdateZoneDto } from './zone.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('zones')
@@ -25,6 +26,11 @@ export class ZoneController {
   @Post()
   create(@Body() dto: CreateZoneDto) {
     return this.zones.create(dto);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateZoneDto) {
+    return this.zones.update(id, dto);
   }
 
   @Delete(':id')

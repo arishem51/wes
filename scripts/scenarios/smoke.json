@@ -1,0 +1,9 @@
+{
+  "label": "smoke_test",
+  "notes": "3 cargo at t=0, dropoff zone bbb — pipeline sanity check",
+  "cargos": [
+    { "atMs": 0, "sourcePointName": "0102", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0104", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0106", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" }
+  ]
+}

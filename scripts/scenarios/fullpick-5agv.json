@@ -1,0 +1,21 @@
+{
+  "label": "fullpick_5agv_15cargo",
+  "notes": "15 cargo burst at t=0 → zone bbb, saturate 5 AGVs (3 waves). Measures throughput + interference f under load.",
+  "cargos": [
+    { "atMs": 0, "sourcePointName": "0100", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0105", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0110", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0116", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0120", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0135", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0140", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0143", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0155", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0160", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0165", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0170", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0173", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0176", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0179", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" }
+  ]
+}

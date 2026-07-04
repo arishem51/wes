@@ -21,7 +21,7 @@
  *   DATABASE_URL   Postgres connection string (required)
  *   WES_BASE_URL   default http://localhost:3000/api
  *   WES_USER       default quan.tran
- *   WES_PASS       default Admin@123
+ *   WES_PASS       default Wes@1234
  *   POLL_MS        completion poll interval, default 2000
  *   TIMEOUT_MS     max wait for completion, default 600000 (10 min)
  *
@@ -47,12 +47,30 @@ const { Client } = require('pg');
 
 const TERMINAL = new Set(['DELIVERY_COMPLETED', 'FAILED', 'CANCELLED']);
 
+/**
+ * Minimal .env loader (no dependency): fills process.env from ./.env for any
+ * key not already set, so DATABASE_URL etc. don't have to be typed inline.
+ */
+function loadEnv() {
+  const envPath = path.resolve(process.cwd(), '.env');
+  if (!fs.existsSync(envPath)) return;
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!m) continue;
+    const key = m[1];
+    let val = m[2].replace(/^["']|["']$/g, '');
+    if (process.env[key] === undefined) process.env[key] = val;
+  }
+}
+
 function parseArgs(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--label') out.label = argv[++i];
     else if (a === '--notes') out.notes = argv[++i];
+    else if (a === '--user') out.user = argv[++i];
+    else if (a === '--pass') out.pass = argv[++i];
     else out._.push(a);
   }
   return out;
@@ -63,6 +81,7 @@ function sleep(ms) {
 }
 
 async function main() {
+  loadEnv();
   const args = parseArgs(process.argv.slice(2));
   const scenarioPath = args._[0];
   if (!scenarioPath) {
@@ -77,8 +96,8 @@ async function main() {
   }
 
   const baseUrl = (process.env.WES_BASE_URL ?? 'http://localhost:3000/api').replace(/\/$/, '');
-  const user = process.env.WES_USER ?? 'quan.tran';
-  const pass = process.env.WES_PASS ?? 'Admin@123';
+  const user = args.user ?? process.env.WES_USER ?? 'quan.tran';
+  const pass = args.pass ?? process.env.WES_PASS ?? 'Wes@1234';
   const pollMs = Number(process.env.POLL_MS ?? 2000);
   const timeoutMs = Number(process.env.TIMEOUT_MS ?? 600000);
 

@@ -11,7 +11,7 @@ import { ZoneEntity, ZoneStatus, ZoneType } from './entities/zone.entity';
 import { ZoneMemberEntity } from './entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { savePlantModel } from '../opentcs/save-plant-model';
-import type { CreateZoneDto } from './zone.dto';
+import type { CreateZoneDto, UpdateZoneDto } from './zone.dto';
 import {
   checkZoneReachability,
   computeFeederPoints,
@@ -20,6 +20,34 @@ import {
 
 export const LOCATION_PREFIX = 'location_';
 export const ZONE_PREFIX = 'zone_';
+
+/**
+ * Curated, contrast-safe hues used to color zones on the map. When an operator
+ * creates a zone without picking a color we auto-assign the least-used hue so
+ * two active zones never collide (and never land on a washed-out random value).
+ */
+export const ZONE_COLOR_PALETTE = [
+  '#2563eb', // blue
+  '#dc2626', // red
+  '#16a34a', // green
+  '#d97706', // amber
+  '#7c3aed', // violet
+  '#0891b2', // cyan
+  '#db2777', // pink
+  '#65a30d', // lime
+  '#ea580c', // orange
+  '#0d9488', // teal
+  '#9333ea', // purple
+  '#ca8a04', // gold
+  '#e11d48', // rose
+  '#4f46e5', // indigo
+  '#059669', // emerald
+  '#c026d3', // fuchsia
+  '#0284c7', // sky
+  '#b45309', // bronze
+  '#15803d', // pine
+  '#be123c', // crimson
+] as const;
 
 export interface SyncResult {
   total: number;
@@ -70,6 +98,8 @@ export class ZoneService {
       );
     }
 
+    const color = dto.color ?? (await this.pickDefaultColor());
+
     const savedZoneId = await this.dataSource.transaction(async (manager) => {
       const zoneRepo = manager.getRepository(ZoneEntity);
       const memberRepo = manager.getRepository(ZoneMemberEntity);
@@ -86,6 +116,7 @@ export class ZoneService {
       const zone = zoneRepo.create({
         name: dto.name,
         type: dto.type,
+        color,
         kernelId,
         approachLocationName:
           kernelId != null ? `${ZONE_PREFIX}${kernelId}` : null,
@@ -122,6 +153,43 @@ export class ZoneService {
       where: { id: savedZoneId },
       relations: { members: true },
     });
+  }
+
+  async update(id: string, dto: UpdateZoneDto): Promise<ZoneEntity> {
+    const zone = await this.zoneRepo.findOne({
+      where: { id },
+      relations: { members: true },
+    });
+    if (!zone) {
+      throw new NotFoundException('Khu vực không tồn tại.');
+    }
+    zone.color = dto.color;
+    return this.zoneRepo.save(zone);
+  }
+
+  /**
+   * Picks the palette hue least used by ACTIVE zones so a fresh zone stays
+   * visually distinct. Ties resolve to palette order (deterministic).
+   */
+  private async pickDefaultColor(): Promise<string> {
+    const zones = await this.zoneRepo.find({
+      where: { status: ZoneStatus.ACTIVE },
+      select: { id: true, color: true },
+    });
+    const usage = new Map<string, number>();
+    for (const zone of zones) {
+      if (zone.color) usage.set(zone.color, (usage.get(zone.color) ?? 0) + 1);
+    }
+    let best = ZONE_COLOR_PALETTE[0] as string;
+    let bestCount = Infinity;
+    for (const color of ZONE_COLOR_PALETTE) {
+      const count = usage.get(color) ?? 0;
+      if (count < bestCount) {
+        bestCount = count;
+        best = color;
+      }
+    }
+    return best;
   }
 
   private async applyDropoffZoneToKernel(

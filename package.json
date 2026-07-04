@@ -14,6 +14,7 @@
     "start:prod": "node dist/main",
     "seed": "ts-node src/database/seed.ts",
     "scenario": "node scripts/run-scenario.js",
+    "analyze": "node scripts/analyze.js",
     "migration:run": "node src/database/migration-cli.js migration:run -d src/database/data-source.ts",
     "migration:revert": "node src/database/migration-cli.js migration:revert -d src/database/data-source.ts",
     "migration:show": "node src/database/migration-cli.js migration:show -d src/database/data-source.ts",

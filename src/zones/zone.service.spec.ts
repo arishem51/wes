@@ -9,6 +9,7 @@ const makeZone = (overrides: Partial<ZoneEntity> = {}): ZoneEntity => ({
   id: 'zone-1',
   name: 'Dropoff A',
   type: ZoneType.DROPOFF,
+  color: '#2563eb',
   kernelId: 1,
   approachLocationName: 'zone_1',
   status: ZoneStatus.ACTIVE,

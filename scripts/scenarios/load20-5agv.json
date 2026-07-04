@@ -1,0 +1,26 @@
+{
+  "label": "load20_5agv_burst",
+  "notes": "20 cargo burst at t=0 → zone bbb (36 slots), 5 AGVs. ~4 waves. Deeper saturation + more same-lane gate-check blocks than the 10-cargo run.",
+  "cargos": [
+    { "atMs": 0, "sourcePointName": "0100", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0103", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0106", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0109", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0114", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0117", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0120", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0129", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0136", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0139", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0142", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0154", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0157", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0160", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0163", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0166", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0169", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0172", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0175", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" },
+    { "atMs": 0, "sourcePointName": "0178", "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2" }
+  ]
+}

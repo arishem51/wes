@@ -25,13 +25,29 @@ export class VehicleStateTransitionEntity {
   @Column({ name: 'proc_state', type: 'varchar', length: 30, nullable: true })
   procState!: string | null;
 
-  @Column({ name: 'vehicle_state', type: 'varchar', length: 30, nullable: true })
+  @Column({
+    name: 'vehicle_state',
+    type: 'varchar',
+    length: 30,
+    nullable: true,
+  })
   vehicleState!: string | null;
 
   @Column({ name: 'order_name', type: 'varchar', length: 80, nullable: true })
   orderName!: string | null;
 
-  /** Kernel-side observation time when the SSE payload carries one, else ingest time. */
+  /**
+   * Host ingest time (WES/Postgres clock). Authoritative for cutting a run's
+   * time window — the same clock as runs / task_status_transitions.
+   */
   @Column({ name: 'occurred_at', type: 'timestamptz' })
   occurredAt!: Date;
+
+  /**
+   * Kernel-side SSE timestamp (openTCS clock), null when the payload carries
+   * none. Diagnostics only (host↔kernel skew) — never used for windowing,
+   * since the kernel clock can drift from the host.
+   */
+  @Column({ name: 'observed_at', type: 'timestamptz', nullable: true })
+  observedAt!: Date | null;
 }

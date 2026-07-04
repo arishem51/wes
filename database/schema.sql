@@ -463,6 +463,7 @@ CREATE TABLE zones (
   id                     UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name                   VARCHAR(255) NOT NULL,
   type                   zone_type_enum NOT NULL,
+  color                  VARCHAR(9),
   kernel_id              INTEGER UNIQUE,
   approach_location_name VARCHAR(255),
   status                 zone_status_enum NOT NULL DEFAULT 'ACTIVE',
