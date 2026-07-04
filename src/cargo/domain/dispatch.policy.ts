@@ -13,6 +13,14 @@ export interface VehicleCandidate {
   readonly ignored: boolean;
   /** FMS reports the vehicle integrated and idle/awaiting an order. */
   readonly available: boolean;
+  /**
+   * En route to (or sitting on) a WES-issued park/charge order with no cargo task
+   * — dispatchable, but its order must be withdrawn before assigning. Lets a
+   * vehicle already heading to park be pulled back for cargo the instant it lands.
+   */
+  readonly preemptibleParking: boolean;
+  /** Order to withdraw when preempting this vehicle; null when not preemptible. */
+  readonly parkOrderName: string | null;
   readonly energyLevel: number;
   readonly operationalThreshold: number;
   /** openTCS point the vehicle currently occupies, or null if not localized. */
@@ -25,7 +33,7 @@ export function isEligible(c: VehicleCandidate): boolean {
   return (
     c.dispatchEnabled &&
     !c.ignored &&
-    c.available &&
+    (c.available || c.preemptibleParking) &&
     !c.hasActiveTask &&
     c.energyLevel > c.operationalThreshold
   );

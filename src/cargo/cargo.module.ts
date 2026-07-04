@@ -10,6 +10,7 @@ import { CargoController } from './cargo.controller';
 import { TransportTaskService } from './transport-task.service';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
+import { ParkingEngineService } from './parking-engine.service';
 import { TransportTaskSaga } from './transport-task.saga';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
@@ -38,6 +39,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     RoutingService,
     ReleaseEngineService,
     AssignmentEngineService,
+    ParkingEngineService,
     DispatchSchedulerService,
     TransportTaskSaga,
   ],

@@ -25,6 +25,15 @@ export const ORDER_PROP = {
   LEG: 'wes:leg',
 } as const;
 
+/**
+ * Prefix WES stamps on every park-order name. WES owns this name, so a vehicle's
+ * order can be classified as a park order from the vehicle snapshot alone
+ * (`transportOrder` starts with this) — no order fetch, and no unsafe inference
+ * from "processing + no task" that could mistake a cargo order for a park order.
+ * Cargo orders use the PICKUP-/APPROACH-/DROPOFF- prefixes instead.
+ */
+export const PARK_ORDER_PREFIX = 'PARK-';
+
 export class TransportTaskCreatedEvent {
   constructor(
     readonly taskId: string,

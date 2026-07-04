@@ -12,6 +12,8 @@ const candidate = (
   dispatchEnabled: true,
   ignored: false,
   available: true,
+  preemptibleParking: false,
+  parkOrderName: null,
   energyLevel: 80,
   operationalThreshold: 20,
   currentPosition: null,
@@ -43,6 +45,36 @@ describe('dispatch.policy', () => {
       expect(
         isEligible(candidate({ energyLevel: 21, operationalThreshold: 20 })),
       ).toBe(true);
+    });
+
+    it('accepts a vehicle en route to park (preemptible) though not idle', () => {
+      expect(
+        isEligible(
+          candidate({
+            available: false,
+            preemptibleParking: true,
+            parkOrderName: 'PARK-abc',
+          }),
+        ),
+      ).toBe(true);
+    });
+
+    it.each([
+      ['it already has a task', { hasActiveTask: true }],
+      ['its battery is at threshold', { energyLevel: 20 }],
+      ['dispatch is disabled', { dispatchEnabled: false }],
+    ])('still rejects a preemptible vehicle when %s', (_label, overrides) => {
+      expect(
+        isEligible(
+          candidate({
+            available: false,
+            preemptibleParking: true,
+            parkOrderName: 'PARK-abc',
+            operationalThreshold: 20,
+            ...overrides,
+          }),
+        ),
+      ).toBe(false);
     });
   });
 

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
+import { ParkingEngineService } from './parking-engine.service';
 import { FMS_EVENTS, TRANSPORT_TASK_EVENTS } from './domain/events';
 
 const DEBOUNCE_MS = 1_500;
@@ -14,6 +15,7 @@ export class DispatchSchedulerService implements OnApplicationBootstrap {
   constructor(
     private readonly releaseEngine: ReleaseEngineService,
     private readonly assignmentEngine: AssignmentEngineService,
+    private readonly parkingEngine: ParkingEngineService,
   ) {}
 
   // Triggers are debounced in memory, so a restart drops any pending flush.
@@ -51,6 +53,7 @@ export class DispatchSchedulerService implements OnApplicationBootstrap {
     try {
       await this.releaseEngine.run();
       await this.assignmentEngine.run();
+      await this.parkingEngine.run();
     } catch (err) {
       this.logger.error(
         `Flush failed: ${(err as Error).message}`,

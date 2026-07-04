@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { In, Repository } from 'typeorm';
-import { ORDER_PROP } from './domain/events';
+import { ORDER_PROP, PARK_ORDER_PREFIX } from './domain/events';
 import {
   TransportTaskEntity,
   TaskStatus,
@@ -30,6 +30,24 @@ function isFmsDispatchable(state: KernelVehicleState | undefined): boolean {
     (state.procState === 'IDLE' || state.procState === 'AWAITING_ORDER') &&
     state.integrationLevel === 'TO_BE_UTILIZED'
   );
+}
+
+/**
+ * The order name to withdraw to preempt a vehicle driving to park, or null if it
+ * is not preemptible. Identified by the PARK- name prefix WES itself stamps —
+ * NOT inferred from "processing + no task", which could mistake a cargo order
+ * (PICKUP-/APPROACH-/DROPOFF-) whose task is momentarily untracked (cancelled,
+ * failed, or mid-assign) for a park order and wrongly withdraw it. The caller
+ * still gates on no-active-task and battery.
+ */
+function preemptibleParkOrderName(
+  state: KernelVehicleState | undefined,
+): string | null {
+  return state?.procState === 'PROCESSING_ORDER' &&
+    state.integrationLevel === 'TO_BE_UTILIZED' &&
+    state.transportOrder?.startsWith(PARK_ORDER_PREFIX)
+    ? state.transportOrder
+    : null;
 }
 
 @Injectable()
@@ -93,7 +111,13 @@ export class AssignmentEngineService {
       );
       if (!vehicle) break; // no eligible AGV right now — try again next cycle
 
-      const assigned = await this.assign(task, cargo, vehicle.name, distance);
+      const assigned = await this.assign(
+        task,
+        cargo,
+        vehicle.name,
+        distance,
+        vehicle.parkOrderName,
+      );
       if (assigned) {
         // Don't hand the same vehicle two tasks in one cycle.
         vehicle.hasActiveTask = true;
@@ -131,15 +155,22 @@ export class AssignmentEngineService {
 
     return agvs.map((agv) => {
       const fms = this.vehicleStore.get(agv.name);
+      const hasActiveTask = busy.has(agv.name);
+      // Only a vehicle without a cargo task can be preempted from parking.
+      const parkOrderName = hasActiveTask
+        ? null
+        : preemptibleParkOrderName(fms);
       return {
         name: agv.name,
         dispatchEnabled: agv.isDispatchEnabled,
         ignored: agv.isIgnored,
         available: isFmsDispatchable(fms),
+        preemptibleParking: parkOrderName !== null,
+        parkOrderName,
         energyLevel: fms?.energyLevel ?? 0,
         operationalThreshold: agv.operationalBatteryThreshold,
         currentPosition: fms?.currentPosition ?? null,
-        hasActiveTask: busy.has(agv.name),
+        hasActiveTask,
       };
     });
   }
@@ -161,12 +192,32 @@ export class AssignmentEngineService {
     cargo: CargoEntity | null,
     vehicleName: string,
     distanceToSource: number | null,
+    parkOrderName: string | null,
   ): Promise<boolean> {
     // TO1 (PICK_UP) only needs the source; the drop-off slot is committed later,
     // at the TO2 barrier, so destinationLocationName is intentionally still null.
     if (!cargo?.sourcePickupLocationName) {
       this.logger.warn(`Task ${task.id} missing pickup location — skipping`);
       return false;
+    }
+
+    // Preempt: this vehicle is en route to a park order. Withdraw it first so the
+    // kernel frees the vehicle to take the pickup (graceful withdraw — it halts at
+    // the next point, then TO1 dispatches). Abort on failure; the task stays
+    // READY_TO_ASSIGN and is retried next cycle. The ParkingEngine's point
+    // reservation clears on its own once the vehicle leaves the park order.
+    if (parkOrderName) {
+      try {
+        await this.kernelApi.withdrawTransportOrder(parkOrderName);
+        this.logger.log(
+          `Preempting park order ${parkOrderName} on ${vehicleName} for task ${task.id}`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to withdraw park order ${parkOrderName} on ${vehicleName}: ${(err as Error).message}`,
+        );
+        return false;
+      }
     }
 
     // Opaque unique name so re-assigning a task (e.g. after a preempt) never

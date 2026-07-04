@@ -20,6 +20,7 @@ import { VehicleStateStore } from './vehicle-state.store';
 import { FleetTelemetryService } from './fleet-telemetry.service';
 
 const RETRY_DELAY_MS = 3_000;
+const HEARTBEAT_MS = Number(process.env.DISPATCH_HEARTBEAT_MS ?? 5_000);
 
 interface TCSObjectState {
   name: string;
@@ -44,6 +45,7 @@ export class KernelEventListenerService
   private readonly baseUrl: string;
   private destroyed = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private currentRequest: http.ClientRequest | null = null;
 
   constructor(
@@ -57,12 +59,51 @@ export class KernelEventListenerService
 
   onApplicationBootstrap(): void {
     this.connect();
+    this.startHeartbeat();
   }
 
   onApplicationShutdown(): void {
     this.destroyed = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.currentRequest?.destroy();
+  }
+
+  /**
+   * Level-triggered backstop for the edge-triggered SSE stream. SSE deltas can be
+   * lost — a dropped frame, a hot-reload, a transient network blip — leaving the
+   * store stale with no reconnect to re-seed it. A missed "→ IDLE" frame keeps a
+   * finished vehicle looking PROCESSING_ORDER, so dispatch never re-considers it
+   * and it stalls forever. Every HEARTBEAT_MS we re-pull the authoritative REST
+   * snapshot into the store and poke the dispatch cycle, so any drift self-heals
+   * within one tick regardless of which SSE events were delivered. SSE stays the
+   * low-latency fast path; this is the correctness guarantee.
+   */
+  private startHeartbeat(): void {
+    this.heartbeatTimer = setInterval(() => {
+      void this.reconcileVehicleStates();
+    }, HEARTBEAT_MS);
+  }
+
+  private async reconcileVehicleStates(): Promise<void> {
+    if (this.destroyed) return;
+    const vehicles = await this.kernelApi.getVehicleStates();
+    // Empty ⇒ kernel unreachable/erroring: keep the last-known state rather than
+    // wiping the store, and skip the dispatch poke this tick.
+    if (vehicles.length === 0) return;
+
+    for (const v of vehicles) {
+      const existing = this.vehicleStateStore.get(v.name);
+      // Kernel snapshot is the source of truth for every dispatch-relevant field;
+      // preserve only the SSE-derived observedAt (REST carries no kernel timestamp).
+      const next: KernelVehicleState = { ...v };
+      if (existing?.observedAt) next.observedAt = existing.observedAt;
+      this.vehicleStateStore.set(v.name, next);
+    }
+    // Null payload = "re-evaluate the fleet" (same signal seedStore uses). The
+    // DispatchScheduler debounces this into its normal flush, so an event burst
+    // and this heartbeat coalesce into one dispatch cycle.
+    this.eventEmitter.emit(FMS_EVENTS.VEHICLE_AVAILABLE, null);
   }
 
   private connect(): void {
