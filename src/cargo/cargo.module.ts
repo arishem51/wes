@@ -11,6 +11,7 @@ import { TransportTaskService } from './transport-task.service';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
 import { ParkingEngineService } from './parking-engine.service';
+import { LegReconcileService } from './leg-reconcile.service';
 import { TransportTaskSaga } from './transport-task.saga';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
@@ -40,6 +41,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     ReleaseEngineService,
     AssignmentEngineService,
     ParkingEngineService,
+    LegReconcileService,
     DispatchSchedulerService,
     TransportTaskSaga,
   ],

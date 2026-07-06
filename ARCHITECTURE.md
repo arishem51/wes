@@ -157,8 +157,12 @@ cargoId), `TransportTaskCompletedEvent`, `TransportTaskFailedEvent`,
 ### 3.4 Emitting
 - Transport-task events are emitted **only** by `TransportTaskService`, **after**
   the DB write so consumers see fresh state.
-- `fms.*` events are emitted **only** by `KernelEventListenerService` (in `opentcs/`).
-- No other class emits these events.
+- `fms.*` events are emitted by `KernelEventListenerService` (in `opentcs/`) on
+  the live SSE stream, and — as a **level-triggered backstop** — re-emitted by the
+  reconcilers when a frame was lost (§6.4): the heartbeat re-emits
+  `fms.vehicle.available`, and `LegReconcileService` re-emits
+  `fms.transport-order.finished`. No other class emits `fms.*`. Re-emission is
+  safe because every `fms.*` consumer is idempotent.
 
 ### 3.5 Consuming
 - Use `@OnEvent('...')` (array form for multiple events) on a service method.
@@ -184,11 +188,13 @@ TransportTaskService        = the only writer of task.status; on each change
 DispatchSchedulerService   ← @OnEvent(['transport-task.created',
                                         'transport-task.status-changed',
                                         'fms.vehicle.available'])
-                             debounced (1.5s) flush → release → assign
+                             debounced (1.5s) flush:
+                             leg-reconcile → release → assign → park
 ```
 
 No service calls `DispatchSchedulerService.schedule()` directly. The flush is
-idempotent and debounced, so reacting to every status change is safe.
+idempotent and debounced, so reacting to every status change is safe. A periodic
+heartbeat also drives the flush regardless of events — see §6.4.
 
 ---
 
@@ -312,7 +318,9 @@ vehicle name.
 ```
 eligible AGV =  isDispatchEnabled = true
             AND isIgnored = false
-            AND FMS-available (procState IDLE|AWAITING_ORDER && integrationLevel = TO_BE_UTILIZED)
+            AND ( FMS-available (procState IDLE|AWAITING_ORDER)
+                  OR preemptible-parking (en route to a PARK- order — §6.4) )
+                with integrationLevel = TO_BE_UTILIZED
             AND energyLevel > operationalBatteryThreshold      (strictly greater)
             AND not already on a PICKING_UP/DELIVERING task
 ```
@@ -351,6 +359,41 @@ The anti-congestion gate — the reason this product exists.
   `READY_TO_ASSIGN`; fail → `BLOCKED` with a reason on `metadata`.
 - BLOCKED tasks are re-evaluated on `@OnEvent('transport-task.completed')` (the
   blocker in front was delivered), moving them to `READY_TO_ASSIGN` when freed.
+
+### 6.4 Idle parking, preemption & lost-event reconcile (WES-owned)
+openTCS's own `parkIdleVehicles` is left **off** — WES owns parking so it can
+preempt a park order the instant cargo arrives.
+
+**Park on idle** — `ParkingEngineService`, at the tail of the flush
+(leg-reconcile → release → assign → **park**). A vehicle idle with no cargo work
+for `PARK_IDLE_DELAY_MS` (default 10s) is sent to the nearest free `PARK_POSITION`
+via a `MOVE` order named `PARK-<uuid>` (`PARK_ORDER_PREFIX`, tagged `wes:leg=PARK`;
+the listener's leg gate ignores it so park orders never reach the saga). Rules are
+pure in `cargo/domain/parking.policy.ts` (`needsParking`, `pickParkingPoint`).
+Suppressed while any `READY_TO_ASSIGN` task waits (don't park then preempt). The
+`idleSince` clock and in-flight point reservations (`parkTargets`, which stop two
+vehicles targeting one point) are in-RAM — on restart they simply re-arm.
+
+**Preempt** — a vehicle en route to a park order is an eligible candidate
+(`preemptibleParking`), recognized by the `PARK-` name prefix WES owns (never
+inferred from "processing + no task", which could misclassify a cargo order whose
+task is momentarily untracked). When picked, `assign()` withdraws the park order
+before creating TO1; the `parkTargets` reservation frees itself once the vehicle
+leaves that order.
+
+**Lost-event reconcile** — the in-process bus can drop a frame (restart,
+hot-reload, network blip), so **correctness never depends on an event**. Two
+level-triggered backstops re-pull the kernel's authoritative state on a fixed
+heartbeat (`DISPATCH_HEARTBEAT_MS`, default 5s); SSE stays the low-latency path:
+- **Vehicle stream** — `KernelEventListenerService` re-pulls `GET /v1/vehicles`
+  into the store and emits `fms.vehicle.available`, so a lost "→ IDLE" frame can't
+  strand a finished vehicle.
+- **Order stream** — `LegReconcileService` (first step of the flush) recomputes
+  each live task's expected leg order from its own status/metadata and, only when
+  the vehicle has moved off it, fetches that single order by name: FINISHED →
+  re-emit `fms.transport-order.finished`; FAILED/UNROUTABLE → fail the task. It
+  never pulls the unbounded `/transportOrders` list (history grows without bound);
+  the vehicle snapshot's `transportOrder` field is the cheap change detector.
 
 ---
 

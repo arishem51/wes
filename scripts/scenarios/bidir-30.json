@@ -1,0 +1,156 @@
+{
+  "label": "bidir_30cargo_10agv",
+  "notes": "30 cargo burst → zone â, 10 AGV, on v7-bidir map. MAPF go/no-go: does bidirectional traffic deadlock / spike f?",
+  "cargos": [
+    {
+      "atMs": 0,
+      "sourcePointName": "0100",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0101",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0102",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0103",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0104",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0105",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0106",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0107",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0108",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0109",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0110",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0111",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0116",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0117",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0118",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0119",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0120",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0121",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0135",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0136",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0137",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0138",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0139",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0140",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0141",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0142",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0143",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0154",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0155",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0156",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    }
+  ]
+}

@@ -19,7 +19,12 @@ import {
 /** Evaluation metadata attached to a status change; goes to task_status_transitions only. */
 export interface StatusChangeLog {
   /** Which engine caused the change. */
-  trigger?: 'API' | 'RELEASE_ENGINE' | 'ASSIGNMENT_ENGINE' | 'SAGA';
+  trigger?:
+    | 'API'
+    | 'RELEASE_ENGINE'
+    | 'ASSIGNMENT_ENGINE'
+    | 'SAGA'
+    | 'LEG_RECONCILE';
   reason?: string | null;
   /** Overrides the metadata snapshot (e.g. preempt clears the vehicle before the change). */
   vehicleName?: string | null;

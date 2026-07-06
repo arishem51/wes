@@ -33,6 +33,15 @@ import {
 @Injectable()
 export class TransportTaskSaga {
   private readonly logger = new Logger(TransportTaskSaga.name);
+  /**
+   * Task ids whose finished-event is being handled right now. The same "finished"
+   * arrives from two paths — the live SSE frame and the LegReconcile backstop
+   * re-emitting it — and the per-leg guards below are check-then-act (an await
+   * sits between reading `to2Name`/`to3Name` and writing it), so two concurrent
+   * handlers would both create the next leg. This set makes handling single-flight
+   * per task: while one is in flight, the duplicate returns immediately.
+   */
+  private readonly processing = new Set<string>();
 
   constructor(
     @InjectRepository(TransportTaskEntity)
@@ -52,13 +61,25 @@ export class TransportTaskSaga {
   async onTransportOrderFinished(
     event: FmsTransportOrderFinishedEvent,
   ): Promise<void> {
-    switch (event.leg) {
-      case 'PICKUP':
-        return this.onPickupFinished(event.taskId);
-      case 'APPROACH':
-        return this.onApproachFinished(event.taskId);
-      case 'DROPOFF':
-        return this.onDropOffFinished(event.taskId);
+    // Drop a duplicate finished-event for a task already in flight (see
+    // `processing`). has/add are synchronous, so the lock closes before the first
+    // await — unlike the leg guards it protects.
+    if (this.processing.has(event.taskId)) return;
+    this.processing.add(event.taskId);
+    try {
+      switch (event.leg) {
+        case 'PICKUP':
+          await this.onPickupFinished(event.taskId);
+          break;
+        case 'APPROACH':
+          await this.onApproachFinished(event.taskId);
+          break;
+        case 'DROPOFF':
+          await this.onDropOffFinished(event.taskId);
+          break;
+      }
+    } finally {
+      this.processing.delete(event.taskId);
     }
   }
 

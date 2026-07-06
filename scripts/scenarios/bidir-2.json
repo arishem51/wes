@@ -1,0 +1,16 @@
+{
+  "label": "bidir_2cargo_probe",
+  "notes": "2 cargo → â, 10 AGV, MAPF log probe",
+  "cargos": [
+    {
+      "atMs": 0,
+      "sourcePointName": "0100",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0110",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    }
+  ]
+}
