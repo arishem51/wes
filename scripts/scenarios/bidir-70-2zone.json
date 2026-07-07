@@ -1,0 +1,356 @@
+{
+  "label": "bidir_70cargo_2zone_10agv",
+  "notes": "70 cargo burst, 35->â 35->bbb, 10 AGV, v7-bidir. Stress test after ADG+shouldReplan.",
+  "cargos": [
+    {
+      "atMs": 0,
+      "sourcePointName": "0100",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0101",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0102",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0103",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0104",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0105",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0106",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0107",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0108",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0109",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0110",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0111",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0116",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0117",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0118",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0119",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0120",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0121",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0135",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0136",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0137",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0138",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0139",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0140",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0141",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0142",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0143",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0154",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0155",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0156",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0100",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0101",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0102",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0103",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0104",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0105",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0106",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0107",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0108",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0109",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0110",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0111",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0116",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0117",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0118",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0119",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0120",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0121",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0135",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0136",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0137",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0138",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0139",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0140",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0141",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0142",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0143",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0154",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0155",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0156",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0100",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0101",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0102",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0103",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0104",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0105",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0106",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0107",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0108",
+      "destinationZoneId": "21ccd4b4-eab2-4fa0-8c5d-93ea697d17a5"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0109",
+      "destinationZoneId": "18098f7b-dbab-4dae-9fce-7c2ab48fd3f2"
+    }
+  ]
+}

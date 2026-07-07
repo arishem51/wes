@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model version="7.0.0" name="v7">
+<model version="7.0.0" name="v7-bidir">
     <point name="0004" positionX="230000" positionY="0" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0004 --- 0005"/>
@@ -6036,102 +6036,102 @@
     <path name="0080 --- 0015" sourcePoint="0080" destinationPoint="0015" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <vehicle name="Vehicle-0001" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0001" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0002" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0002" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0003" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0003" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0004" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0004" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0005" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0005" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0006" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0006" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0007" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0007" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0008" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0008" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0009" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0009" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0010" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0010" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0011" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0011" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0012" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0012" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0013" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0013" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0014" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0014" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0015" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0015" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0016" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0016" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0017" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0017" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0018" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0018" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0019" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0019" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0020" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="5000" envelopeKey="">
+    <vehicle name="Vehicle-0020" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
         <vehicleLayout color="#00FF00"/>

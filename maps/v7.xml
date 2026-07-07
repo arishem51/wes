@@ -3506,7 +3506,7 @@
     <path name="0049 --- 0050" sourcePoint="0049" destinationPoint="0050" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <path name="0050 --- 0045" sourcePoint="0050" destinationPoint="0045" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
+    <path name="0050 --- 0045" sourcePoint="0050" destinationPoint="0045" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0050 --- 0051" sourcePoint="0050" destinationPoint="0051" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
