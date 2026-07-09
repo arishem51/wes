@@ -13,7 +13,8 @@ import {
   KernelLocationType,
 } from '../opentcs/kernel-api.service';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
-import { applySingleVehicleBlocks } from '../opentcs/domain/apply-blocks';
+// Auto-generation of single-vehicle lane blocks disabled — see below.
+// import { applySingleVehicleBlocks } from '../opentcs/domain/apply-blocks';
 import { savePlantModel } from '../opentcs/save-plant-model';
 import { MapRecordEntity } from './entities/map-record.entity';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
@@ -210,10 +211,12 @@ export class MapsService {
       );
     }
 
-    // Serialise single-file / dead-end lanes so the kernel scheduler prevents
-    // multi-AGV deadlock on them (SINGLE_VEHICLE_ONLY blocks, graph-derived).
-    const blockCount = applySingleVehicleBlocks(model).blocks.length;
-    this.logger.log(`Generated ${blockCount} single-vehicle lane block(s)`);
+    // Auto-generation of single-vehicle lane blocks (SVB-*) DISABLED.
+    // Previously WES derived SINGLE_VEHICLE_ONLY blocks from the path graph to
+    // serialise single-file / dead-end lanes; only hand-authored blocks in the
+    // uploaded XML are kept now.
+    // const blockCount = applySingleVehicleBlocks(model).blocks.length;
+    // this.logger.log(`Generated ${blockCount} single-vehicle lane block(s)`);
 
     await savePlantModel(this.kernelApi, model);
 

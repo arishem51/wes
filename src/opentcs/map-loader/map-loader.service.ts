@@ -4,7 +4,8 @@ import { resolve } from 'path';
 import { AxiosError } from 'axios';
 import { KernelApiService } from '../kernel-api.service';
 import { parseOpenTcsXml, PlantModelDto } from './opentcs-xml.parser';
-import { applySingleVehicleBlocks } from '../domain/apply-blocks';
+// Auto-generation of single-vehicle lane blocks disabled — see below.
+// import { applySingleVehicleBlocks } from '../domain/apply-blocks';
 
 @Injectable()
 export class MapLoaderService implements OnApplicationBootstrap {
@@ -50,10 +51,12 @@ export class MapLoaderService implements OnApplicationBootstrap {
       return;
     }
 
-    // Serialise single-file / dead-end lanes to prevent multi-AGV deadlock
-    // (SINGLE_VEHICLE_ONLY blocks derived from the path graph).
-    const blockCount = applySingleVehicleBlocks(model).blocks.length;
-    this.logger.log(`Generated ${blockCount} single-vehicle lane block(s)`);
+    // Auto-generation of single-vehicle lane blocks (SVB-*) DISABLED.
+    // Previously WES derived SINGLE_VEHICLE_ONLY blocks from the path graph to
+    // serialise single-file / dead-end lanes; only hand-authored blocks in the
+    // loaded map XML are kept now.
+    // const blockCount = applySingleVehicleBlocks(model).blocks.length;
+    // this.logger.log(`Generated ${blockCount} single-vehicle lane block(s)`);
 
     try {
       await this.kernelApi.putPlantModel(model);
