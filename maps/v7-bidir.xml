@@ -303,110 +303,110 @@
     </point>
     <point name="0058" positionX="65000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0058 --- 0059"/>
         <outgoingPath name="0058 --- 0037"/>
+        <outgoingPath name="0058 --- 0059"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0059" positionX="70000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0059 --- 0060"/>
         <outgoingPath name="0059 --- 0036"/>
+        <outgoingPath name="0059 --- 0060"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0060" positionX="75000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0060 --- 0061"/>
         <outgoingPath name="0060 --- 0035"/>
+        <outgoingPath name="0060 --- 0061"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0061" positionX="80000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0061 --- 0062"/>
         <outgoingPath name="0061 --- 0034"/>
+        <outgoingPath name="0061 --- 0062"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0062" positionX="85000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0062 --- 0063"/>
         <outgoingPath name="0062 --- 0033"/>
+        <outgoingPath name="0062 --- 0063"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0063" positionX="90000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0063 --- 0064"/>
         <outgoingPath name="0063 --- 0032"/>
+        <outgoingPath name="0063 --- 0064"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0064" positionX="95000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0064 --- 0065"/>
         <outgoingPath name="0064 --- 0031"/>
+        <outgoingPath name="0064 --- 0065"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0065" positionX="100000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0065 --- 0066"/>
         <outgoingPath name="0065 --- 0030"/>
+        <outgoingPath name="0065 --- 0066"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0066" positionX="105000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0066 --- 0067"/>
         <outgoingPath name="0066 --- 0029"/>
+        <outgoingPath name="0066 --- 0067"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0067" positionX="110000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0067 --- 0068"/>
         <outgoingPath name="0067 --- 0028"/>
+        <outgoingPath name="0067 --- 0068"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0068" positionX="115000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0068 --- 0069"/>
         <outgoingPath name="0068 --- 0027"/>
+        <outgoingPath name="0068 --- 0069"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0069" positionX="120000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0069 --- 0070"/>
         <outgoingPath name="0069 --- 0026"/>
+        <outgoingPath name="0069 --- 0070"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0070" positionX="125000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0070 --- 0071"/>
         <outgoingPath name="0070 --- 0025"/>
+        <outgoingPath name="0070 --- 0071"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0071" positionX="130000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0071 --- 0072"/>
         <outgoingPath name="0071 --- 0024"/>
+        <outgoingPath name="0071 --- 0072"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0072" positionX="135000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0072 --- 0073"/>
         <outgoingPath name="0072 --- 0023"/>
+        <outgoingPath name="0072 --- 0073"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0073" positionX="140000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0073 --- 0074"/>
         <outgoingPath name="0073 --- 0022"/>
+        <outgoingPath name="0073 --- 0074"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0074" positionX="145000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0074 --- 0075"/>
         <outgoingPath name="0074 --- 0021"/>
+        <outgoingPath name="0074 --- 0075"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0075" positionX="150000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0075 --- 0076"/>
         <outgoingPath name="0075 --- 0020"/>
+        <outgoingPath name="0075 --- 0076"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0076" positionX="155000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
@@ -416,26 +416,26 @@
     </point>
     <point name="0077" positionX="160000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0077 --- 0078"/>
         <outgoingPath name="0077 --- 0018"/>
+        <outgoingPath name="0077 --- 0078"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0078" positionX="165000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0078 --- 0079"/>
         <outgoingPath name="0078 --- 0017"/>
+        <outgoingPath name="0078 --- 0079"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0079" positionX="170000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0079 --- 0080"/>
         <outgoingPath name="0079 --- 0016"/>
+        <outgoingPath name="0079 --- 0080"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0080" positionX="175000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0080 --- 0081"/>
         <outgoingPath name="0080 --- 0015"/>
+        <outgoingPath name="0080 --- 0081"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="0081" positionX="180000" positionY="5000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
@@ -3576,55 +3576,109 @@
     <path name="0057 --- 0058" sourcePoint="0057" destinationPoint="0058" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0058 --- 0037" sourcePoint="0058" destinationPoint="0037" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0058 --- 0059" sourcePoint="0058" destinationPoint="0059" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0059 --- 0036" sourcePoint="0059" destinationPoint="0036" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0059 --- 0060" sourcePoint="0059" destinationPoint="0060" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0060 --- 0035" sourcePoint="0060" destinationPoint="0035" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0060 --- 0061" sourcePoint="0060" destinationPoint="0061" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0061 --- 0034" sourcePoint="0061" destinationPoint="0034" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0061 --- 0062" sourcePoint="0061" destinationPoint="0062" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0062 --- 0033" sourcePoint="0062" destinationPoint="0033" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0062 --- 0063" sourcePoint="0062" destinationPoint="0063" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0063 --- 0032" sourcePoint="0063" destinationPoint="0032" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0063 --- 0064" sourcePoint="0063" destinationPoint="0064" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0064 --- 0031" sourcePoint="0064" destinationPoint="0031" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0064 --- 0065" sourcePoint="0064" destinationPoint="0065" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0065 --- 0030" sourcePoint="0065" destinationPoint="0030" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0065 --- 0066" sourcePoint="0065" destinationPoint="0066" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0066 --- 0029" sourcePoint="0066" destinationPoint="0029" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0066 --- 0067" sourcePoint="0066" destinationPoint="0067" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0067 --- 0028" sourcePoint="0067" destinationPoint="0028" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0067 --- 0068" sourcePoint="0067" destinationPoint="0068" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0068 --- 0027" sourcePoint="0068" destinationPoint="0027" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0068 --- 0069" sourcePoint="0068" destinationPoint="0069" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0069 --- 0026" sourcePoint="0069" destinationPoint="0026" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0069 --- 0070" sourcePoint="0069" destinationPoint="0070" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0070 --- 0025" sourcePoint="0070" destinationPoint="0025" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0070 --- 0071" sourcePoint="0070" destinationPoint="0071" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0071 --- 0024" sourcePoint="0071" destinationPoint="0024" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0071 --- 0072" sourcePoint="0071" destinationPoint="0072" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0072 --- 0023" sourcePoint="0072" destinationPoint="0023" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0072 --- 0073" sourcePoint="0072" destinationPoint="0073" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0073 --- 0022" sourcePoint="0073" destinationPoint="0022" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0073 --- 0074" sourcePoint="0073" destinationPoint="0074" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0074 --- 0021" sourcePoint="0074" destinationPoint="0021" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0074 --- 0075" sourcePoint="0074" destinationPoint="0075" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0075 --- 0020" sourcePoint="0075" destinationPoint="0020" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0075 --- 0076" sourcePoint="0075" destinationPoint="0076" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
@@ -3633,13 +3687,25 @@
     <path name="0076 --- 0077" sourcePoint="0076" destinationPoint="0077" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0077 --- 0018" sourcePoint="0077" destinationPoint="0018" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0077 --- 0078" sourcePoint="0077" destinationPoint="0078" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0078 --- 0017" sourcePoint="0078" destinationPoint="0017" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0078 --- 0079" sourcePoint="0078" destinationPoint="0079" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0079 --- 0016" sourcePoint="0079" destinationPoint="0016" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="0079 --- 0080" sourcePoint="0079" destinationPoint="0080" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0080 --- 0015" sourcePoint="0080" destinationPoint="0015" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0080 --- 0081" sourcePoint="0080" destinationPoint="0081" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
@@ -5025,7 +5091,7 @@
     <path name="3001 --- 3002" sourcePoint="3001" destinationPoint="3002" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <path name="3001 --- 3009" sourcePoint="3001" destinationPoint="3009" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
+    <path name="3001 --- 3009" sourcePoint="3001" destinationPoint="3009" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="3002 --- 3003" sourcePoint="3002" destinationPoint="3003" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
@@ -5145,7 +5211,7 @@
     <path name="3025 --- 3026" sourcePoint="3025" destinationPoint="3026" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <path name="3025 --- 3033" sourcePoint="3025" destinationPoint="3033" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
+    <path name="3025 --- 3033" sourcePoint="3025" destinationPoint="3033" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="3026 --- 3027" sourcePoint="3026" destinationPoint="3027" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
@@ -5241,7 +5307,7 @@
     <path name="3041 --- 3042" sourcePoint="3041" destinationPoint="3042" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <path name="3041 --- 3049" sourcePoint="3041" destinationPoint="3049" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
+    <path name="3041 --- 3049" sourcePoint="3041" destinationPoint="3049" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="3042 --- 3043" sourcePoint="3042" destinationPoint="3043" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
@@ -5406,7 +5472,7 @@
     <path name="3072 --- 3111" sourcePoint="3072" destinationPoint="3111" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <path name="3073 --- 3065" sourcePoint="3073" destinationPoint="3065" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
+    <path name="3073 --- 3065" sourcePoint="3073" destinationPoint="3065" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="3073 --- 3074" sourcePoint="3073" destinationPoint="3074" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
@@ -5970,72 +6036,6 @@
     <path name="3180 --- 3170" sourcePoint="3180" destinationPoint="3170" length="5000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <path name="0058 --- 0037" sourcePoint="0058" destinationPoint="0037" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0059 --- 0036" sourcePoint="0059" destinationPoint="0036" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0060 --- 0035" sourcePoint="0060" destinationPoint="0035" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0061 --- 0034" sourcePoint="0061" destinationPoint="0034" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0062 --- 0033" sourcePoint="0062" destinationPoint="0033" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0063 --- 0032" sourcePoint="0063" destinationPoint="0032" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0064 --- 0031" sourcePoint="0064" destinationPoint="0031" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0065 --- 0030" sourcePoint="0065" destinationPoint="0030" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0066 --- 0029" sourcePoint="0066" destinationPoint="0029" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0067 --- 0028" sourcePoint="0067" destinationPoint="0028" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0068 --- 0027" sourcePoint="0068" destinationPoint="0027" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0069 --- 0026" sourcePoint="0069" destinationPoint="0026" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0070 --- 0025" sourcePoint="0070" destinationPoint="0025" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0071 --- 0024" sourcePoint="0071" destinationPoint="0024" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0072 --- 0023" sourcePoint="0072" destinationPoint="0023" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0073 --- 0022" sourcePoint="0073" destinationPoint="0022" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0074 --- 0021" sourcePoint="0074" destinationPoint="0021" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0075 --- 0020" sourcePoint="0075" destinationPoint="0020" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0077 --- 0018" sourcePoint="0077" destinationPoint="0018" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0078 --- 0017" sourcePoint="0078" destinationPoint="0017" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0079 --- 0016" sourcePoint="0079" destinationPoint="0016" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0080 --- 0015" sourcePoint="0080" destinationPoint="0015" length="5000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
     <vehicle name="Vehicle-0001" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.virtualvehicle.LoopbackCommunicationAdapterFactory"/>
@@ -6158,5 +6158,5 @@
         <layer id="0" ordinal="0" visible="true" name="Default layer" groupId="0"/>
         <layerGroup id="0" name="Default layer group" visible="true"/>
     </visualLayout>
-    <property name="tcs:modelFileLastModified" value="2026-07-01T16:13:35Z"/>
+    <property name="tcs:modelFileLastModified" value="2026-07-09T09:46:38Z"/>
 </model>

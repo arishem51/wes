@@ -8,41 +8,42 @@ import {
 
 describe('computeFeederPoints', () => {
   // A 2-column slice of map v7: columns A (3041→3042) and B (3049→3050) hang
-  // below a one-way top aisle 0011→0012→0013. 0013 feeds column A, 0012 feeds
-  // column B; storage rows cross A→B.
+  // below a one-way top aisle 0011→0012→0013. 0013 feeds head A (3041), 0012
+  // feeds head B (3049); a one-way cross A→B links the heads, and column B
+  // rejoins the mainline via 3049→3057→0011.
   const v7Slice: PlantPath[] = [
     { srcPointName: '0011', destPointName: '0012' },
     { srcPointName: '0012', destPointName: '0013' },
-    { srcPointName: '0013', destPointName: '3041' }, // feeder → member
-    { srcPointName: '0012', destPointName: '3049' }, // feeder → member
+    { srcPointName: '0013', destPointName: '3041' }, // external → head A
+    { srcPointName: '0012', destPointName: '3049' }, // external → head B
     { srcPointName: '3041', destPointName: '3042' }, // member → member
-    { srcPointName: '3041', destPointName: '3049' }, // member → member (cross)
+    { srcPointName: '3041', destPointName: '3049' }, // member → member (cross A→B)
     { srcPointName: '3049', destPointName: '3050' }, // member → member
-    { srcPointName: '3042', destPointName: '3050' }, // member → member (cross)
+    { srcPointName: '3049', destPointName: '3057' }, // column B connector...
+    { srcPointName: '3057', destPointName: '0011' }, // ...back onto the mainline
   ];
   const members = new Set(['3041', '3042', '3049', '3050']);
 
-  it('returns only the external points feeding into a member', () => {
+  it('returns the entry-most member points (aisle heads), not the external points', () => {
     expect(computeFeederPoints(v7Slice, members).sort()).toEqual([
-      '0012',
-      '0013',
+      '3041',
+      '3049',
     ]);
   });
 
-  it('does not include member→member edges as feeders', () => {
+  it('excludes members reachable only from inside the zone (no external inbound)', () => {
     const feeders = computeFeederPoints(v7Slice, members);
-    expect(feeders).not.toContain('3041');
+    // 3042 / 3050 are only ever entered from another member → not heads.
     expect(feeders).not.toContain('3042');
+    expect(feeders).not.toContain('3050');
   });
 
-  it('dedups when several members share one feeder', () => {
+  it('dedups when one member head has several external feeders', () => {
     const paths: PlantPath[] = [
+      { srcPointName: '0011', destPointName: '3049' },
       { srcPointName: '0012', destPointName: '3049' },
-      { srcPointName: '0012', destPointName: '3050' },
     ];
-    expect(computeFeederPoints(paths, new Set(['3049', '3050']))).toEqual([
-      '0012',
-    ]);
+    expect(computeFeederPoints(paths, new Set(['3049']))).toEqual(['3049']);
   });
 
   it('returns [] when no external inbound path exists (fallback case)', () => {
@@ -61,12 +62,13 @@ describe('computeFeederPoints', () => {
       { destPointName: '3049' },
       { srcPointName: '0012', destPointName: '3049' },
     ];
-    expect(computeFeederPoints(paths, new Set(['3049']))).toEqual(['0012']);
+    expect(computeFeederPoints(paths, new Set(['3049']))).toEqual(['3049']);
   });
 });
 
 describe('checkZoneReachability', () => {
-  // Same v7 slice: both feeders (0012, 0013) reach every member.
+  // Same v7 slice: both heads (3041, 3049) reach every member — head B (3049)
+  // reaches column A only via the mainline round-trip 3049→3057→0011→…→3041.
   const v7Slice: PlantPath[] = [
     { srcPointName: '0011', destPointName: '0012' },
     { srcPointName: '0012', destPointName: '0013' },
@@ -75,13 +77,14 @@ describe('checkZoneReachability', () => {
     { srcPointName: '3041', destPointName: '3042' },
     { srcPointName: '3041', destPointName: '3049' },
     { srcPointName: '3049', destPointName: '3050' },
-    { srcPointName: '3042', destPointName: '3050' },
+    { srcPointName: '3049', destPointName: '3057' },
+    { srcPointName: '3057', destPointName: '0011' },
   ];
   const members = new Set(['3041', '3042', '3049', '3050']);
 
-  it('reports every member reachable and no detour on a well-formed zone', () => {
+  it('reports every member reachable from every head on a well-formed zone', () => {
     const r = checkZoneReachability(v7Slice, members);
-    expect(r.feeders.sort()).toEqual(['0012', '0013']);
+    expect(r.feeders.sort()).toEqual(['3041', '3049']);
     expect(r.unreachable).toEqual([]);
     expect(r.maxHops).toBeGreaterThan(0);
   });
@@ -98,10 +101,11 @@ describe('checkZoneReachability', () => {
     expect(r.unreachable).toContain('9999');
   });
 
-  it('flags members not reachable from EVERY feeder (strict) → block', () => {
-    // Feeders don't cross-connect: 0013 reaches only 3041/3042, 0012 only 3049.
-    // Since the router may stop at either feeder, a member reachable from just
-    // one is unsafe. Here every member fails from some feeder → all flagged.
+  it('flags members not reachable from EVERY head (strict) → block', () => {
+    // Heads don't cross-connect: head 3041 reaches only 3041/3042, head 3049
+    // only itself. Since the router may stop at either head, a member reachable
+    // from just one is unsafe. Here every member fails from some head → all
+    // flagged.
     const paths: PlantPath[] = [
       { srcPointName: '0013', destPointName: '3041' },
       { srcPointName: '3041', destPointName: '3042' },
@@ -109,7 +113,7 @@ describe('checkZoneReachability', () => {
     ];
     const m = new Set(['3041', '3042', '3049']);
     const r = checkZoneReachability(paths, m);
-    expect(r.feeders.sort()).toEqual(['0012', '0013']);
+    expect(r.feeders.sort()).toEqual(['3041', '3049']);
     expect(r.unreachable.sort()).toEqual(['3041', '3042', '3049']);
   });
 

@@ -230,18 +230,19 @@ export class ZoneService {
     );
     const memberPointNames = new Set(pointSummaries.map((p) => p.pointName));
     // The parent `zone_<id>` location is the NOP approach target. Link it to the
-    // zone's feeder points (aisle heads) — not every member — so the router
-    // stops at the entry-most head, keeping all slots forward-reachable instead
-    // of greedily stopping at the nearest member deep inside a lane (which forces
-    // a detour on one-way maps). Fall back to all members if the map exposes no
-    // external inbound path, so the parent never ends up with zero links.
+    // zone's feeder points — the entry-most MEMBER heads (aisle heads inside the
+    // zone), not the external mainline point before them and not every member —
+    // so the NOP stops the vehicle AT an aisle head, off the through-lane,
+    // instead of waiting on the mainline. Fall back to all members if the map
+    // exposes no external inbound path, so the parent never ends up with zero
+    // links.
     let parentLinkedPoints = computeFeederPoints(
       (context.model.paths as PlantPath[] | undefined) ?? [],
       memberPointNames,
     );
     if (parentLinkedPoints.length === 0) {
       this.logger.warn(
-        `Zone "${parentLocationName}": no external inbound (feeder) path found — linking parent to all member points`,
+        `Zone "${parentLocationName}": no feeder (entry head) found — linking parent to all member points`,
       );
       parentLinkedPoints = [...memberPointNames];
     }
@@ -423,7 +424,7 @@ export class ZoneService {
 
     if (feeders.length === 0) {
       this.logger.warn(
-        `Zone reachability: no feeder (external inbound) path for members [${memberLocationNames.join(', ')}] — cannot verify; approach will link all members`,
+        `Zone reachability: no feeder (entry head) for members [${memberLocationNames.join(', ')}] — cannot verify; approach will link all members`,
       );
       return;
     }

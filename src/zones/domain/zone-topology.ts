@@ -11,19 +11,24 @@ export interface PlantPath {
 }
 
 /**
- * Feeder points of a zone: points OUTSIDE the zone that have a path leading
- * directly INTO a member point. These are the aisle "heads" through which a
- * vehicle enters the zone.
+ * Feeder points of a zone: the entry-most MEMBER points (aisle "heads") — member
+ * points that have a path leading directly INTO them from OUTSIDE the zone. A
+ * vehicle enters the zone by first arriving at one of these heads.
  *
- * A NOP approach order targeting the feeders (instead of every member point)
- * lets the router stop at the entry-most head, from which every slot stays
- * forward-reachable. Linking the parent to all member points instead lets the
- * router greedily stop at the nearest member deep inside a lane, which forces a
- * detour on one-way maps.
+ * The parent `zone_<id>` location links to these heads (not the external point
+ * before them on the mainline, and not every member): a NOP approach then stops
+ * the vehicle AT an aisle head — off the through-lane — instead of waiting on the
+ * mainline. Linking the parent to all member points instead lets the router
+ * greedily stop at the nearest member deep inside a lane, forcing a detour on
+ * one-way maps.
  *
- * Uses the same path shape as the aisle-source detection in
- * `delivery-slot.engine.ts`. Returns [] when no external inbound path exists;
- * callers fall back to linking all member points.
+ * NOTE: when a zone has more than one head, the heads may cross-connect only one
+ * way (or only via the mainline). {@link checkZoneReachability} still guards that
+ * every slot is reachable from every head, but a committed slot in the "other"
+ * column can cost a mainline round-trip from the head the vehicle stopped at.
+ *
+ * Returns the *member-side* endpoint of each external→member edge. Returns [] when
+ * no external inbound path exists; callers fall back to linking all member points.
  */
 export function computeFeederPoints(
   paths: readonly PlantPath[],
@@ -35,7 +40,10 @@ export function computeFeederPoints(
     const dest = path.destPointName;
     if (!src || !dest) continue;
     if (memberPointNames.has(dest) && !memberPointNames.has(src)) {
-      feeders.add(src);
+      // The aisle head is the member point being entered (dest), not the
+      // external point (src) that feeds it — so the approach stops inside the
+      // zone at the head rather than on the mainline.
+      feeders.add(dest);
     }
   }
   return [...feeders];
@@ -44,7 +52,8 @@ export function computeFeederPoints(
 /**
  * Egress points of a zone: points OUTSIDE the zone that a member point has a
  * path leading INTO — i.e. where the flow leaves the zone toward the exit.
- * Mirror of {@link computeFeederPoints} (inbound). Returns [] when none found.
+ * Outbound counterpart of {@link computeFeederPoints} (this keeps the external
+ * exit point; the feeder keeps the internal member head). Returns [] when none.
  */
 export function computeEgressPoints(
   paths: readonly PlantPath[],
