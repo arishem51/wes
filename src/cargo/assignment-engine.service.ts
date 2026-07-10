@@ -16,11 +16,13 @@ import { TransportTaskService } from './transport-task.service';
 import { PickupDependencyService } from './pickup-dependency.service';
 import { RoutingService } from './routing.service';
 import {
-  VehicleCandidate,
-  pickVehicle,
-  pickNearestVehicle,
+  type DispatchTaskCandidate,
+  type VehicleCandidate,
+  hasDispatchableVehicle,
+  isEligible,
+  planVehicleAssignments,
 } from './domain/dispatch.policy';
-import { RoadGraph, shortestDistancesFrom } from './domain/routing';
+import { shortestDistancesFrom } from './domain/routing';
 
 const BUSY_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
 
@@ -71,7 +73,7 @@ export class AssignmentEngineService {
   async run(): Promise<void> {
     const tasks = await this.taskRepo.find({
       where: { status: TaskStatus.READY_TO_ASSIGN },
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'ASC', id: 'ASC' },
     });
     if (tasks.length === 0) return;
 
@@ -87,73 +89,187 @@ export class AssignmentEngineService {
         ']',
     );
 
-    // One graph for the whole cycle; null when the plant model is unavailable,
-    // in which case selection falls back to deterministic name order.
-    const graph = await this.routing.getRoadGraph();
+    const quarantinedVehicleNames = new Set<string>();
+    const dispatchCandidates = (): VehicleCandidate[] =>
+      candidates.filter(
+        (candidate) => !quarantinedVehicleNames.has(candidate.name),
+      );
+    const eligibleVehicleCount = (): number =>
+      new Set(
+        dispatchCandidates()
+          .filter(isEligible)
+          .map((candidate) => candidate.name),
+      ).size;
+    if (eligibleVehicleCount() === 0) return;
 
-    for (const task of tasks) {
-      // Guard: the lane may have become blocked since release decided this
-      // task was free (a closer-to-aisle cargo was added). Skip it; the next
-      // ReleaseEngine pass demotes it to BLOCKED.
-      if (await this.pickupDependency.isBlocked(task)) {
-        this.logger.debug(`Task ${task.id} blocked at assign time — skipping`);
+    // One graph for the whole cycle; null when the plant model is unavailable.
+    // Cache Dijkstra results because several tasks may share a pickup point.
+    const graph = await this.routing.getRoadGraph();
+    const distanceCache = new Map<string, ReadonlyMap<string, number>>();
+    type DispatchContext = {
+      task: TransportTaskEntity;
+      cargo: CargoEntity;
+      distanceByPoint: ReadonlyMap<string, number> | null;
+    };
+    const pendingTasks: DispatchContext[] = [];
+    let taskCursor = 0;
+
+    const fillPendingTasks = async (): Promise<void> => {
+      const capacity = eligibleVehicleCount();
+      while (pendingTasks.length < capacity && taskCursor < tasks.length) {
+        const task = tasks[taskCursor++];
+
+        // Guard: the lane may have become blocked since release decided this
+        // task was free. Skip it; the next ReleaseEngine pass demotes it.
+        if (await this.pickupDependency.isBlocked(task)) {
+          this.logger.debug(
+            `Task ${task.id} blocked at assign time — skipping`,
+          );
+          continue;
+        }
+
+        const cargo = task.cargoId
+          ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
+          : null;
+        if (!cargo?.sourcePickupLocationName) {
+          this.logger.warn(
+            `Task ${task.id} missing pickup location — skipping`,
+          );
+          continue;
+        }
+
+        let distanceByPoint: ReadonlyMap<string, number> | null = null;
+        if (graph && cargo.sourcePointName) {
+          distanceByPoint = distanceCache.get(cargo.sourcePointName) ?? null;
+          if (!distanceByPoint) {
+            distanceByPoint = shortestDistancesFrom(
+              graph,
+              cargo.sourcePointName,
+            );
+            distanceCache.set(cargo.sourcePointName, distanceByPoint);
+          }
+        }
+        pendingTasks.push({ task, cargo, distanceByPoint });
+      }
+    };
+
+    const removePendingTask = (taskId: string): DispatchContext | null => {
+      const index = pendingTasks.findIndex(
+        (context) => context.task.id === taskId,
+      );
+      if (index < 0) return null;
+      return pendingTasks.splice(index, 1)[0];
+    };
+
+    for (;;) {
+      await fillPendingTasks();
+      if (pendingTasks.length === 0) break;
+      // Feasible conflict tasks may remain after another task claims their only
+      // vehicle. Leave them READY for the heartbeat-driven next cycle.
+      if (eligibleVehicleCount() === 0) break;
+
+      const taskCandidates: DispatchTaskCandidate[] = pendingTasks.map(
+        ({ task, distanceByPoint }) => ({ taskId: task.id, distanceByPoint }),
+      );
+      const availableCandidates = dispatchCandidates();
+      const assignments = planVehicleAssignments(
+        availableCandidates,
+        taskCandidates,
+      );
+
+      this.logger.debug(
+        `Hungarian plan: ${assignments
+          .map(
+            ({ taskId, vehicle, distance }) =>
+              `${taskId}->${vehicle.name}(${distance ?? '?'})`,
+          )
+          .join(' ')}`,
+      );
+
+      // A graph-confirmed unreachable edge is never dispatched. Do not confuse
+      // it with a feasible task temporarily unmatched because tasks compete for
+      // the same vehicle; that task stays pending and is reconsidered later.
+      const plannedTaskIds = new Set(
+        assignments.map((assignment) => assignment.taskId),
+      );
+      const unreachableTaskIds = pendingTasks
+        .filter((context) => !plannedTaskIds.has(context.task.id))
+        .filter(
+          (context) =>
+            !hasDispatchableVehicle(availableCandidates, {
+              taskId: context.task.id,
+              distanceByPoint: context.distanceByPoint,
+            }),
+        )
+        .map((context) => context.task.id);
+      if (unreachableTaskIds.length > 0) {
+        for (const taskId of unreachableTaskIds) {
+          removePendingTask(taskId);
+          this.logger.warn(
+            `Task ${taskId} has no reachable eligible vehicle — deferred`,
+          );
+        }
         continue;
       }
 
-      const cargo = task.cargoId
-        ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
-        : null;
+      for (const { taskId, vehicle, distance } of assignments) {
+        const context = removePendingTask(taskId);
+        if (!context) continue;
 
-      const { vehicle, distance } = this.selectVehicle(
-        candidates,
-        graph,
-        cargo,
-      );
-      if (!vehicle) break; // no eligible AGV right now — try again next cycle
+        // Re-check immediately before the side effect: a closer cargo may have
+        // arrived while the batch and its distance matrix were being prepared.
+        if (await this.pickupDependency.isBlocked(context.task)) {
+          this.logger.debug(
+            `Task ${taskId} blocked before dispatch — skipping`,
+          );
+          break; // Invalidate and re-solve the remaining plan with a backfill.
+        }
 
-      const assigned = await this.assign(
-        task,
-        cargo,
-        vehicle.name,
-        distance,
-        vehicle.parkOrderName,
-      );
-      if (assigned) {
-        // Don't hand the same vehicle two tasks in one cycle.
+        const assigned = await this.assign(
+          context.task,
+          context.cargo,
+          vehicle.name,
+          distance,
+          vehicle.parkOrderName,
+        );
+        if (!assigned) {
+          // The failure may be vehicle-specific (especially a stale/failed PARK
+          // withdrawal). Quarantine it for this cycle, continue independent
+          // pairs, then backfill/re-solve with the remaining healthy fleet.
+          quarantinedVehicleNames.add(vehicle.name);
+          this.logger.warn(
+            `Vehicle ${vehicle.name} assignment failed — quarantined for this cycle`,
+          );
+          continue;
+        }
         vehicle.hasActiveTask = true;
       }
     }
-  }
-
-  /**
-   * Pick the nearest eligible vehicle to the cargo's source point via Dijkstra
-   * over the road graph. Falls back to name-order picking when the graph or the
-   * cargo's source point is unavailable (§6.1). Also returns the picked
-   * vehicle's graph distance to the source (null on the fallback path) so the
-   * assignment can log it for evaluation.
-   */
-  private selectVehicle(
-    candidates: VehicleCandidate[],
-    graph: RoadGraph | null,
-    cargo: CargoEntity | null,
-  ): { vehicle: VehicleCandidate | null; distance: number | null } {
-    if (graph && cargo?.sourcePointName) {
-      const distances = shortestDistancesFrom(graph, cargo.sourcePointName);
-      const vehicle = pickNearestVehicle(candidates, distances);
-      const distance =
-        vehicle?.currentPosition != null
-          ? (distances.get(vehicle.currentPosition) ?? null)
-          : null;
-      return { vehicle, distance };
-    }
-    return { vehicle: pickVehicle(candidates), distance: null };
   }
 
   private async buildCandidates(): Promise<VehicleCandidate[]> {
     const agvs = await this.agvRepo.find();
     const busy = await this.busyVehicleNames();
 
-    return agvs.map((agv) => {
+    const agvsByName = new Map<string, AgvEntity[]>();
+    for (const agv of agvs) {
+      const rows = agvsByName.get(agv.name) ?? [];
+      rows.push(agv);
+      agvsByName.set(agv.name, rows);
+    }
+
+    const uniqueAgvs: AgvEntity[] = [];
+    for (const [name, rows] of agvsByName) {
+      if (rows.length > 1) {
+        this.logger.warn(
+          `Duplicate AGV registry name "${name}" — excluding ${rows.length} ambiguous rows`,
+        );
+        continue;
+      }
+      uniqueAgvs.push(rows[0]);
+    }
+
+    return uniqueAgvs.map((agv) => {
       const fms = this.vehicleStore.get(agv.name);
       const hasActiveTask = busy.has(agv.name);
       // Only a vehicle without a cargo task can be preempted from parking.

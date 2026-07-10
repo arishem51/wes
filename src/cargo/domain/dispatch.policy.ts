@@ -1,3 +1,5 @@
+import { solveHungarian } from './hungarian';
+
 /**
  * Pure fleet-eligibility rules (WF / ARCHITECTURE §6.1).
  *
@@ -76,4 +78,127 @@ export function pickNearestVehicle(
       return delta !== 0 ? delta : a.name.localeCompare(b.name);
     })[0] ?? null
   );
+}
+
+/** A FIFO-ordered task and its road distances from the pickup point. */
+export interface DispatchTaskCandidate {
+  readonly taskId: string;
+  /** Null when the plant model or the task's source point is unavailable. */
+  readonly distanceByPoint: ReadonlyMap<string, number> | null;
+}
+
+export interface VehicleTaskAssignment {
+  readonly taskId: string;
+  readonly vehicle: VehicleCandidate;
+  /** Real road distance, or null when this pair uses the fallback cost. */
+  readonly distance: number | null;
+}
+
+/**
+ * Build one globally optimal dispatch batch.
+ *
+ * Tasks are expected in FIFO order. Only the oldest N tasks are considered,
+ * where N is the number of eligible vehicles, so global distance optimisation
+ * cannot starve old work when the backlog is larger than the fleet. Vehicles
+ * are sorted by name before solving, giving a stable fallback when distance
+ * data is unavailable or tied.
+ *
+ * Unknown pairs receive a finite penalty larger than the maximum possible total
+ * of a fully known batch. A graph-confirmed unreachable pair receives a second,
+ * larger sentinel and is removed from the result. This makes the solver first
+ * maximise feasible cardinality, then minimise unknown pairs and road distance.
+ */
+export function planVehicleAssignments(
+  candidates: readonly VehicleCandidate[],
+  tasks: readonly DispatchTaskCandidate[],
+): VehicleTaskAssignment[] {
+  const vehicles = uniqueEligibleVehicles(candidates);
+  const selectedTasks = tasks.slice(0, vehicles.length);
+  if (vehicles.length === 0 || selectedTasks.length === 0) return [];
+
+  const pairs = selectedTasks.map((task) =>
+    vehicles.map((vehicle) => evaluatePair(task, vehicle)),
+  );
+  const finiteDistances = pairs
+    .flat()
+    .flatMap((pair) => (pair.kind === 'reachable' ? [pair.distance] : []));
+  const maxDistance = finiteDistances.reduce(
+    (maximum, distance) => Math.max(maximum, distance),
+    0,
+  );
+  const batchScale = selectedTasks.length + 1;
+  const unknownCost = (maxDistance + 1) * batchScale;
+  const unreachableCost = unknownCost * batchScale;
+
+  if (!Number.isFinite(unreachableCost)) {
+    throw new RangeError('Dispatch distance matrix exceeds numeric range');
+  }
+
+  const costMatrix = pairs.map((row) =>
+    row.map((pair) => {
+      if (pair.kind === 'reachable') return pair.distance;
+      return pair.kind === 'unknown' ? unknownCost : unreachableCost;
+    }),
+  );
+  const { assignment } = solveHungarian(costMatrix);
+
+  return selectedTasks.flatMap((task, taskIndex) => {
+    const vehicleIndex = assignment[taskIndex];
+    const pair = pairs[taskIndex][vehicleIndex];
+    return pair.kind === 'unreachable'
+      ? []
+      : [
+          {
+            taskId: task.taskId,
+            vehicle: vehicles[vehicleIndex],
+            distance: pair.kind === 'reachable' ? pair.distance : null,
+          },
+        ];
+  });
+}
+
+/** Whether this task has at least one known-reachable or unknown fallback pair. */
+export function hasDispatchableVehicle(
+  candidates: readonly VehicleCandidate[],
+  task: DispatchTaskCandidate,
+): boolean {
+  return uniqueEligibleVehicles(candidates).some(
+    (vehicle) => evaluatePair(task, vehicle).kind !== 'unreachable',
+  );
+}
+
+function uniqueEligibleVehicles(
+  candidates: readonly VehicleCandidate[],
+): VehicleCandidate[] {
+  return (
+    candidates
+      .filter(isEligible)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      // Vehicle name is the physical openTCS join key. Defensive de-duplication
+      // prevents inconsistent registry rows from assigning one AGV twice.
+      .filter(
+        (vehicle, index, sorted) =>
+          index === 0 || sorted[index - 1].name !== vehicle.name,
+      )
+  );
+}
+
+type PairEvaluation =
+  | { readonly kind: 'reachable'; readonly distance: number }
+  | { readonly kind: 'unknown' }
+  | { readonly kind: 'unreachable' };
+
+function evaluatePair(
+  task: DispatchTaskCandidate,
+  vehicle: VehicleCandidate,
+): PairEvaluation {
+  // No graph/source or no localized vehicle position means the route is
+  // unknown, not impossible. Preserve the deterministic legacy fallback.
+  if (!task.distanceByPoint || !vehicle.currentPosition) {
+    return { kind: 'unknown' };
+  }
+  const distance = task.distanceByPoint.get(vehicle.currentPosition);
+  return distance !== undefined && Number.isFinite(distance) && distance >= 0
+    ? { kind: 'reachable', distance }
+    : { kind: 'unreachable' };
 }

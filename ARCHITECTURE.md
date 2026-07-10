@@ -312,8 +312,8 @@ Business modules consume those; they never import other opentcs internals.
 
 `AssignmentEngineService.buildCandidates()` joins `AgvEntity` (registry config)
 with `VehicleStateStore` (live FMS telemetry) and hands `VehicleCandidate[]` to
-the pure `pickVehicle()` policy in `cargo/domain/dispatch.policy.ts`. No hardcoded
-vehicle name.
+the pure `planVehicleAssignments()` policy in `cargo/domain/dispatch.policy.ts`.
+No hardcoded vehicle name.
 
 ```
 eligible AGV =  isDispatchEnabled = true
@@ -325,21 +325,32 @@ eligible AGV =  isDispatchEnabled = true
             AND not already on a PICKING_UP/DELIVERING task
 ```
 
-Among the eligible AGVs, `pickNearestVehicle()` picks the one closest to the
-cargo's source point: `RoutingService` builds an undirected weighted graph from
-the plant-model paths (`cargo/domain/routing.ts`) and `shortestDistancesFrom()`
-(Dijkstra) gives the road distance from the pickup point to each vehicle's
-`currentPosition`. Ties, an unknown/unreachable position, or an unavailable plant
-model fall back to `pickVehicle()` (lowest-named, deterministic). Within one flush
-a vehicle is never handed two tasks. **`AgvEntity.name` must equal the openTCS
-vehicle name** — that is the join key. An empty `agvs` table ⇒ nothing dispatches
-(register the fleet first).
+`AssignmentEngineService` selects at most N valid tasks from the FIFO head
+(`createdAt ASC, id ASC`), where N is the number of eligible AGVs, then
+`planVehicleAssignments()` runs the Hungarian algorithm over the resulting
+task×vehicle cost matrix. Each cost is the road-graph shortest-path distance from
+the cargo's source point to the vehicle's `currentPosition`: `RoutingService`
+builds the graph from plant-model paths and `shortestDistancesFrom()` computes
+the distances with Dijkstra. This minimizes total fleet approach distance for
+the whole dispatch batch instead of greedily minimizing one task at a time.
+
+Unknown pairs (plant model/source/vehicle position unavailable) use a finite
+penalty; when all distance data is unknown, FIFO task order plus lowest vehicle
+name is the deterministic fallback. A pair proven unreachable by an available
+graph is excluded. An unmatched task is deferred for the cycle and the batch is
+backfilled/re-solved, as it is after a late block or openTCS assignment failure.
+An AGV whose assignment side effect fails is quarantined for that cycle so a
+vehicle-specific fault cannot consume the backlog; the fixed heartbeat retries
+deferred work against fresh telemetry. Independent pairs in the plan continue.
+The FIFO head window prevents newer nearby work from starving feasible old tasks.
+Within one flush a vehicle is never handed two tasks. **`AgvEntity.name` must
+equal the openTCS vehicle name** — that is the join key. An empty `agvs` table ⇒
+nothing dispatches (register the fleet first). Duplicate registry rows sharing a
+vehicle name are ambiguous, so that name is excluded from the cycle and logged.
 
 > Distance is the road-graph shortest path (Dijkstra), not straight-line — it
-> respects aisles/walls. Task order stays FIFO (`createdAt ASC`); this is a
-> per-task greedy nearest pick. A global-optimum strategy (e.g. Hungarian over a
-> vehicle×task cost matrix built from the same `shortestDistancesFrom`) can
-> replace the selection loop later without touching the graph or eligibility.
+> respects aisles/walls. The Hungarian solver is a pure TypeScript domain
+> function (`cargo/domain/hungarian.ts`) with no external runtime dependency.
 
 ### 6.2 Battery management
 - Battery level is read from `KernelVehicleState.energyLevel` (FMS telemetry); WES

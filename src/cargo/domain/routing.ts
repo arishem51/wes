@@ -4,8 +4,8 @@
  * Builds an undirected weighted graph from the openTCS plant-model paths and
  * answers "how far is every point from a given source" via Dijkstra. Kept pure
  * (primitives only, no TypeORM/openTCS types) so the nearest-vehicle rule is a
- * single readable, unit-testable function. A smarter assignment strategy
- * (e.g. Hungarian) can later consume the same distances without touching this.
+ * single readable, unit-testable function. The Hungarian dispatch policy
+ * consumes the same distances without coupling routing to assignment.
  */
 
 /** One openTCS path, flattened to its routing-relevant fields. */

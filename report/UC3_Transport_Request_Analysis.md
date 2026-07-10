@@ -223,47 +223,44 @@ for each slot S in slots:
 return null  // location đầy
 ```
 
-### 4.4 Task Assignment Engine — Hungarian Algorithm (planned Phase 3)
+### 4.4 Task Assignment Engine — Hungarian Algorithm (implemented)
 
-**Trạng thái hiện tại (hardcoded — Phase 3 fix):**
-```typescript
-// assignment-engine.service.ts
-const ASSIGNED_VEHICLE = 'Vehicle-0001'; // hardcoded
-if vehicle not busy: assign
-```
-
-**Planned implementation:**
+**Implementation hiện tại:**
 ```
 Input: READY_TO_ASSIGN tasks, danh sách AGVs
 
 Step 1 — Lọc candidate AGVs:
   candidates = AGVs.filter(v =>
     v.battery > v.operationalBatteryThreshold
-    AND v.acceptance == ENABLED
+    AND v.isDispatchEnabled
+    AND NOT v.isIgnored
+    AND (v đang IDLE/AWAITING_ORDER OR park order có thể preempt)
     AND no task IN [PICKING_UP, DELIVERING] assigned to v
   )
 
-Step 2 — Xây dựng cost matrix:
-  for each (agv, task) pair:
-    urgency_score   = f(task.createdAt)                        // thời gian chờ
-    proximity_score = f(agv.currentPosition, task.pickupPoint) // khoảng cách
-    position_score  = f(task.pickup_slot.positionIndex)        // ưu tiên kho
+Step 2 — Chọn tối đa N task hợp lệ cũ nhất (createdAt, id), N = số candidate AGV.
+  Pickup dependency vẫn được re-check trước khi đưa task vào batch.
 
-    cost[agv][task] = -(
-      policy.weight_urgency    × urgency_score +
-      policy.weight_proximity  × proximity_score +
-      policy.weight_position   × position_score
-    )
+Step 3 — Xây dựng cost matrix task × AGV:
+  cost[task][agv] = shortestRoadDistance(task.pickupPoint, agv.currentPosition)
+  // Dijkstra trên plant-model graph; unknown dùng finite penalty.
+  // Pair được graph xác nhận unreachable bị loại và batch được backfill/re-solve.
 
-Step 3 — Chạy Hungarian Algorithm → optimal (agv, task) pairs
+Step 4 — Chạy Hungarian Algorithm → pairing có tổng quãng đường nhỏ nhất.
 
-Step 4 — Dispatch:
+Step 5 — Dispatch tuần tự:
   for each (agv, task) in assignments:
     kernelApi.createTransportOrder(TO1, PICK_UP, intendedVehicle=agv)
-    task.status      = PICKING_UP
-    task.metadata    = { assignedVehicleName: agv, to1Name }
-    task.assignedAt  = now()
+    TransportTaskService.changeStatus(task, PICKING_UP)
 ```
+
+Việc giới hạn solver ở FIFO head giữ fairness khi backlog lớn hơn fleet; Hungarian
+chỉ tối ưu cách ghép AGV trong batch, không chọn task mới hơn vì ở gần hơn. Weighted
+scoring (`weight_urgency`, `weight_proximity`, `weight_inventory_position`) vẫn là
+extension point sau khi `dispatch_policies` được nối vào domain/service và có quy
+tắc normalization rõ ràng. Nếu một pairing bị block hoặc openTCS từ chối khi
+dispatch, capacity còn trống được backfill và ma trận được giải lại trong cycle;
+AGV vừa lỗi bị quarantine đến cycle kế tiếp.
 
 ### 4.5 Dispatch Scheduling — Debounce Pattern
 

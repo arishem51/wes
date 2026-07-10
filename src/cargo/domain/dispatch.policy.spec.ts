@@ -1,6 +1,7 @@
 import {
   VehicleCandidate,
   isEligible,
+  planVehicleAssignments,
   pickVehicle,
   pickNearestVehicle,
 } from './dispatch.policy';
@@ -162,6 +163,166 @@ describe('dispatch.policy', () => {
         new Map([['P', 42]]),
       );
       expect(picked?.name).toBe('Vehicle-0001');
+    });
+  });
+
+  describe('planVehicleAssignments', () => {
+    it('finds the global minimum instead of a per-task greedy minimum', () => {
+      const assignments = planVehicleAssignments(
+        [
+          candidate({ name: 'V1', currentPosition: 'P1' }),
+          candidate({ name: 'V2', currentPosition: 'P2' }),
+        ],
+        [
+          {
+            taskId: 'T1',
+            distanceByPoint: new Map([
+              ['P1', 1],
+              ['P2', 2],
+            ]),
+          },
+          {
+            taskId: 'T2',
+            distanceByPoint: new Map([
+              ['P1', 2],
+              ['P2', 100],
+            ]),
+          },
+        ],
+      );
+
+      expect(
+        assignments.map(({ taskId, vehicle, distance }) => ({
+          taskId,
+          vehicle: vehicle.name,
+          distance,
+        })),
+      ).toEqual([
+        { taskId: 'T1', vehicle: 'V2', distance: 2 },
+        { taskId: 'T2', vehicle: 'V1', distance: 2 },
+      ]);
+    });
+
+    it('keeps the FIFO head when the backlog is larger than the fleet', () => {
+      const assignments = planVehicleAssignments(
+        [
+          candidate({ name: 'V1', currentPosition: 'P1' }),
+          candidate({ name: 'V2', currentPosition: 'P2' }),
+        ],
+        [
+          { taskId: 'oldest', distanceByPoint: new Map([['P1', 100]]) },
+          { taskId: 'older', distanceByPoint: new Map([['P2', 100]]) },
+          {
+            taskId: 'newest-but-nearest',
+            distanceByPoint: new Map([
+              ['P1', 0],
+              ['P2', 0],
+            ]),
+          },
+        ],
+      );
+
+      expect(assignments.map((assignment) => assignment.taskId)).toEqual([
+        'oldest',
+        'older',
+      ]);
+    });
+
+    it('filters ineligible vehicles before planning', () => {
+      const assignments = planVehicleAssignments(
+        [
+          candidate({ name: 'disabled', dispatchEnabled: false }),
+          candidate({ name: 'eligible' }),
+        ],
+        [{ taskId: 'T1', distanceByPoint: null }],
+      );
+
+      expect(assignments).toHaveLength(1);
+      expect(assignments[0].vehicle.name).toBe('eligible');
+    });
+
+    it('never assigns the same physical vehicle name twice', () => {
+      const assignments = planVehicleAssignments(
+        [candidate({ name: 'V1' }), candidate({ name: 'V1' })],
+        [
+          { taskId: 'T1', distanceByPoint: null },
+          { taskId: 'T2', distanceByPoint: null },
+        ],
+      );
+
+      expect(assignments.map((assignment) => assignment.vehicle.name)).toEqual([
+        'V1',
+      ]);
+    });
+
+    it('uses stable task and vehicle order when no distance data is available', () => {
+      const assignments = planVehicleAssignments(
+        [candidate({ name: 'V2' }), candidate({ name: 'V1' })],
+        [
+          { taskId: 'T1', distanceByPoint: null },
+          { taskId: 'T2', distanceByPoint: new Map() },
+        ],
+      );
+
+      expect(
+        assignments.map(({ taskId, vehicle, distance }) => ({
+          taskId,
+          vehicle: vehicle.name,
+          distance,
+        })),
+      ).toEqual([
+        { taskId: 'T1', vehicle: 'V1', distance: null },
+        { taskId: 'T2', vehicle: 'V2', distance: null },
+      ]);
+    });
+
+    it('prefers a fully reachable matching over a shorter fallback pairing', () => {
+      const assignments = planVehicleAssignments(
+        [
+          candidate({ name: 'V1', currentPosition: 'P1' }),
+          candidate({ name: 'V2', currentPosition: 'P2' }),
+        ],
+        [
+          { taskId: 'T1', distanceByPoint: new Map([['P1', 100]]) },
+          {
+            taskId: 'T2',
+            distanceByPoint: new Map([
+              ['P1', 0],
+              ['P2', 100],
+            ]),
+          },
+        ],
+      );
+
+      expect(assignments.map((assignment) => assignment.distance)).toEqual([
+        100, 100,
+      ]);
+    });
+
+    it('does not dispatch a graph-confirmed unreachable pair', () => {
+      const assignments = planVehicleAssignments(
+        [candidate({ name: 'V1', currentPosition: 'DISCONNECTED' })],
+        [{ taskId: 'T1', distanceByPoint: new Map([['OTHER-POINT', 5]]) }],
+      );
+
+      expect(assignments).toEqual([]);
+    });
+
+    it('keeps the oldest feasible task when reachable edges conflict', () => {
+      const assignments = planVehicleAssignments(
+        [
+          candidate({ name: 'V1', currentPosition: 'P1' }),
+          candidate({ name: 'V2', currentPosition: 'P2' }),
+        ],
+        [
+          { taskId: 'oldest', distanceByPoint: new Map([['P1', 1]]) },
+          { taskId: 'newer', distanceByPoint: new Map([['P1', 1]]) },
+        ],
+      );
+
+      expect(assignments.map((assignment) => assignment.taskId)).toEqual([
+        'oldest',
+      ]);
     });
   });
 });
