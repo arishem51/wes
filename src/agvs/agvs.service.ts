@@ -210,9 +210,16 @@ export class AgvsService {
     await this.kernelApi.setVehicleProperty(
       agv.name,
       'loopback:operatingTime',
-      '2000',
+      '1000',
     );
     await this.kernelApi.setVehicleIntegrationLevel(agv.name, 'TO_BE_UTILIZED');
+  }
+
+  async disconnect(id: string): Promise<void> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    await this.kernelApi.setVehicleIntegrationLevel(agv.name, 'TO_BE_IGNORED');
+    await this.kernelApi.setVehicleAdapterEnabled(agv.name, false);
   }
 
   async setPosition(id: string, pointName: string): Promise<void> {
