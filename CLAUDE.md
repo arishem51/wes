@@ -16,6 +16,12 @@
 | `src/admin-users/` | Admin user management use cases |
 | `src/account/` | Self-service profile/password (operator/admin) |
 
+## Code style
+
+- Do NOT add comments to code. Code must express its intent by itself — clear names, small functions, extracted variables instead of explanatory comments.
+- If a piece of code needs a comment to be understood, rewrite it until it doesn't.
+- Only allowed: required non-explanatory annotations (license headers, `// eslint-disable`, `@ts-expect-error`, JSDoc consumed by tooling).
+
 ## NestJS conventions
 
 - Injectable services use constructor injection — never property injection.
