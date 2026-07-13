@@ -50,6 +50,12 @@ export class AgvsController {
     return this.service.connect(id);
   }
 
+  @Post(':id/disconnect')
+  @HttpCode(204)
+  disconnect(@Param('id') id: string) {
+    return this.service.disconnect(id);
+  }
+
   @Post(':id/position')
   @HttpCode(204)
   setPosition(@Param('id') id: string, @Body('pointName') pointName: string) {

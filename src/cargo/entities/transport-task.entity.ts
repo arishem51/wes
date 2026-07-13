@@ -23,6 +23,7 @@ export interface TaskMetadata {
   to2Name?: string;
   to3Name?: string;
   approachLocationName?: string;
+  approachPointName?: string;
   blockedReason?: string;
 }
 

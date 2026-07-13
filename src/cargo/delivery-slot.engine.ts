@@ -4,7 +4,11 @@ import { In, Repository } from 'typeorm';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
-import { computeEgressPoints, hopsToExit } from '../zones/domain/zone-topology';
+import {
+  computeEgressPoints,
+  hopsToExit,
+  type PlantPath,
+} from '../zones/domain/zone-topology';
 
 const LOCATION_PREFIX = 'location_';
 
@@ -49,7 +53,7 @@ export class DeliverySlotEngine {
       ? (plantModel.points as Array<Record<string, unknown>>)
       : [];
     const rawPaths = Array.isArray(plantModel.paths)
-      ? (plantModel.paths as Array<Record<string, unknown>>)
+      ? (plantModel.paths as PlantPath[])
       : [];
     const rawLocations = Array.isArray(plantModel.locations)
       ? (plantModel.locations as Array<Record<string, unknown>>)

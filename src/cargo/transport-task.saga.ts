@@ -12,6 +12,7 @@ import { ZoneEntity } from '../zones/entities/zone.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { TransportTaskService } from './transport-task.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
+import { ApproachPointService } from './approach-point.service';
 import {
   FMS_EVENTS,
   FmsTransportOrderFinishedEvent,
@@ -55,6 +56,7 @@ export class TransportTaskSaga {
     private readonly kernelApi: KernelApiService,
     private readonly transportTask: TransportTaskService,
     private readonly deliverySlotEngine: DeliverySlotEngine,
+    private readonly approachPoint: ApproachPointService,
   ) {}
 
   @OnEvent(FMS_EVENTS.TRANSPORT_ORDER_FINISHED)
@@ -97,18 +99,6 @@ export class TransportTaskSaga {
       return;
     }
 
-    const approachLocationName = task.metadata?.approachLocationName;
-    if (!approachLocationName) {
-      this.logger.warn(
-        `Task ${task.id} has no approach location — marking FAILED`,
-      );
-      await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
-        trigger: 'SAGA',
-        reason: 'no approach location',
-      });
-      return;
-    }
-
     const vehicle = this.vehicleOf(task);
     if (!vehicle) {
       this.logger.warn(
@@ -121,24 +111,68 @@ export class TransportTaskSaga {
       return;
     }
 
+    const cargo = await this.cargoOf(task);
+    const zone = cargo ? await this.destinationZoneOf(cargo) : null;
+    if (!zone) {
+      this.logger.warn(
+        `Task ${task.id} has no destination zone — marking FAILED`,
+      );
+      await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
+        trigger: 'SAGA',
+        reason: 'no destination zone',
+      });
+      return;
+    }
+
+    const approachPoint = await this.approachPoint.pickFor(zone, vehicle);
+    if (!approachPoint) {
+      this.logger.warn(
+        `Task ${task.id}: no reachable approach point for ${vehicle} — leaving PICKING_UP for the reconcile backstop to retry`,
+      );
+      return;
+    }
+
     const to2Name = `APPROACH-${randomUUID()}`;
     const created = await this.createNextOrder(
       to2Name,
-      approachLocationName,
-      'NOP',
+      approachPoint,
+      'MOVE',
       vehicle,
       { taskId: task.id, leg: 'APPROACH' },
     );
     if (!created) return;
 
-    task.metadata = { ...task.metadata, to2Name };
+    task.metadata = {
+      ...task.metadata,
+      to2Name,
+      approachPointName: approachPoint,
+    };
     await this.transportTask.changeStatus(task, TaskStatus.DELIVERING, {
       trigger: 'SAGA',
       context: { to2Name },
     });
     this.logger.log(
-      `Task ${task.id} → DELIVERING, created ${to2Name} (approach)`,
+      `Task ${task.id} → DELIVERING, created ${to2Name} (approach → ${approachPoint})`,
     );
+  }
+
+  private async destinationZoneOf(
+    cargo: CargoEntity,
+  ): Promise<ZoneEntity | null> {
+    if (!cargo.destinationZoneId) {
+      this.logger.warn(`Cargo ${cargo.id} has no destination zone`);
+      return null;
+    }
+    const zone = await this.zoneRepo.findOne({
+      where: { id: cargo.destinationZoneId },
+      relations: { members: true },
+    });
+    if (!zone) {
+      this.logger.warn(
+        `Cargo ${cargo.id}: destination zone ${cargo.destinationZoneId} not found`,
+      );
+    }
+    return zone;
   }
 
   private async onApproachFinished(taskId: string): Promise<void> {
@@ -223,20 +257,8 @@ export class TransportTaskSaga {
    * name, or null when the zone is full / misconfigured.
    */
   private async commitDropoffSlot(cargo: CargoEntity): Promise<string | null> {
-    if (!cargo.destinationZoneId) {
-      this.logger.warn(`Cargo ${cargo.id} has no destination zone`);
-      return null;
-    }
-    const zone = await this.zoneRepo.findOne({
-      where: { id: cargo.destinationZoneId },
-      relations: { members: true },
-    });
-    if (!zone) {
-      this.logger.warn(
-        `Cargo ${cargo.id}: destination zone ${cargo.destinationZoneId} not found`,
-      );
-      return null;
-    }
+    const zone = await this.destinationZoneOf(cargo);
+    if (!zone) return null;
 
     return this.dataSource.transaction(async (manager) => {
       // Held until the transaction commits, so the next barrier's findSlot sees

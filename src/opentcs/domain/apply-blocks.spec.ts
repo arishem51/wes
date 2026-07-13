@@ -4,8 +4,24 @@ import type { PlantModelDto } from '../map-loader/opentcs-xml.parser';
 /** A minimal plant model with a J - p1 - p2 - p3(dead-end) lane off a junction. */
 function modelWithDeadEndLane(): PlantModelDto {
   const bi = (a: string, b: string) => [
-    { name: `${a} --- ${b}`, srcPointName: a, destPointName: b, length: 1, maxVelocity: 1, maxReverseVelocity: 1, locked: false },
-    { name: `${b} --- ${a}`, srcPointName: b, destPointName: a, length: 1, maxVelocity: 1, maxReverseVelocity: 1, locked: false },
+    {
+      name: `${a} --- ${b}`,
+      srcPointName: a,
+      destPointName: b,
+      length: 1,
+      maxVelocity: 1,
+      maxReverseVelocity: 1,
+      locked: false,
+    },
+    {
+      name: `${b} --- ${a}`,
+      srcPointName: b,
+      destPointName: a,
+      length: 1,
+      maxVelocity: 1,
+      maxReverseVelocity: 1,
+      locked: false,
+    },
   ];
   return {
     name: 'test',
@@ -21,7 +37,13 @@ function modelWithDeadEndLane(): PlantModelDto {
     locationTypes: [],
     locations: [],
     blocks: [],
-    visualLayout: { name: 'v', scaleX: 1, scaleY: 1, layers: [], layerGroups: [] },
+    visualLayout: {
+      name: 'v',
+      scaleX: 1,
+      scaleY: 1,
+      layers: [],
+      layerGroups: [],
+    },
   };
 }
 
@@ -47,7 +69,11 @@ describe('applySingleVehicleBlocks', () => {
   it('preserves hand-authored (non-SVB) blocks and refreshes generated ones', () => {
     const model = modelWithDeadEndLane();
     model.blocks = [
-      { name: 'manual-safety-zone', type: 'SINGLE_VEHICLE_ONLY', memberNames: ['x'] },
+      {
+        name: 'manual-safety-zone',
+        type: 'SINGLE_VEHICLE_ONLY',
+        memberNames: ['x'],
+      },
       { name: 'SVB-stale', type: 'SINGLE_VEHICLE_ONLY', memberNames: ['gone'] },
     ];
     const out = applySingleVehicleBlocks(model);

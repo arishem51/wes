@@ -7,21 +7,28 @@ import {
   reverseRoadGraph,
 } from './domain/routing';
 
-/**
- * Builds the warehouse road graph from the openTCS plant model so the
- * assignment engine can pick the nearest vehicle (ARCHITECTURE §6.1).
- *
- * Reads the same raw plant model as ZoneGeometryService: paths carry
- * `srcPointName`/`destPointName`/`length` at runtime. Returns null when the
- * plant model is unavailable so the caller can fall back to name-order picking.
- *
- * The graph is derived purely from the plant model, which changes rarely (map
- * upload, zone re-push, SSE reseed). Rather than rebuild every dispatch cycle,
- * we cache the graph and rebuild only when the plant model actually changes —
- * detected by object identity: `KernelApiService.getPlantModel()` returns the
- * same reference until its cache is invalidated, after which it fetches a fresh
- * object. So a changed reference ⇒ the model changed ⇒ rebuild.
- */
+type RawPath = Record<string, unknown>;
+
+function isLocked(path: RawPath): boolean {
+  return path.locked === true;
+}
+
+function toRoadEdge(path: RawPath): RoadEdge | null {
+  const from = path.srcPointName;
+  const to = path.destPointName;
+  const maxVelocity = path.maxVelocity;
+  const maxReverseVelocity = path.maxReverseVelocity;
+  if (typeof from !== 'string' || typeof to !== 'string') return null;
+  if (
+    typeof maxVelocity !== 'number' ||
+    typeof maxReverseVelocity !== 'number'
+  ) {
+    return null;
+  }
+  const length = typeof path.length === 'number' ? path.length : 0;
+  return { from, to, length, maxVelocity, maxReverseVelocity };
+}
+
 @Injectable()
 export class RoutingService {
   private readonly logger = new Logger(RoutingService.name);
@@ -38,8 +45,8 @@ export class RoutingService {
       this.logger.warn('getRoadGraph: plant model unavailable');
       return null;
     }
-    // Same plant-model instance as last build → reuse the cached graph.
-    if (plantModel === this.cachedModel) return this.cachedGraph;
+    const modelUnchangedSinceLastBuild = plantModel === this.cachedModel;
+    if (modelUnchangedSinceLastBuild) return this.cachedGraph;
 
     this.cachedModel = plantModel;
     this.cachedGraph = this.build(plantModel as Record<string, unknown>);
@@ -61,31 +68,31 @@ export class RoutingService {
 
   private build(plantModel: Record<string, unknown>): RoadGraph | null {
     const rawPaths = Array.isArray(plantModel.paths)
-      ? (plantModel.paths as Array<Record<string, unknown>>)
+      ? (plantModel.paths as RawPath[])
       : [];
 
-    const edges: RoadEdge[] = [];
-    for (const path of rawPaths) {
-      // A locked path is closed to traffic — exclude it from routing.
-      if (path.locked === true) continue;
-      const from = path.srcPointName;
-      const to = path.destPointName;
-      if (typeof from !== 'string' || typeof to !== 'string') continue;
-      const length = typeof path.length === 'number' ? path.length : 0;
-      const maxReverseVelocity =
-        typeof path.maxReverseVelocity === 'number'
-          ? path.maxReverseVelocity
-          : 0;
-      edges.push({ from, to, length, maxReverseVelocity });
-    }
+    const openPaths = rawPaths.filter((path) => !isLocked(path));
+    const edges = openPaths
+      .map(toRoadEdge)
+      .filter((edge): edge is RoadEdge => edge !== null);
 
+    const unusablePaths = openPaths.length - edges.length;
+    if (unusablePaths > 0) {
+      this.logger.warn(
+        `getRoadGraph: ${unusablePaths} path(s) excluded — missing endpoints or maxVelocity/maxReverseVelocity`,
+      );
+    }
     if (edges.length === 0) {
       this.logger.warn('getRoadGraph: plant model has no usable paths');
       return null;
     }
+
     const graph = buildRoadGraph(edges);
+    const oneWayPaths = edges.filter(
+      (edge) => edge.maxVelocity <= 0 || edge.maxReverseVelocity <= 0,
+    ).length;
     this.logger.log(
-      `Road graph built: ${graph.size} point(s), ${edges.length} edge(s)`,
+      `Road graph built: ${graph.size} point(s), ${edges.length} path(s), ${oneWayPaths} one-way`,
     );
     return graph;
   }

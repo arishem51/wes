@@ -16,12 +16,18 @@ const idleAt = (position: string): KernelVehicleState =>
     currentPosition: position,
   }) as KernelVehicleState;
 
-// A small connected graph: P1—PARK-1—PARK-2—P2 (unit edges), so each vehicle's
-// nearest park point differs.
+const twoWay = (from: string, to: string, length: number) => ({
+  from,
+  to,
+  length,
+  maxVelocity: 1,
+  maxReverseVelocity: 1,
+});
+
 const graph = buildRoadGraph([
-  { from: 'P1', to: 'PARK-1', length: 1, maxReverseVelocity: 1 },
-  { from: 'PARK-1', to: 'PARK-2', length: 1, maxReverseVelocity: 1 },
-  { from: 'PARK-2', to: 'P2', length: 1, maxReverseVelocity: 1 },
+  twoWay('P1', 'PARK-1', 1),
+  twoWay('PARK-1', 'PARK-2', 1),
+  twoWay('PARK-2', 'P2', 1),
 ]);
 
 function setup(states: Record<string, KernelVehicleState>, agvs: AgvEntity[]) {

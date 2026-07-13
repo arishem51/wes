@@ -21,6 +21,7 @@ import { DeliverySlotEngine } from './delivery-slot.engine';
 import { ZoneGeometryService } from './zone-geometry.service';
 import { PickupDependencyService } from './pickup-dependency.service';
 import { RoutingService } from './routing.service';
+import { ApproachPointService } from './approach-point.service';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
 
 @Module({
@@ -43,6 +44,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     PickupDependencyService,
     RoutingService,
     DispatchPolicyService,
+    ApproachPointService,
     ReleaseEngineService,
     AssignmentEngineService,
     ParkingEngineService,

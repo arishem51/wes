@@ -1,7 +1,4 @@
-import {
-  CorridorPath,
-  detectSingleVehicleBlocks,
-} from './corridor-detector';
+import { CorridorPath, detectSingleVehicleBlocks } from './corridor-detector';
 
 /** Build a bidirectional edge as the two path objects OpenTCS stores for a
     reversible lane (fwd + rev), named in the "A --- B" convention. */
@@ -155,8 +152,18 @@ describe('detectSingleVehicleBlocks', () => {
       ...biEdge('J', 'a2'),
       ...biEdge('J', 'p1'),
       ...biEdge('p1', 'p2'),
-      { name: 'p2 --- p3', srcPointName: 'p2', destPointName: 'p3', locked: true },
-      { name: 'p3 --- p2', srcPointName: 'p3', destPointName: 'p2', locked: true },
+      {
+        name: 'p2 --- p3',
+        srcPointName: 'p2',
+        destPointName: 'p3',
+        locked: true,
+      },
+      {
+        name: 'p3 --- p2',
+        srcPointName: 'p3',
+        destPointName: 'p2',
+        locked: true,
+      },
     ];
     const blocks = detectSingleVehicleBlocks(paths);
     expect(blocks.some((b) => b.memberNames.includes('p3'))).toBe(false);

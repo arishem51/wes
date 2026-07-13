@@ -48,7 +48,7 @@ psql -d wes -f database/seed.sql
 # Configure environment
 copy .env.example .env        # then edit PGPASSWORD / DATABASE_URL
 
-# Seed the initial admin (quan.tran / Admin@123)
+# Seed the initial admin (quan.tran / Wes@1234)
 npm run seed
 
 # Run the API → http://localhost:3000/api
@@ -64,8 +64,8 @@ npm run dev                   # http://localhost:5173
 ```
 
 The frontend calls the real backend (proxied `/api` → `:3000`). Sign in with a
-seeded account — e.g. `quan.tran` / `Admin@123`, or any `database/seed.sql`
-account with password `Wes@1234`.
+seeded account — e.g. `quan.tran`, or any `database/seed.sql`
+account — all use password `Wes@1234`.
 
 ### Default scripts
 

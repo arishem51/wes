@@ -54,6 +54,13 @@ export interface KernelParkingPoint {
   priority: number | null;
 }
 
+export interface KernelRoute {
+  destinationPoint: string;
+  /** openTCS route cost, or -1 when the destination is unreachable for the vehicle. */
+  costs: number;
+  steps: unknown[] | null;
+}
+
 interface KernelTransportOrderDebug {
   name?: string;
   state?: string;
@@ -410,6 +417,21 @@ export class KernelApiService {
     );
     this.logger.log(`Created TO "${name}" → ${intendedVehicle}`);
     await this.triggerDispatcher();
+  }
+
+  async computeRoutes(
+    vehicleName: string,
+    destinationPoints: string[],
+    sourcePoint?: string,
+  ): Promise<KernelRoute[]> {
+    const body: Record<string, unknown> = { destinationPoints };
+    if (sourcePoint) body.sourcePoint = sourcePoint;
+    const res = await axios.post<{ routes?: KernelRoute[] }>(
+      `${this.baseUrl}/v1/vehicles/${encodeURIComponent(vehicleName)}/routeComputationQuery`,
+      body,
+      { timeout: 10_000 },
+    );
+    return res.data?.routes ?? [];
   }
 
   async triggerDispatcher(): Promise<void> {

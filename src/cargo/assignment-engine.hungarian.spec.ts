@@ -3,6 +3,14 @@ import { ORDER_PROP } from './domain/events';
 import { buildRoadGraph } from './domain/routing';
 import { TaskStatus } from './entities/transport-task.entity';
 
+const twoWay = (from: string, to: string, length: number) => ({
+  from,
+  to,
+  length,
+  maxVelocity: 1,
+  maxReverseVelocity: 1,
+});
+
 describe('AssignmentEngineService Hungarian dispatch', () => {
   function build(blockedTaskIds: ReadonlySet<string> = new Set()) {
     const tasks = [
@@ -130,15 +138,12 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
     const dispatchPolicy = {
       getActiveWeights: jest.fn().mockResolvedValue(null),
     };
-    // V1 is at S2. S1 is 4 units away; V2 is another 6 units away.
-    // Cost matrix for t1/t2 is [[4, 6], [0, 10]].
     const routing = {
-      getReverseRoadGraph: jest.fn().mockResolvedValue(
-        buildRoadGraph([
-          { from: 'S2', to: 'S1', length: 4, maxReverseVelocity: 1 },
-          { from: 'S1', to: 'V2-POS', length: 6, maxReverseVelocity: 1 },
-        ]),
-      ),
+      getReverseRoadGraph: jest
+        .fn()
+        .mockResolvedValue(
+          buildRoadGraph([twoWay('S2', 'S1', 4), twoWay('S1', 'V2-POS', 6)]),
+        ),
     };
 
     const service = new AssignmentEngineService(
@@ -274,10 +279,7 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
     cargos.get('c2')!.sourcePointName = 'A';
     cargos.get('c3')!.sourcePointName = 'B';
     routing.getReverseRoadGraph.mockResolvedValue(
-      buildRoadGraph([
-        { from: 'A', to: 'S2', length: 1, maxReverseVelocity: 1 },
-        { from: 'B', to: 'V2-POS', length: 1, maxReverseVelocity: 1 },
-      ]),
+      buildRoadGraph([twoWay('A', 'S2', 1), twoWay('B', 'V2-POS', 1)]),
     );
     const checks = new Map<string, number>();
     pickupDependency.isBlocked.mockImplementation((task: { id: string }) => {
