@@ -14,6 +14,8 @@ export interface RoadEdge {
   readonly to: string;
   /** Path length in the plant-model unit (openTCS reports mm). */
   readonly length: number;
+  /** openTCS path attribute; > 0 means the path is drivable backward too. */
+  readonly maxReverseVelocity?: number;
 }
 
 /** Adjacency list: point name → its neighbours and edge weights. */
@@ -23,9 +25,9 @@ export type RoadGraph = ReadonlyMap<
 >;
 
 /**
- * Build an undirected graph. openTCS paths are directed (src→dest) but a vehicle
- * may traverse them either way, so each edge is added in both directions — the
- * default openTCS routing assumption. Non-finite or negative lengths are clamped
+ * Build a directed graph matching how the kernel actually routes: an openTCS
+ * path is one-way src→dest unless `maxReverseVelocity > 0`, in which case the
+ * reverse direction is drivable too. Non-finite or negative lengths are clamped
  * to 0 (Dijkstra requires non-negative weights).
  */
 export function buildRoadGraph(edges: readonly RoadEdge[]): RoadGraph {
@@ -40,9 +42,27 @@ export function buildRoadGraph(edges: readonly RoadEdge[]): RoadGraph {
     const length =
       Number.isFinite(edge.length) && edge.length > 0 ? edge.length : 0;
     link(edge.from, edge.to, length);
-    link(edge.to, edge.from, length);
+    if ((edge.maxReverseVelocity ?? 0) > 0) link(edge.to, edge.from, length);
   }
   return graph;
+}
+
+/**
+ * Flip every edge. Dijkstra FROM a target on the reversed graph yields each
+ * point's driving distance TO that target on the original directed graph —
+ * the vehicle→pickup cost the assignment engine needs.
+ */
+export function reverseRoadGraph(graph: RoadGraph): RoadGraph {
+  const reversed = new Map<string, Array<{ to: string; length: number }>>();
+  for (const node of graph.keys()) reversed.set(node, []);
+  for (const [from, edges] of graph) {
+    for (const edge of edges) {
+      const list = reversed.get(edge.to);
+      if (list) list.push({ to: from, length: edge.length });
+      else reversed.set(edge.to, [{ to: from, length: edge.length }]);
+    }
+  }
+  return reversed;
 }
 
 /**

@@ -350,12 +350,17 @@ CREATE TABLE dispatch_policies (
   weight_urgency            DOUBLE PRECISION NOT NULL DEFAULT 1.0,
   weight_proximity          DOUBLE PRECISION NOT NULL DEFAULT 1.0,
   weight_inventory_position DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+  weight_battery            DOUBLE PRECISION NOT NULL DEFAULT 0,
   max_agv_per_block         SMALLINT NOT NULL DEFAULT 1,
   is_active                 BOOLEAN NOT NULL DEFAULT FALSE,
   created_by                UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX ux_dispatch_policies_single_active
+ON dispatch_policies (is_active)
+WHERE is_active;
 
 -- =============================================================================
 -- 6. MONITORING & LOGS

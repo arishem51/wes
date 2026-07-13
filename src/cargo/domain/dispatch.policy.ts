@@ -1,3 +1,4 @@
+import { batteryCost } from './dispatch-cost';
 import { solveHungarian } from './hungarian';
 
 /**
@@ -97,20 +98,28 @@ export interface VehicleTaskAssignment {
 /**
  * Build one globally optimal dispatch batch.
  *
- * Tasks are expected in FIFO order. Only the oldest N tasks are considered,
- * where N is the number of eligible vehicles, so global distance optimisation
- * cannot starve old work when the backlog is larger than the fleet. Vehicles
- * are sorted by name before solving, giving a stable fallback when distance
- * data is unavailable or tied.
+ * Tasks are expected in selection order (FIFO, or the urgency-weighted
+ * re-sort). Only the first N tasks are considered, where N is the number of
+ * eligible vehicles, so global distance optimisation cannot starve old work
+ * when the backlog is larger than the fleet. Vehicles are sorted by name
+ * before solving, giving a stable fallback when distance data is unavailable
+ * or tied.
+ *
+ * A reachable pair costs its road distance, optionally scaled per vehicle by
+ * the battery term (`batteryWeight` > 0): a low-battery vehicle pays more for
+ * a long trip, so the matching legitimately shifts short trips onto weak
+ * vehicles. `batteryWeight` 0 keeps cost === raw distance. The reported
+ * `distance` stays the RAW road distance either way.
  *
  * Unknown pairs receive a finite penalty larger than the maximum possible total
  * of a fully known batch. A graph-confirmed unreachable pair receives a second,
  * larger sentinel and is removed from the result. This makes the solver first
- * maximise feasible cardinality, then minimise unknown pairs and road distance.
+ * maximise feasible cardinality, then minimise unknown pairs and weighted cost.
  */
 export function planVehicleAssignments(
   candidates: readonly VehicleCandidate[],
   tasks: readonly DispatchTaskCandidate[],
+  batteryWeight = 0,
 ): VehicleTaskAssignment[] {
   const vehicles = uniqueEligibleVehicles(candidates);
   const selectedTasks = tasks.slice(0, vehicles.length);
@@ -119,24 +128,37 @@ export function planVehicleAssignments(
   const pairs = selectedTasks.map((task) =>
     vehicles.map((vehicle) => evaluatePair(task, vehicle)),
   );
-  const finiteDistances = pairs
-    .flat()
-    .flatMap((pair) => (pair.kind === 'reachable' ? [pair.distance] : []));
-  const maxDistance = finiteDistances.reduce(
-    (maximum, distance) => Math.max(maximum, distance),
-    0,
+  const reachableCosts = pairs.map((row) =>
+    row.map((pair, vehicleIndex) => {
+      if (pair.kind !== 'reachable') return null;
+      return batteryWeight > 0
+        ? batteryCost(
+            pair.distance,
+            vehicles[vehicleIndex].energyLevel,
+            batteryWeight,
+          )
+        : pair.distance;
+    }),
   );
+  const maxCost = reachableCosts
+    .flat()
+    .reduce<number>(
+      (maximum, cost) => (cost !== null ? Math.max(maximum, cost) : maximum),
+      0,
+    );
   const batchScale = selectedTasks.length + 1;
-  const unknownCost = (maxDistance + 1) * batchScale;
+  const unknownCost = (maxCost + 1) * batchScale;
   const unreachableCost = unknownCost * batchScale;
 
   if (!Number.isFinite(unreachableCost)) {
     throw new RangeError('Dispatch distance matrix exceeds numeric range');
   }
 
-  const costMatrix = pairs.map((row) =>
-    row.map((pair) => {
-      if (pair.kind === 'reachable') return pair.distance;
+  const costMatrix = pairs.map((row, taskIndex) =>
+    row.map((pair, vehicleIndex) => {
+      if (pair.kind === 'reachable') {
+        return reachableCosts[taskIndex][vehicleIndex] as number;
+      }
       return pair.kind === 'unknown' ? unknownCost : unreachableCost;
     }),
   );

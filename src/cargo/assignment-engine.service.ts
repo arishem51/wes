@@ -23,8 +23,24 @@ import {
   planVehicleAssignments,
 } from './domain/dispatch.policy';
 import { shortestDistancesFrom } from './domain/routing';
+import {
+  DEFAULT_AGE_HORIZON_MS,
+  DEFAULT_BLOCK_MAX,
+  positiveOr,
+  selectionScore,
+} from './domain/dispatch-cost';
+import { DispatchPolicyService } from './dispatch-policy.service';
 
 const BUSY_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
+
+const AGE_HORIZON_MS = positiveOr(
+  Number(process.env.DISPATCH_AGE_HORIZON_MS),
+  DEFAULT_AGE_HORIZON_MS,
+);
+const BLOCK_MAX = positiveOr(
+  Number(process.env.DISPATCH_BLOCK_MAX),
+  DEFAULT_BLOCK_MAX,
+);
 
 function isFmsDispatchable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;
@@ -68,14 +84,24 @@ export class AssignmentEngineService {
     private readonly transportTask: TransportTaskService,
     private readonly pickupDependency: PickupDependencyService,
     private readonly routing: RoutingService,
+    private readonly dispatchPolicy: DispatchPolicyService,
   ) {}
 
   async run(): Promise<void> {
-    const tasks = await this.taskRepo.find({
+    let tasks = await this.taskRepo.find({
       where: { status: TaskStatus.READY_TO_ASSIGN },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
     if (tasks.length === 0) return;
+
+    // Selection order (Stage-A): FIFO by default; with an active weighted
+    // policy, re-sort by system-derived urgency — waiting age plus how many
+    // same-lane pickups this task is standing in front of. Weights only ever
+    // come from the active dispatch_policies row, never from clients.
+    const weights = await this.dispatchPolicy.getActiveWeights();
+    if (weights && weights.urgency > 0) {
+      tasks = await this.prioritise(tasks, weights.urgency);
+    }
 
     const candidates = await this.buildCandidates();
     this.logger.debug(
@@ -103,8 +129,10 @@ export class AssignmentEngineService {
     if (eligibleVehicleCount() === 0) return;
 
     // One graph for the whole cycle; null when the plant model is unavailable.
+    // The REVERSE graph: Dijkstra from a pickup on it yields each point's true
+    // driving distance TO that pickup on the directed map (vehicle → pickup).
     // Cache Dijkstra results because several tasks may share a pickup point.
-    const graph = await this.routing.getRoadGraph();
+    const graph = await this.routing.getReverseRoadGraph();
     const distanceCache = new Map<string, ReadonlyMap<string, number>>();
     type DispatchContext = {
       task: TransportTaskEntity;
@@ -175,6 +203,7 @@ export class AssignmentEngineService {
       const assignments = planVehicleAssignments(
         availableCandidates,
         taskCandidates,
+        weights?.battery ?? 0,
       );
 
       this.logger.debug(
@@ -245,6 +274,30 @@ export class AssignmentEngineService {
         vehicle.hasActiveTask = true;
       }
     }
+  }
+
+  private async prioritise(
+    tasks: TransportTaskEntity[],
+    urgencyWeight: number,
+  ): Promise<TransportTaskEntity[]> {
+    const blocking = await this.pickupDependency.blockingCounts();
+    const now = Date.now();
+    const scored = tasks.map((task) => ({
+      task,
+      score: selectionScore(
+        now - task.createdAt.getTime(),
+        blocking.get(task.id) ?? 0,
+        urgencyWeight,
+        AGE_HORIZON_MS,
+        BLOCK_MAX,
+      ),
+    }));
+    scored.sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      const byAge = a.task.createdAt.getTime() - b.task.createdAt.getTime();
+      return byAge !== 0 ? byAge : a.task.id.localeCompare(b.task.id);
+    });
+    return scored.map((s) => s.task);
   }
 
   private async buildCandidates(): Promise<VehicleCandidate[]> {

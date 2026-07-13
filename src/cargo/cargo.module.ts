@@ -3,10 +3,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CargoEntity } from './entities/cargo.entity';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import { TaskStatusTransitionEntity } from './entities/task-status-transition.entity';
+import { DispatchPolicyEntity } from './entities/dispatch-policy.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { AgvEntity } from '../agvs/entities/agv.entity';
 import { CargoService } from './cargo.service';
 import { CargoController } from './cargo.controller';
+import { DispatchPolicyService } from './dispatch-policy.service';
+import { DispatchPolicyController } from './dispatch-policy.controller';
 import { TransportTaskService } from './transport-task.service';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
@@ -26,6 +29,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
       CargoEntity,
       TransportTaskEntity,
       TaskStatusTransitionEntity,
+      DispatchPolicyEntity,
       ZoneEntity,
       AgvEntity,
     ]),
@@ -38,6 +42,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     ZoneGeometryService,
     PickupDependencyService,
     RoutingService,
+    DispatchPolicyService,
     ReleaseEngineService,
     AssignmentEngineService,
     ParkingEngineService,
@@ -45,7 +50,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     DispatchSchedulerService,
     TransportTaskSaga,
   ],
-  controllers: [CargoController],
+  controllers: [CargoController, DispatchPolicyController],
   exports: [DeliverySlotEngine],
 })
 export class CargoModule {}

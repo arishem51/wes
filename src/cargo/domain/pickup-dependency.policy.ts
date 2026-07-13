@@ -45,3 +45,21 @@ export function isBlocked(
 ): boolean {
   return findBlocker(target, others) !== null;
 }
+
+/**
+ * How many same-lane candidates sit DEEPER than `target` — i.e. how many other
+ * pickups `target` is standing in front of. Clearing `target` is what lets
+ * them out, so this count is the objective urgency signal for dispatch.
+ */
+export function countBlocked(
+  target: PickupCandidate,
+  others: readonly PickupCandidate[],
+): number {
+  let count = 0;
+  for (const o of others) {
+    if (o.taskId === target.taskId) continue;
+    if (o.laneKey !== target.laneKey) continue;
+    if (o.depthKey > target.depthKey) count++;
+  }
+  return count;
+}

@@ -9,6 +9,7 @@ import { CargoEntity } from './entities/cargo.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { ZoneGeometryService, MemberAxes } from './zone-geometry.service';
 import {
+  countBlocked,
   findBlocker,
   PickupCandidate,
 } from './domain/pickup-dependency.policy';
@@ -52,6 +53,62 @@ export class PickupDependencyService {
       where: { status: In(AT_SOURCE as TaskStatus[]) },
     });
     return this.decide(tasks);
+  }
+
+  /**
+   * For every at-source task: how many other at-source pickups in the same
+   * lane it is standing in front of. The system-derived urgency signal for
+   * dispatch selection — a front-of-lane cargo unblocks its whole lane.
+   */
+  async blockingCounts(): Promise<Map<string, number>> {
+    const tasks = await this.taskRepo.find({
+      where: { status: In(AT_SOURCE as TaskStatus[]) },
+    });
+    const counts = new Map<string, number>();
+    if (tasks.length === 0) return counts;
+
+    const cargoIds = tasks
+      .map((t) => t.cargoId)
+      .filter((id): id is string => id !== null);
+    const cargos = cargoIds.length
+      ? await this.cargoRepo.find({ where: { id: In(cargoIds) } })
+      : [];
+    const cargoById = new Map(cargos.map((c) => [c.id, c]));
+
+    const byZone = new Map<string, Array<{ taskId: string; loc: string }>>();
+    for (const task of tasks) {
+      const cargo = task.cargoId ? cargoById.get(task.cargoId) : undefined;
+      const zoneId = cargo?.sourceZoneId ?? null;
+      const loc = cargo?.sourcePickupLocationName ?? null;
+      if (!zoneId || !loc) continue;
+      const list = byZone.get(zoneId) ?? [];
+      list.push({ taskId: task.id, loc });
+      byZone.set(zoneId, list);
+    }
+
+    for (const [zoneId, entries] of byZone) {
+      const zone = await this.zoneRepo.findOne({ where: { id: zoneId } });
+      const geometry = zone
+        ? await this.zoneGeometry.computeMemberAxes(zone)
+        : null;
+      if (!geometry) continue;
+
+      const candidates: PickupCandidate[] = [];
+      for (const e of entries) {
+        const axes: MemberAxes | undefined = geometry.get(e.loc);
+        if (!axes) continue;
+        candidates.push({
+          taskId: e.taskId,
+          laneKey: axes.laneKey,
+          depthKey: axes.depthKey,
+          locationName: e.loc,
+        });
+      }
+      for (const cand of candidates) {
+        counts.set(cand.taskId, countBlocked(cand, candidates));
+      }
+    }
+    return counts;
   }
 
   /** Re-check a single task right before assignment (closes release→assign race). */

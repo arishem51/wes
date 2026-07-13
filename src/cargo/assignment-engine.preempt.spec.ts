@@ -52,7 +52,10 @@ describe('AssignmentEngineService preempt', () => {
     const vehicleStore = { get: jest.fn().mockReturnValue(parkingVehicle) };
     const transportTask = { changeStatus: jest.fn().mockResolvedValue(undefined) };
     const pickupDependency = { isBlocked: jest.fn().mockResolvedValue(false) };
-    const routing = { getRoadGraph: jest.fn().mockResolvedValue(null) };
+    const routing = { getReverseRoadGraph: jest.fn().mockResolvedValue(null) };
+    const dispatchPolicy = {
+      getActiveWeights: jest.fn().mockResolvedValue(null),
+    };
 
     const svc = new AssignmentEngineService(
       taskRepo as never,
@@ -63,6 +66,7 @@ describe('AssignmentEngineService preempt', () => {
       transportTask as never,
       pickupDependency as never,
       routing as never,
+      dispatchPolicy as never,
     );
     return { svc, kernelApi, transportTask, vehicleStore };
   }

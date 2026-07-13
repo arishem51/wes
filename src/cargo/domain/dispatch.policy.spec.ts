@@ -308,6 +308,81 @@ describe('dispatch.policy', () => {
       expect(assignments).toEqual([]);
     });
 
+    it('battery weight shifts the short trip onto the low-battery vehicle', () => {
+      const vehicles = [
+        candidate({ name: 'V1', currentPosition: 'P1', energyLevel: 100 }),
+        candidate({ name: 'V2', currentPosition: 'P2', energyLevel: 25 }),
+      ];
+      const tasks = [
+        {
+          taskId: 'T1',
+          distanceByPoint: new Map([
+            ['P1', 160],
+            ['P2', 100],
+          ]),
+        },
+        {
+          taskId: 'T2',
+          distanceByPoint: new Map([
+            ['P1', 100],
+            ['P2', 50],
+          ]),
+        },
+      ];
+
+      const plain = planVehicleAssignments(vehicles, tasks).map(
+        ({ taskId, vehicle, distance }) => [taskId, vehicle.name, distance],
+      );
+      expect(plain).toEqual([
+        ['T1', 'V2', 100],
+        ['T2', 'V1', 100],
+      ]);
+
+      const weighted = planVehicleAssignments(vehicles, tasks, 5).map(
+        ({ taskId, vehicle, distance }) => [taskId, vehicle.name, distance],
+      );
+      expect(weighted).toEqual([
+        ['T1', 'V1', 160],
+        ['T2', 'V2', 50],
+      ]);
+    });
+
+    it('battery weight 0 is the exact fast path — cost equals raw distance', () => {
+      const vehicles = [
+        candidate({ name: 'V1', currentPosition: 'P1', energyLevel: 21 }),
+        candidate({ name: 'V2', currentPosition: 'P2', energyLevel: 100 }),
+      ];
+      const tasks = [
+        {
+          taskId: 'T1',
+          distanceByPoint: new Map([
+            ['P1', 10],
+            ['P2', 20],
+          ]),
+        },
+      ];
+      expect(planVehicleAssignments(vehicles, tasks, 0)).toEqual(
+        planVehicleAssignments(vehicles, tasks),
+      );
+      expect(planVehicleAssignments(vehicles, tasks)[0].vehicle.name).toBe(
+        'V1',
+      );
+    });
+
+    it('battery cost never overturns feasibility — reachable beats unknown', () => {
+      const vehicles = [
+        candidate({ name: 'V1', currentPosition: null, energyLevel: 100 }),
+        candidate({ name: 'V2', currentPosition: 'P', energyLevel: 25 }),
+      ];
+      const tasks = [
+        { taskId: 'T1', distanceByPoint: new Map([['P', 1_000_000]]) },
+      ];
+
+      const [assignment] = planVehicleAssignments(vehicles, tasks, 10);
+      expect(assignment.vehicle.name).toBe('V2');
+      expect(assignment.distance).toBe(1_000_000);
+    });
+
     it('keeps the oldest feasible task when reachable edges conflict', () => {
       const assignments = planVehicleAssignments(
         [

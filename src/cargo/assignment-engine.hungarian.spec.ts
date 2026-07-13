@@ -125,14 +125,18 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
         .mockImplementation((task: { id: string }) =>
           Promise.resolve(blockedTaskIds.has(task.id)),
         ),
+      blockingCounts: jest.fn().mockResolvedValue(new Map<string, number>()),
+    };
+    const dispatchPolicy = {
+      getActiveWeights: jest.fn().mockResolvedValue(null),
     };
     // V1 is at S2. S1 is 4 units away; V2 is another 6 units away.
     // Cost matrix for t1/t2 is [[4, 6], [0, 10]].
     const routing = {
-      getRoadGraph: jest.fn().mockResolvedValue(
+      getReverseRoadGraph: jest.fn().mockResolvedValue(
         buildRoadGraph([
-          { from: 'S2', to: 'S1', length: 4 },
-          { from: 'S1', to: 'V2-POS', length: 6 },
+          { from: 'S2', to: 'S1', length: 4, maxReverseVelocity: 1 },
+          { from: 'S1', to: 'V2-POS', length: 6, maxReverseVelocity: 1 },
         ]),
       ),
     };
@@ -146,11 +150,13 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
       transportTask as never,
       pickupDependency as never,
       routing as never,
+      dispatchPolicy as never,
     );
     return {
       service,
       agvRepo,
       cargos,
+      dispatchPolicy,
       kernelApi,
       pickupDependency,
       routing,
@@ -267,10 +273,10 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
     cargos.get('c1')!.sourcePointName = 'A';
     cargos.get('c2')!.sourcePointName = 'A';
     cargos.get('c3')!.sourcePointName = 'B';
-    routing.getRoadGraph.mockResolvedValue(
+    routing.getReverseRoadGraph.mockResolvedValue(
       buildRoadGraph([
-        { from: 'A', to: 'S2', length: 1 },
-        { from: 'B', to: 'V2-POS', length: 1 },
+        { from: 'A', to: 'S2', length: 1, maxReverseVelocity: 1 },
+        { from: 'B', to: 'V2-POS', length: 1, maxReverseVelocity: 1 },
       ]),
     );
     const checks = new Map<string, number>();
@@ -287,6 +293,41 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
         (call[3] as Record<string, string>)[ORDER_PROP.TASK_ID],
     );
     expect(dispatchedTaskIds).toEqual(['t2', 't3']);
+  });
+
+  it('with an active urgency policy, a lane-blocking task jumps the FIFO queue', async () => {
+    const { service, dispatchPolicy, kernelApi, pickupDependency } = build();
+    dispatchPolicy.getActiveWeights.mockResolvedValue({
+      urgency: 5,
+      battery: 0,
+    });
+    pickupDependency.blockingCounts.mockResolvedValue(new Map([['t3', 3]]));
+
+    await service.run();
+
+    const dispatchedTaskIds = kernelApi.createTransportOrder.mock.calls.map(
+      (call: unknown[]) =>
+        (call[3] as Record<string, string>)[ORDER_PROP.TASK_ID],
+    );
+    expect(dispatchedTaskIds).toEqual(['t3', 't1']);
+    expect(pickupDependency.blockingCounts).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps plain FIFO when the active policy has urgency weight 0', async () => {
+    const { service, dispatchPolicy, kernelApi, pickupDependency } = build();
+    dispatchPolicy.getActiveWeights.mockResolvedValue({
+      urgency: 0,
+      battery: 0,
+    });
+
+    await service.run();
+
+    const dispatchedTaskIds = kernelApi.createTransportOrder.mock.calls.map(
+      (call: unknown[]) =>
+        (call[3] as Record<string, string>)[ORDER_PROP.TASK_ID],
+    );
+    expect(dispatchedTaskIds).toEqual(['t1', 't2']);
+    expect(pickupDependency.blockingCounts).not.toHaveBeenCalled();
   });
 
   it('excludes an ambiguous duplicate vehicle name from dispatch', async () => {

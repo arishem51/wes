@@ -1,4 +1,5 @@
 import {
+  countBlocked,
   findBlocker,
   isBlocked,
   PickupCandidate,
@@ -46,5 +47,29 @@ describe('pickup-dependency.policy', () => {
   it('a single cargo is never blocked by itself', () => {
     const only = c('only', 0, 5000);
     expect(isBlocked(only, [only])).toBe(false);
+  });
+
+  describe('countBlocked', () => {
+    it('front-of-lane cargo blocks every deeper same-lane cargo', () => {
+      const front = c('front', 0, 1000);
+      const mid = c('mid', 0, 2000);
+      const back = c('back', 0, 3000);
+      const all = [front, mid, back];
+      expect(countBlocked(front, all)).toBe(2);
+      expect(countBlocked(mid, all)).toBe(1);
+      expect(countBlocked(back, all)).toBe(0);
+    });
+
+    it('ignores other lanes and same-depth neighbours', () => {
+      const target = c('target', 0, 1000);
+      const otherLane = c('other-lane', 1, 9000);
+      const sideBySide = c('side', 0, 1000);
+      expect(countBlocked(target, [target, otherLane, sideBySide])).toBe(0);
+    });
+
+    it('never counts itself', () => {
+      const only = c('only', 0, 1000);
+      expect(countBlocked(only, [only])).toBe(0);
+    });
   });
 });

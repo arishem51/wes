@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import { RoadEdge, RoadGraph, buildRoadGraph } from './domain/routing';
+import {
+  RoadEdge,
+  RoadGraph,
+  buildRoadGraph,
+  reverseRoadGraph,
+} from './domain/routing';
 
 /**
  * Builds the warehouse road graph from the openTCS plant model so the
@@ -23,6 +28,7 @@ export class RoutingService {
 
   private cachedModel: unknown = null;
   private cachedGraph: RoadGraph | null = null;
+  private cachedReverseGraph: RoadGraph | null = null;
 
   constructor(private readonly kernelApi: KernelApiService) {}
 
@@ -37,7 +43,20 @@ export class RoutingService {
 
     this.cachedModel = plantModel;
     this.cachedGraph = this.build(plantModel as Record<string, unknown>);
+    this.cachedReverseGraph = this.cachedGraph
+      ? reverseRoadGraph(this.cachedGraph)
+      : null;
     return this.cachedGraph;
+  }
+
+  /**
+   * Same graph with every edge flipped. Dijkstra FROM a pickup point on this
+   * graph gives each point's true driving distance TO that pickup on the
+   * directed map — what nearest-vehicle costing needs.
+   */
+  async getReverseRoadGraph(): Promise<RoadGraph | null> {
+    await this.getRoadGraph();
+    return this.cachedReverseGraph;
   }
 
   private build(plantModel: Record<string, unknown>): RoadGraph | null {
@@ -53,7 +72,11 @@ export class RoutingService {
       const to = path.destPointName;
       if (typeof from !== 'string' || typeof to !== 'string') continue;
       const length = typeof path.length === 'number' ? path.length : 0;
-      edges.push({ from, to, length });
+      const maxReverseVelocity =
+        typeof path.maxReverseVelocity === 'number'
+          ? path.maxReverseVelocity
+          : 0;
+      edges.push({ from, to, length, maxReverseVelocity });
     }
 
     if (edges.length === 0) {
