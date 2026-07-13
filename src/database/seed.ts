@@ -59,7 +59,10 @@ async function run() {
   });
 
   await seedAdmin(app.get(UsersService), log);
-  await seedAgvs(app.get<Repository<AgvEntity>>(getRepositoryToken(AgvEntity)), log);
+  await seedAgvs(
+    app.get<Repository<AgvEntity>>(getRepositoryToken(AgvEntity)),
+    log,
+  );
 
   await app.close();
 }

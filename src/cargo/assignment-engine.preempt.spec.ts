@@ -28,11 +28,13 @@ describe('AssignmentEngineService preempt', () => {
 
     const taskRepo = {
       // run() asks for READY tasks; busyVehicleNames() asks for In([PICKING_UP,DELIVERING]).
-      find: jest.fn().mockImplementation((opts: { where?: { status?: unknown } }) =>
-        opts?.where?.status === TaskStatus.READY_TO_ASSIGN
-          ? Promise.resolve([task])
-          : Promise.resolve([]),
-      ),
+      find: jest
+        .fn()
+        .mockImplementation((opts: { where?: { status?: unknown } }) =>
+          opts?.where?.status === TaskStatus.READY_TO_ASSIGN
+            ? Promise.resolve([task])
+            : Promise.resolve([]),
+        ),
     };
     const cargoRepo = { findOne: jest.fn().mockResolvedValue(cargo) };
     const agvRepo = {
@@ -50,7 +52,9 @@ describe('AssignmentEngineService preempt', () => {
       createTransportOrder: jest.fn().mockResolvedValue(undefined),
     };
     const vehicleStore = { get: jest.fn().mockReturnValue(parkingVehicle) };
-    const transportTask = { changeStatus: jest.fn().mockResolvedValue(undefined) };
+    const transportTask = {
+      changeStatus: jest.fn().mockResolvedValue(undefined),
+    };
     const pickupDependency = { isBlocked: jest.fn().mockResolvedValue(false) };
     const routing = { getRoadGraph: jest.fn().mockResolvedValue(null) };
 

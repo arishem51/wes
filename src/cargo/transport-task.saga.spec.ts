@@ -21,6 +21,7 @@ function makeSaga(findOne: jest.Mock): TransportTaskSaga {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 }
 

@@ -44,7 +44,10 @@ describe('parking.policy', () => {
   });
 
   describe('pickParkingPoint', () => {
-    const point = (name: string, priority: number | null = null): ParkingPoint => ({
+    const point = (
+      name: string,
+      priority: number | null = null,
+    ): ParkingPoint => ({
       name,
       priority,
     });

@@ -1,56 +1,42 @@
-/**
- * Pure road-graph routing (WF / ARCHITECTURE §6.1).
- *
- * Builds an undirected weighted graph from the openTCS plant-model paths and
- * answers "how far is every point from a given source" via Dijkstra. Kept pure
- * (primitives only, no TypeORM/openTCS types) so the nearest-vehicle rule is a
- * single readable, unit-testable function. The Hungarian dispatch policy
- * consumes the same distances without coupling routing to assignment.
- */
-
-/** One openTCS path, flattened to its routing-relevant fields. */
 export interface RoadEdge {
   readonly from: string;
   readonly to: string;
-  /** Path length in the plant-model unit (openTCS reports mm). */
   readonly length: number;
+  readonly maxVelocity: number;
+  readonly maxReverseVelocity: number;
 }
 
-/** Adjacency list: point name → its neighbours and edge weights. */
 export type RoadGraph = ReadonlyMap<
   string,
   ReadonlyArray<{ to: string; length: number }>
 >;
 
-/**
- * Build an undirected graph. openTCS paths are directed (src→dest) but a vehicle
- * may traverse them either way, so each edge is added in both directions — the
- * default openTCS routing assumption. Non-finite or negative lengths are clamped
- * to 0 (Dijkstra requires non-negative weights).
- */
+function nonNegativeLength(length: number): number {
+  return Number.isFinite(length) && length > 0 ? length : 0;
+}
+
 export function buildRoadGraph(edges: readonly RoadEdge[]): RoadGraph {
   const graph = new Map<string, Array<{ to: string; length: number }>>();
-  const link = (a: string, b: string, length: number): void => {
-    const list = graph.get(a);
-    if (list) list.push({ to: b, length });
-    else graph.set(a, [{ to: b, length }]);
+  const arcsFrom = (point: string): Array<{ to: string; length: number }> => {
+    const existing = graph.get(point);
+    if (existing) return existing;
+    const created: Array<{ to: string; length: number }> = [];
+    graph.set(point, created);
+    return created;
   };
+
   for (const edge of edges) {
     if (!edge.from || !edge.to) continue;
-    const length =
-      Number.isFinite(edge.length) && edge.length > 0 ? edge.length : 0;
-    link(edge.from, edge.to, length);
-    link(edge.to, edge.from, length);
+    const length = nonNegativeLength(edge.length);
+    const forwardArcs = arcsFrom(edge.from);
+    const reverseArcs = arcsFrom(edge.to);
+    if (edge.maxVelocity > 0) forwardArcs.push({ to: edge.to, length });
+    if (edge.maxReverseVelocity > 0)
+      reverseArcs.push({ to: edge.from, length });
   }
   return graph;
 }
 
-/**
- * Dijkstra single-source shortest path. Returns the distance from `source` to
- * every reachable node (source included, at 0). Unreachable nodes are absent —
- * callers treat "absent" as unreachable (Infinity). Uses a binary min-heap so a
- * warehouse graph of thousands of points routes in O(E log V) per call.
- */
 export function shortestDistancesFrom(
   graph: RoadGraph,
   source: string,
@@ -64,8 +50,8 @@ export function shortestDistancesFrom(
 
   while (heap.size > 0) {
     const { node, priority } = heap.pop();
-    // Stale entry: a shorter distance was already finalised for this node.
-    if (priority > (dist.get(node) ?? Infinity)) continue;
+    const isStale = priority > (dist.get(node) ?? Infinity);
+    if (isStale) continue;
     for (const edge of graph.get(node) ?? []) {
       const next = priority + edge.length;
       if (next < (dist.get(edge.to) ?? Infinity)) {
@@ -77,7 +63,6 @@ export function shortestDistancesFrom(
   return dist;
 }
 
-/** Minimal binary min-heap keyed on a numeric priority. */
 class MinHeap {
   private readonly items: Array<{ node: string; priority: number }> = [];
 

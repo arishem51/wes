@@ -1,17 +1,63 @@
-import { buildRoadGraph, shortestDistancesFrom } from './routing';
+import { buildRoadGraph, shortestDistancesFrom, RoadEdge } from './routing';
+
+const twoWay = (from: string, to: string, length: number): RoadEdge => ({
+  from,
+  to,
+  length,
+  maxVelocity: 1,
+  maxReverseVelocity: 1,
+});
+
+const oneWay = (from: string, to: string, length: number): RoadEdge => ({
+  from,
+  to,
+  length,
+  maxVelocity: 1,
+  maxReverseVelocity: 0,
+});
+
+const reverseOnly = (from: string, to: string, length: number): RoadEdge => ({
+  from,
+  to,
+  length,
+  maxVelocity: 0,
+  maxReverseVelocity: 1,
+});
 
 describe('routing', () => {
   describe('buildRoadGraph', () => {
-    it('is undirected — an edge is traversable both ways', () => {
-      const graph = buildRoadGraph([{ from: 'A', to: 'B', length: 5 }]);
+    it('is traversable both ways when the path allows reverse travel', () => {
+      const graph = buildRoadGraph([twoWay('A', 'B', 5)]);
       expect(shortestDistancesFrom(graph, 'A').get('B')).toBe(5);
       expect(shortestDistancesFrom(graph, 'B').get('A')).toBe(5);
     });
 
+    it('is traversable forward only when maxReverseVelocity is 0', () => {
+      const graph = buildRoadGraph([oneWay('A', 'B', 5)]);
+      expect(shortestDistancesFrom(graph, 'A').get('B')).toBe(5);
+      expect(shortestDistancesFrom(graph, 'B').has('A')).toBe(false);
+    });
+
+    it('is traversable in reverse only when maxVelocity is 0', () => {
+      const graph = buildRoadGraph([reverseOnly('A', 'B', 5)]);
+      expect(shortestDistancesFrom(graph, 'A').has('B')).toBe(false);
+      expect(shortestDistancesFrom(graph, 'B').get('A')).toBe(5);
+    });
+
+    it('detours via the two-way loop instead of driving back up a one-way path', () => {
+      const graph = buildRoadGraph([
+        oneWay('A', 'B', 1),
+        twoWay('B', 'C', 10),
+        twoWay('C', 'A', 10),
+      ]);
+      expect(shortestDistancesFrom(graph, 'A').get('B')).toBe(1);
+      expect(shortestDistancesFrom(graph, 'B').get('A')).toBe(20);
+    });
+
     it('clamps non-finite or negative lengths to 0', () => {
       const graph = buildRoadGraph([
-        { from: 'A', to: 'B', length: -3 },
-        { from: 'B', to: 'C', length: Number.NaN },
+        twoWay('A', 'B', -3),
+        twoWay('B', 'C', Number.NaN),
       ]);
       const dist = shortestDistancesFrom(graph, 'A');
       expect(dist.get('B')).toBe(0);
@@ -19,17 +65,16 @@ describe('routing', () => {
     });
 
     it('skips edges missing an endpoint', () => {
-      const graph = buildRoadGraph([{ from: '', to: 'B', length: 5 }]);
+      const graph = buildRoadGraph([twoWay('', 'B', 5)]);
       expect(graph.size).toBe(0);
     });
   });
 
   describe('shortestDistancesFrom', () => {
-    // A—1—B—1—C   and   A—5—C : shortest A→C is 2 via B, not the direct 5.
     const graph = buildRoadGraph([
-      { from: 'A', to: 'B', length: 1 },
-      { from: 'B', to: 'C', length: 1 },
-      { from: 'A', to: 'C', length: 5 },
+      twoWay('A', 'B', 1),
+      twoWay('B', 'C', 1),
+      twoWay('A', 'C', 5),
     ]);
 
     it('finds the shortest multi-hop path over a direct longer edge', () => {
@@ -45,8 +90,8 @@ describe('routing', () => {
 
     it('omits unreachable nodes', () => {
       const disjoint = buildRoadGraph([
-        { from: 'A', to: 'B', length: 1 },
-        { from: 'X', to: 'Y', length: 1 },
+        twoWay('A', 'B', 1),
+        twoWay('X', 'Y', 1),
       ]);
       const dist = shortestDistancesFrom(disjoint, 'A');
       expect(dist.has('X')).toBe(false);
