@@ -236,7 +236,7 @@ function printAggregate(runs) {
   const vehOk = runs.filter((m) => m.vehicleReliable);
   if (taskOk.length < 2 && vehOk.length < 2) return;
   const mean = (set, f) => {
-    const xs = set.map(f).filter((x) => x != null);
+    const xs = set.map(f).filter((x) => x != null).map(Number);
     return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
   };
   console.log(`\n═══ aggregate (task-side ${taskOk.length} run(s), vehicle-side ${vehOk.length} run(s)) ═══`);
