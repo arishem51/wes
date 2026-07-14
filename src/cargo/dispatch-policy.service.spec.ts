@@ -4,21 +4,20 @@ import { DispatchPolicyEntity } from './entities/dispatch-policy.entity';
 
 const policyRow = (
   overrides: Partial<DispatchPolicyEntity> = {},
-): DispatchPolicyEntity =>
-  ({
-    id: 'p1',
-    name: 'default',
-    weightUrgency: 1,
-    weightProximity: 1,
-    weightInventoryPosition: 1,
-    weightBattery: 0,
-    maxAgvPerBlock: 1,
-    isActive: true,
-    createdBy: null,
-    createdAt: new Date('2026-01-01T00:00:00Z'),
-    updatedAt: new Date('2026-01-01T00:00:00Z'),
-    ...overrides,
-  }) as DispatchPolicyEntity;
+): DispatchPolicyEntity => ({
+  id: 'p1',
+  name: 'default',
+  weightUrgency: 1,
+  weightProximity: 1,
+  weightInventoryPosition: 1,
+  weightBattery: 0,
+  maxAgvPerBlock: 1,
+  isActive: true,
+  createdBy: null,
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  updatedAt: new Date('2026-01-01T00:00:00Z'),
+  ...overrides,
+});
 
 function build(findOneResult: DispatchPolicyEntity | null) {
   const manager = {

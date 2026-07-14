@@ -1,7 +1,9 @@
 import {
   VehicleCandidate,
+  VehicleTaskAssignment,
   isEligible,
   planVehicleAssignments,
+  planVehicleAssignmentsGreedy,
   pickVehicle,
   pickNearestVehicle,
 } from './dispatch.policy';
@@ -398,6 +400,143 @@ describe('dispatch.policy', () => {
       expect(assignments.map((assignment) => assignment.taskId)).toEqual([
         'oldest',
       ]);
+    });
+  });
+
+  describe('planVehicleAssignmentsGreedy', () => {
+    const totalDistance = (plan: readonly VehicleTaskAssignment[]): number =>
+      plan.reduce((sum, { distance }) => sum + (distance ?? 0), 0);
+
+    const scatteredFleet = [
+      candidate({ name: 'V-3017', currentPosition: 'P-3017' }),
+      candidate({ name: 'V-3083', currentPosition: 'P-3083' }),
+      candidate({ name: 'V-3149', currentPosition: 'P-3149' }),
+    ];
+    const scatteredTasks = [
+      {
+        taskId: 'T-3005',
+        distanceByPoint: new Map([
+          ['P-3017', 40],
+          ['P-3083', 125],
+          ['P-3149', 125],
+        ]),
+      },
+      {
+        taskId: 'T-3032',
+        distanceByPoint: new Map([
+          ['P-3017', 55],
+          ['P-3083', 120],
+          ['P-3149', 140],
+        ]),
+      },
+      {
+        taskId: 'T-3086',
+        distanceByPoint: new Map([
+          ['P-3017', 110],
+          ['P-3083', 15],
+          ['P-3149', 195],
+        ]),
+      },
+    ];
+
+    it('lets an early task steal the vehicle a later task uniquely needs', () => {
+      const greedy = planVehicleAssignmentsGreedy(
+        scatteredFleet,
+        scatteredTasks,
+      );
+
+      expect(
+        greedy.map(({ taskId, vehicle, distance }) => [
+          taskId,
+          vehicle.name,
+          distance,
+        ]),
+      ).toEqual([
+        ['T-3005', 'V-3017', 40],
+        ['T-3032', 'V-3083', 120],
+        ['T-3086', 'V-3149', 195],
+      ]);
+      expect(totalDistance(greedy)).toBe(355);
+    });
+
+    it('is beaten by the Hungarian matcher on the same cost matrix', () => {
+      const hungarian = planVehicleAssignments(scatteredFleet, scatteredTasks);
+
+      expect(totalDistance(hungarian)).toBe(195);
+      expect(totalDistance(hungarian)).toBeLessThan(
+        totalDistance(
+          planVehicleAssignmentsGreedy(scatteredFleet, scatteredTasks),
+        ),
+      );
+    });
+
+    it('ties the Hungarian matcher when the cost matrix is additive', () => {
+      const parkedFleet = [
+        candidate({ name: 'V1', currentPosition: 'PARK-1' }),
+        candidate({ name: 'V2', currentPosition: 'PARK-2' }),
+        candidate({ name: 'V3', currentPosition: 'PARK-3' }),
+      ];
+      const perTask = [10, 20, 30];
+      const perVehicle = [1, 2, 3];
+      const tasks = perTask.map((taskCost, taskIndex) => ({
+        taskId: `T${taskIndex}`,
+        distanceByPoint: new Map(
+          perVehicle.map((vehicleCost, vehicleIndex) => [
+            `PARK-${vehicleIndex + 1}`,
+            taskCost + vehicleCost,
+          ]),
+        ),
+      }));
+
+      expect(
+        totalDistance(planVehicleAssignmentsGreedy(parkedFleet, tasks)),
+      ).toBe(totalDistance(planVehicleAssignments(parkedFleet, tasks)));
+    });
+
+    it('shares the eligibility filter and the fleet-sized batch cut', () => {
+      const greedy = planVehicleAssignmentsGreedy(
+        [
+          candidate({ name: 'V1', currentPosition: 'P1' }),
+          candidate({ name: 'V2', ignored: true, currentPosition: 'P2' }),
+        ],
+        [
+          { taskId: 'oldest', distanceByPoint: new Map([['P1', 100]]) },
+          { taskId: 'newer', distanceByPoint: new Map([['P1', 1]]) },
+        ],
+      );
+
+      expect(
+        greedy.map(({ taskId, vehicle }) => [taskId, vehicle.name]),
+      ).toEqual([['oldest', 'V1']]);
+    });
+
+    it('does not dispatch a graph-confirmed unreachable pair', () => {
+      expect(
+        planVehicleAssignmentsGreedy(
+          [candidate({ name: 'V1', currentPosition: 'DISCONNECTED' })],
+          [{ taskId: 'T1', distanceByPoint: new Map([['OTHER-POINT', 5]]) }],
+        ),
+      ).toEqual([]);
+    });
+
+    it('breaks a cost tie on the lowest vehicle name', () => {
+      const [assignment] = planVehicleAssignmentsGreedy(
+        [
+          candidate({ name: 'V2', currentPosition: 'P2' }),
+          candidate({ name: 'V1', currentPosition: 'P1' }),
+        ],
+        [
+          {
+            taskId: 'T1',
+            distanceByPoint: new Map([
+              ['P1', 50],
+              ['P2', 50],
+            ]),
+          },
+        ],
+      );
+
+      expect(assignment.vehicle.name).toBe('V1');
     });
   });
 });

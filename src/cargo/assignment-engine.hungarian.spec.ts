@@ -355,4 +355,74 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
 
     expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
   });
+
+  describe('DISPATCH_MATCHER', () => {
+    const originalMatcher = process.env.DISPATCH_MATCHER;
+
+    afterEach(() => {
+      if (originalMatcher === undefined) delete process.env.DISPATCH_MATCHER;
+      else process.env.DISPATCH_MATCHER = originalMatcher;
+    });
+
+    const dispatchedVehicleFor = (
+      kernelApi: { createTransportOrder: jest.Mock },
+      call: number,
+    ): string =>
+      kernelApi.createTransportOrder.mock.calls[call - 1][2] as string;
+
+    it('dispatches the greedy pairing and records the hungarian counterfactual', async () => {
+      process.env.DISPATCH_MATCHER = 'greedy';
+      const { service, kernelApi, transportTask } = build();
+
+      await service.run();
+
+      expect(dispatchedVehicleFor(kernelApi, 1)).toBe('V1');
+      expect(dispatchedVehicleFor(kernelApi, 2)).toBe('V2');
+      expect(transportTask.changeStatus).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ id: 't1' }),
+        TaskStatus.PICKING_UP,
+        expect.objectContaining({
+          context: expect.objectContaining({
+            matcher: 'greedy',
+            batchSize: 2,
+            distanceToSource: 4,
+            altVehicleName: 'V2',
+            altDistanceToSource: 6,
+          }),
+        }),
+      );
+    });
+
+    it('dispatches the hungarian pairing and records the greedy counterfactual by default', async () => {
+      delete process.env.DISPATCH_MATCHER;
+      const { service, kernelApi, transportTask } = build();
+
+      await service.run();
+
+      expect(dispatchedVehicleFor(kernelApi, 1)).toBe('V2');
+      expect(transportTask.changeStatus).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ id: 't1' }),
+        TaskStatus.PICKING_UP,
+        expect.objectContaining({
+          context: expect.objectContaining({
+            matcher: 'hungarian',
+            distanceToSource: 6,
+            altVehicleName: 'V1',
+            altDistanceToSource: 4,
+          }),
+        }),
+      );
+    });
+
+    it('falls back to hungarian on an unrecognised value', async () => {
+      process.env.DISPATCH_MATCHER = 'hungarain';
+      const { service, kernelApi } = build();
+
+      await service.run();
+
+      expect(dispatchedVehicleFor(kernelApi, 1)).toBe('V2');
+    });
+  });
 });

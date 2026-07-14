@@ -77,7 +77,10 @@ describe('routing', () => {
 
   describe('reverseRoadGraph', () => {
     it('flips every edge so Dijkstra-from-target yields into-target distance', () => {
-      const forward = buildRoadGraph([oneWay('A', 'B', 1), oneWay('B', 'C', 1)]);
+      const forward = buildRoadGraph([
+        oneWay('A', 'B', 1),
+        oneWay('B', 'C', 1),
+      ]);
       const intoC = shortestDistancesFrom(reverseRoadGraph(forward), 'C');
       expect(intoC.get('A')).toBe(2);
       expect(intoC.get('B')).toBe(1);

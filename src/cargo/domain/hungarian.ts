@@ -30,8 +30,6 @@ export function solveHungarian(
     return solveRows(costMatrix);
   }
 
-  // The shortest augmenting-path form below expects rows <= columns. Solve the
-  // transpose and map the result back so the public API supports both shapes.
   const transposed = Array.from({ length: columnCount }, (_, column) =>
     Array.from({ length: rowCount }, (_, row) => costMatrix[row][column]),
   );

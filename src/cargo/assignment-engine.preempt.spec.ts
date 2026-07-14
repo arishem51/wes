@@ -12,6 +12,7 @@ describe('AssignmentEngineService preempt', () => {
       cargoId: 'c1',
       status: TaskStatus.READY_TO_ASSIGN,
       metadata: {},
+      createdAt: new Date(),
     };
     const cargo = {
       id: 'c1',

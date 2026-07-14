@@ -9,6 +9,11 @@ import { solveHungarian } from './hungarian';
  * (primitives only, no TypeORM/openTCS types) makes the dispatch rule a
  * single readable predicate that is trivial to unit-test.
  */
+export interface VehicleLookahead {
+  readonly finishPosition: string;
+  readonly releaseDistance: number;
+}
+
 export interface VehicleCandidate {
   /** openTCS vehicle name (== AgvEntity.name). */
   readonly name: string;
@@ -16,6 +21,7 @@ export interface VehicleCandidate {
   readonly ignored: boolean;
   /** FMS reports the vehicle integrated and idle/awaiting an order. */
   readonly available: boolean;
+  readonly lookahead?: VehicleLookahead | null;
   /**
    * En route to (or sitting on) a WES-issued park/charge order with no cargo task
    * — dispatchable, but its order must be withdrawn before assigning. Lets a
@@ -40,6 +46,29 @@ export function isEligible(c: VehicleCandidate): boolean {
     !c.hasActiveTask &&
     c.energyLevel > c.operationalThreshold
   );
+}
+
+export function isLookaheadEligible(c: VehicleCandidate): boolean {
+  return (
+    c.lookahead != null &&
+    c.dispatchEnabled &&
+    !c.ignored &&
+    c.energyLevel > c.operationalThreshold
+  );
+}
+
+export function isMatchable(c: VehicleCandidate): boolean {
+  return isEligible(c) || isLookaheadEligible(c);
+}
+
+function matchPosition(c: VehicleCandidate): string | null {
+  return isEligible(c)
+    ? c.currentPosition
+    : (c.lookahead?.finishPosition ?? null);
+}
+
+function releaseDistance(c: VehicleCandidate): number {
+  return isEligible(c) ? 0 : (c.lookahead?.releaseDistance ?? 0);
 }
 
 /**
@@ -86,6 +115,7 @@ export interface DispatchTaskCandidate {
   readonly taskId: string;
   /** Null when the plant model or the task's source point is unavailable. */
   readonly distanceByPoint: ReadonlyMap<string, number> | null;
+  readonly freeVehiclesOnly?: boolean;
 }
 
 export interface VehicleTaskAssignment {
@@ -94,6 +124,8 @@ export interface VehicleTaskAssignment {
   /** Real road distance, or null when this pair uses the fallback cost. */
   readonly distance: number | null;
 }
+
+export type DispatchMatcher = 'hungarian' | 'greedy';
 
 /**
  * Build one globally optimal dispatch batch.
@@ -121,16 +153,73 @@ export function planVehicleAssignments(
   tasks: readonly DispatchTaskCandidate[],
   batteryWeight = 0,
 ): VehicleTaskAssignment[] {
-  const vehicles = uniqueEligibleVehicles(candidates);
+  const batch = buildBatch(candidates, tasks, batteryWeight);
+  if (!batch) return [];
+  return toAssignments(batch, solveHungarian(batch.costMatrix).assignment);
+}
+
+export function planVehicleAssignmentsGreedy(
+  candidates: readonly VehicleCandidate[],
+  tasks: readonly DispatchTaskCandidate[],
+  batteryWeight = 0,
+): VehicleTaskAssignment[] {
+  const batch = buildBatch(candidates, tasks, batteryWeight);
+  if (!batch) return [];
+  return toAssignments(batch, cheapestFreeVehiclePerTask(batch.costMatrix));
+}
+
+interface DispatchBatch {
+  readonly vehicles: readonly VehicleCandidate[];
+  readonly selectedTasks: readonly DispatchTaskCandidate[];
+  readonly pairs: readonly (readonly PairEvaluation[])[];
+  readonly barred: readonly (readonly boolean[])[];
+  readonly costMatrix: readonly (readonly number[])[];
+}
+
+function isBarred(
+  task: DispatchTaskCandidate,
+  vehicle: VehicleCandidate,
+): boolean {
+  return task.freeVehiclesOnly === true && !isEligible(vehicle);
+}
+
+function batchVehicles(
+  candidates: readonly VehicleCandidate[],
+  taskCount: number,
+): VehicleCandidate[] {
+  const matchable = uniqueMatchableVehicles(candidates);
+  const free = matchable.filter(isEligible);
+  const seats = Math.max(0, taskCount - free.length);
+  const soonFree = matchable
+    .filter((vehicle) => !isEligible(vehicle))
+    .sort((a, b) => {
+      const byRelease = releaseDistance(a) - releaseDistance(b);
+      return byRelease !== 0 ? byRelease : a.name.localeCompare(b.name);
+    })
+    .slice(0, seats);
+  return [...free, ...soonFree].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function buildBatch(
+  candidates: readonly VehicleCandidate[],
+  tasks: readonly DispatchTaskCandidate[],
+  batteryWeight: number,
+): DispatchBatch | null {
+  const vehicles = batchVehicles(candidates, tasks.length);
   const selectedTasks = tasks.slice(0, vehicles.length);
-  if (vehicles.length === 0 || selectedTasks.length === 0) return [];
+  if (vehicles.length === 0 || selectedTasks.length === 0) return null;
 
   const pairs = selectedTasks.map((task) =>
     vehicles.map((vehicle) => evaluatePair(task, vehicle)),
   );
-  const reachableCosts = pairs.map((row) =>
+  const barred = selectedTasks.map((task) =>
+    vehicles.map((vehicle) => isBarred(task, vehicle)),
+  );
+  const reachableCosts = pairs.map((row, taskIndex) =>
     row.map((pair, vehicleIndex) => {
-      if (pair.kind !== 'reachable') return null;
+      if (pair.kind !== 'reachable' || barred[taskIndex][vehicleIndex]) {
+        return null;
+      }
       return batteryWeight > 0
         ? batteryCost(
             pair.distance,
@@ -156,26 +245,51 @@ export function planVehicleAssignments(
 
   const costMatrix = pairs.map((row, taskIndex) =>
     row.map((pair, vehicleIndex) => {
+      if (barred[taskIndex][vehicleIndex]) return unreachableCost;
       if (pair.kind === 'reachable') {
         return reachableCosts[taskIndex][vehicleIndex] as number;
       }
       return pair.kind === 'unknown' ? unknownCost : unreachableCost;
     }),
   );
-  const { assignment } = solveHungarian(costMatrix);
+  return { vehicles, selectedTasks, pairs, barred, costMatrix };
+}
 
-  return selectedTasks.flatMap((task, taskIndex) => {
+function toAssignments(
+  batch: DispatchBatch,
+  assignment: readonly number[],
+): VehicleTaskAssignment[] {
+  return batch.selectedTasks.flatMap((task, taskIndex) => {
     const vehicleIndex = assignment[taskIndex];
-    const pair = pairs[taskIndex][vehicleIndex];
-    return pair.kind === 'unreachable'
-      ? []
-      : [
-          {
-            taskId: task.taskId,
-            vehicle: vehicles[vehicleIndex],
-            distance: pair.kind === 'reachable' ? pair.distance : null,
-          },
-        ];
+    if (vehicleIndex < 0) return [];
+    const pair = batch.pairs[taskIndex][vehicleIndex];
+    if (pair.kind === 'unreachable' || batch.barred[taskIndex][vehicleIndex]) {
+      return [];
+    }
+    return [
+      {
+        taskId: task.taskId,
+        vehicle: batch.vehicles[vehicleIndex],
+        distance: pair.kind === 'reachable' ? pair.distance : null,
+      },
+    ];
+  });
+}
+
+function cheapestFreeVehiclePerTask(
+  costMatrix: readonly (readonly number[])[],
+): number[] {
+  const taken = new Set<number>();
+  return costMatrix.map((row) => {
+    let chosen = -1;
+    let chosenCost = Infinity;
+    row.forEach((cost, vehicleIndex) => {
+      if (taken.has(vehicleIndex) || cost >= chosenCost) return;
+      chosen = vehicleIndex;
+      chosenCost = cost;
+    });
+    if (chosen >= 0) taken.add(chosen);
+    return chosen;
   });
 }
 
@@ -184,17 +298,17 @@ export function hasDispatchableVehicle(
   candidates: readonly VehicleCandidate[],
   task: DispatchTaskCandidate,
 ): boolean {
-  return uniqueEligibleVehicles(candidates).some(
+  return uniqueMatchableVehicles(candidates).some(
     (vehicle) => evaluatePair(task, vehicle).kind !== 'unreachable',
   );
 }
 
-function uniqueEligibleVehicles(
+function uniqueMatchableVehicles(
   candidates: readonly VehicleCandidate[],
 ): VehicleCandidate[] {
   return (
     candidates
-      .filter(isEligible)
+      .filter(isMatchable)
       .sort((a, b) => a.name.localeCompare(b.name))
       // Vehicle name is the physical openTCS join key. Defensive de-duplication
       // prevents inconsistent registry rows from assigning one AGV twice.
@@ -216,11 +330,13 @@ function evaluatePair(
 ): PairEvaluation {
   // No graph/source or no localized vehicle position means the route is
   // unknown, not impossible. Preserve the deterministic legacy fallback.
-  if (!task.distanceByPoint || !vehicle.currentPosition) {
+  const position = matchPosition(vehicle);
+  if (!task.distanceByPoint || !position) {
     return { kind: 'unknown' };
   }
-  const distance = task.distanceByPoint.get(vehicle.currentPosition);
-  return distance !== undefined && Number.isFinite(distance) && distance >= 0
-    ? { kind: 'reachable', distance }
-    : { kind: 'unreachable' };
+  const toSource = task.distanceByPoint.get(position);
+  if (toSource === undefined || !Number.isFinite(toSource) || toSource < 0) {
+    return { kind: 'unreachable' };
+  }
+  return { kind: 'reachable', distance: toSource + releaseDistance(vehicle) };
 }

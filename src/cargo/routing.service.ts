@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import {
+  resolveLocationPoints,
+  type PlantLocation,
+} from '../zones/domain/member-points';
+import {
   RoadEdge,
   RoadGraph,
   buildRoadGraph,
@@ -64,6 +68,24 @@ export class RoutingService {
   async getReverseRoadGraph(): Promise<RoadGraph | null> {
     await this.getRoadGraph();
     return this.cachedReverseGraph;
+  }
+
+  async pointsOfLocations(
+    locationNames: readonly string[],
+  ): Promise<Map<string, string>> {
+    if (locationNames.length === 0) return new Map();
+    const plantModel = (await this.kernelApi.getPlantModel()) as Record<
+      string,
+      unknown
+    > | null;
+    if (!plantModel) {
+      this.logger.warn('pointsOfLocations: plant model unavailable');
+      return new Map();
+    }
+    const locations = Array.isArray(plantModel.locations)
+      ? (plantModel.locations as PlantLocation[])
+      : [];
+    return resolveLocationPoints(locations, locationNames);
   }
 
   private build(plantModel: Record<string, unknown>): RoadGraph | null {

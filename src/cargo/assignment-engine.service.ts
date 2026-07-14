@@ -16,13 +16,18 @@ import { TransportTaskService } from './transport-task.service';
 import { PickupDependencyService } from './pickup-dependency.service';
 import { RoutingService } from './routing.service';
 import {
+  type DispatchMatcher,
   type DispatchTaskCandidate,
   type VehicleCandidate,
+  type VehicleLookahead,
+  type VehicleTaskAssignment,
   hasDispatchableVehicle,
   isEligible,
+  isMatchable,
   planVehicleAssignments,
+  planVehicleAssignmentsGreedy,
 } from './domain/dispatch.policy';
-import { shortestDistancesFrom } from './domain/routing';
+import { shortestDistancesFrom, shortestHopsFrom } from './domain/routing';
 import {
   DEFAULT_AGE_HORIZON_MS,
   DEFAULT_BLOCK_MAX,
@@ -33,14 +38,26 @@ import { DispatchPolicyService } from './dispatch-policy.service';
 
 const BUSY_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
 
-const AGE_HORIZON_MS = positiveOr(
-  Number(process.env.DISPATCH_AGE_HORIZON_MS),
-  DEFAULT_AGE_HORIZON_MS,
-);
-const BLOCK_MAX = positiveOr(
-  Number(process.env.DISPATCH_BLOCK_MAX),
-  DEFAULT_BLOCK_MAX,
-);
+const DEFAULT_LOOKAHEAD_HOPS = 30;
+const DEFAULT_LOOKAHEAD_MAX_AGE_MS = 60_000;
+const DEFAULT_DROPOFF_PENALTY_MM = 0;
+
+interface DispatchMeasurement {
+  readonly matcher: DispatchMatcher;
+  readonly batchSize: number;
+  readonly altVehicleName: string | null;
+  readonly altDistanceToSource: number | null;
+  readonly lookahead: boolean;
+  readonly lookaheadVehicles: number;
+  readonly reservedTasks: number;
+}
+
+function summariseDistance(plan: readonly VehicleTaskAssignment[]): string {
+  const known = plan.flatMap(({ distance }) =>
+    distance === null ? [] : [distance],
+  );
+  return `${known.reduce((sum, distance) => sum + distance, 0)}(${known.length}/${plan.length})`;
+}
 
 function isFmsDispatchable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;
@@ -72,6 +89,15 @@ function preemptibleParkOrderName(
 export class AssignmentEngineService {
   private readonly logger = new Logger(AssignmentEngineService.name);
 
+  private readonly matcher: DispatchMatcher;
+  private readonly ageHorizonMs: number;
+  private readonly blockMax: number;
+  private readonly lookaheadEnabled: boolean;
+  private readonly lookaheadHops: number;
+  private readonly lookaheadMaxAgeMs: number;
+  private readonly dropoffPenaltyMm: number;
+  private readonly reservedSince = new Map<string, number>();
+
   constructor(
     @InjectRepository(TransportTaskEntity)
     private readonly taskRepo: Repository<TransportTaskEntity>,
@@ -85,13 +111,65 @@ export class AssignmentEngineService {
     private readonly pickupDependency: PickupDependencyService,
     private readonly routing: RoutingService,
     private readonly dispatchPolicy: DispatchPolicyService,
-  ) {}
+  ) {
+    const requested = process.env.DISPATCH_MATCHER;
+    this.matcher = requested === 'greedy' ? 'greedy' : 'hungarian';
+    this.ageHorizonMs = positiveOr(
+      Number(process.env.DISPATCH_AGE_HORIZON_MS),
+      DEFAULT_AGE_HORIZON_MS,
+    );
+    this.blockMax = positiveOr(
+      Number(process.env.DISPATCH_BLOCK_MAX),
+      DEFAULT_BLOCK_MAX,
+    );
+
+    this.lookaheadEnabled = process.env.DISPATCH_LOOKAHEAD !== 'off';
+    this.lookaheadHops = positiveOr(
+      Number(process.env.DISPATCH_LOOKAHEAD_HOPS),
+      DEFAULT_LOOKAHEAD_HOPS,
+    );
+    this.lookaheadMaxAgeMs = positiveOr(
+      Number(process.env.DISPATCH_LOOKAHEAD_MAX_AGE_MS),
+      DEFAULT_LOOKAHEAD_MAX_AGE_MS,
+    );
+    this.dropoffPenaltyMm = Math.max(
+      0,
+      Number(process.env.DISPATCH_DROPOFF_PENALTY_MM) ||
+        DEFAULT_DROPOFF_PENALTY_MM,
+    );
+
+    if (requested && requested !== 'greedy' && requested !== 'hungarian') {
+      this.logger.warn(
+        `DISPATCH_MATCHER="${requested}" is not a known matcher — falling back to hungarian`,
+      );
+    }
+    this.logger.log(
+      `Dispatch matcher: ${this.matcher.toUpperCase()} ` +
+        `(counterfactual ${this.counterfactualMatcher().toUpperCase()} recorded on every assignment; ` +
+        `ageHorizonMs=${this.ageHorizonMs}, blockMax=${this.blockMax})`,
+    );
+    this.logger.log(
+      this.lookaheadEnabled
+        ? `Lookahead: ON (horizon=${this.lookaheadHops} hops, T_max=${this.lookaheadMaxAgeMs}ms, ` +
+            `dropoffPenalty=${this.dropoffPenaltyMm}mm) — vehicles about to finish DELIVERING join the ` +
+            `cost matrix but are never dispatched; a free vehicle is never left idle`
+        : 'Lookahead: OFF — only vehicles that are free right now enter the cost matrix',
+    );
+  }
+
+  private counterfactualMatcher(): DispatchMatcher {
+    return this.matcher === 'greedy' ? 'hungarian' : 'greedy';
+  }
 
   async run(): Promise<void> {
     let tasks = await this.taskRepo.find({
       where: { status: TaskStatus.READY_TO_ASSIGN },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
+    const readyTaskIds = new Set(tasks.map((task) => task.id));
+    for (const taskId of this.reservedSince.keys()) {
+      if (!readyTaskIds.has(taskId)) this.reservedSince.delete(taskId);
+    }
     if (tasks.length === 0) return;
 
     // Selection order (Stage-A): FIFO by default; with an active weighted
@@ -103,13 +181,47 @@ export class AssignmentEngineService {
       tasks = await this.prioritise(tasks, weights.urgency);
     }
 
-    const candidates = await this.buildCandidates();
+    // One graph for the whole cycle; null when the plant model is unavailable.
+    // The REVERSE graph: Dijkstra from a point on it yields every other point's
+    // true driving distance TO that point on the directed map.
+    const graph = await this.routing.getReverseRoadGraph();
+    const distanceCache = new Map<string, ReadonlyMap<string, number>>();
+    const hopCache = new Map<string, ReadonlyMap<string, number>>();
+    const distancesTo = (point: string): ReadonlyMap<string, number> | null => {
+      if (!graph) return null;
+      const cached = distanceCache.get(point);
+      if (cached) return cached;
+      const computed = shortestDistancesFrom(graph, point);
+      distanceCache.set(point, computed);
+      return computed;
+    };
+    const hopsTo = (point: string): ReadonlyMap<string, number> | null => {
+      if (!graph) return null;
+      const cached = hopCache.get(point);
+      if (cached) return cached;
+      const computed = shortestHopsFrom(graph, point);
+      hopCache.set(point, computed);
+      return computed;
+    };
+
+    const busyTasks = await this.busyTasksByVehicle();
+    const lookaheadByVehicle = this.lookaheadEnabled
+      ? await this.computeLookahead(busyTasks, distancesTo, hopsTo)
+      : new Map<string, VehicleLookahead>();
+    const candidates = await this.buildCandidates(
+      busyTasks,
+      lookaheadByVehicle,
+    );
     this.logger.debug(
       `Assignment: ${tasks.length} READY task(s); candidates=[` +
         candidates
           .map(
             (c) =>
-              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},e:${c.energyLevel}/${c.operationalThreshold},pos:${c.currentPosition ?? '?'}}`,
+              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},e:${c.energyLevel}/${c.operationalThreshold},pos:${c.currentPosition ?? '?'}` +
+              (c.lookahead
+                ? `,soon:${c.lookahead.finishPosition}@${c.lookahead.releaseDistance}`
+                : '') +
+              '}',
           )
           .join(' ') +
         ']',
@@ -120,20 +232,18 @@ export class AssignmentEngineService {
       candidates.filter(
         (candidate) => !quarantinedVehicleNames.has(candidate.name),
       );
-    const eligibleVehicleCount = (): number =>
+    const distinctNames = (
+      predicate: (candidate: VehicleCandidate) => boolean,
+    ): number =>
       new Set(
         dispatchCandidates()
-          .filter(isEligible)
+          .filter(predicate)
           .map((candidate) => candidate.name),
       ).size;
-    if (eligibleVehicleCount() === 0) return;
+    const freeVehicleCount = (): number => distinctNames(isEligible);
+    const matchableVehicleCount = (): number => distinctNames(isMatchable);
+    if (freeVehicleCount() === 0) return;
 
-    // One graph for the whole cycle; null when the plant model is unavailable.
-    // The REVERSE graph: Dijkstra from a pickup on it yields each point's true
-    // driving distance TO that pickup on the directed map (vehicle → pickup).
-    // Cache Dijkstra results because several tasks may share a pickup point.
-    const graph = await this.routing.getReverseRoadGraph();
-    const distanceCache = new Map<string, ReadonlyMap<string, number>>();
     type DispatchContext = {
       task: TransportTaskEntity;
       cargo: CargoEntity;
@@ -143,7 +253,7 @@ export class AssignmentEngineService {
     let taskCursor = 0;
 
     const fillPendingTasks = async (): Promise<void> => {
-      const capacity = eligibleVehicleCount();
+      const capacity = matchableVehicleCount();
       while (pendingTasks.length < capacity && taskCursor < tasks.length) {
         const task = tasks[taskCursor++];
 
@@ -166,17 +276,9 @@ export class AssignmentEngineService {
           continue;
         }
 
-        let distanceByPoint: ReadonlyMap<string, number> | null = null;
-        if (graph && cargo.sourcePointName) {
-          distanceByPoint = distanceCache.get(cargo.sourcePointName) ?? null;
-          if (!distanceByPoint) {
-            distanceByPoint = shortestDistancesFrom(
-              graph,
-              cargo.sourcePointName,
-            );
-            distanceCache.set(cargo.sourcePointName, distanceByPoint);
-          }
-        }
+        const distanceByPoint = cargo.sourcePointName
+          ? distancesTo(cargo.sourcePointName)
+          : null;
         pendingTasks.push({ task, cargo, distanceByPoint });
       }
     };
@@ -194,25 +296,35 @@ export class AssignmentEngineService {
       if (pendingTasks.length === 0) break;
       // Feasible conflict tasks may remain after another task claims their only
       // vehicle. Leave them READY for the heartbeat-driven next cycle.
-      if (eligibleVehicleCount() === 0) break;
+      if (freeVehicleCount() === 0) break;
 
+      const now = Date.now();
       const taskCandidates: DispatchTaskCandidate[] = pendingTasks.map(
-        ({ task, distanceByPoint }) => ({ taskId: task.id, distanceByPoint }),
+        ({ task, distanceByPoint }) => ({
+          taskId: task.id,
+          distanceByPoint,
+          freeVehiclesOnly:
+            this.passedOverFor(task.id, now) > this.lookaheadMaxAgeMs,
+        }),
       );
       const availableCandidates = dispatchCandidates();
-      const assignments = planVehicleAssignments(
+      const batteryWeight = weights?.battery ?? 0;
+      const hungarianPlan = planVehicleAssignments(
         availableCandidates,
         taskCandidates,
-        weights?.battery ?? 0,
+        batteryWeight,
       );
-
-      this.logger.debug(
-        `Hungarian plan: ${assignments
-          .map(
-            ({ taskId, vehicle, distance }) =>
-              `${taskId}->${vehicle.name}(${distance ?? '?'})`,
-          )
-          .join(' ')}`,
+      const greedyPlan = planVehicleAssignmentsGreedy(
+        availableCandidates,
+        taskCandidates,
+        batteryWeight,
+      );
+      const assignments =
+        this.matcher === 'greedy' ? greedyPlan : hungarianPlan;
+      const counterfactual =
+        this.matcher === 'greedy' ? hungarianPlan : greedyPlan;
+      const counterfactualByTask = new Map(
+        counterfactual.map((assignment) => [assignment.taskId, assignment]),
       );
 
       // A graph-confirmed unreachable edge is never dispatched. Do not confuse
@@ -241,7 +353,40 @@ export class AssignmentEngineService {
         continue;
       }
 
-      for (const { taskId, vehicle, distance } of assignments) {
+      const toDispatch = assignments.filter(
+        ({ vehicle }) => !vehicle.lookahead,
+      );
+      const reservedTaskIds = assignments
+        .filter(({ vehicle }) => vehicle.lookahead)
+        .map(({ taskId }) => taskId);
+      this.rememberPassedOver(
+        taskCandidates.map(({ taskId }) => taskId),
+        new Set(reservedTaskIds),
+        now,
+      );
+
+      this.logger.debug(
+        `${this.matcher} plan: ${assignments
+          .map(
+            ({ taskId, vehicle, distance }) =>
+              `${taskId}->${vehicle.name}${vehicle.lookahead ? '(soon)' : ''}(${distance ?? '?'})`,
+          )
+          .join(
+            ' ',
+          )} | send=${toDispatch.length} reserved=${reservedTaskIds.length}` +
+          ` | counterfactual ${summariseDistance(counterfactual)} vs ${summariseDistance(assignments)}`,
+      );
+
+      if (toDispatch.length === 0) break;
+
+      const measurement = {
+        lookahead: this.lookaheadEnabled,
+        lookaheadVehicles: availableCandidates.filter((c) => c.lookahead)
+          .length,
+        reservedTasks: reservedTaskIds.length,
+      };
+
+      for (const { taskId, vehicle, distance } of toDispatch) {
         const context = removePendingTask(taskId);
         if (!context) continue;
 
@@ -254,12 +399,21 @@ export class AssignmentEngineService {
           break; // Invalidate and re-solve the remaining plan with a backfill.
         }
 
+        const alternative = counterfactualByTask.get(taskId);
+        const comparable = alternative && !alternative.vehicle.lookahead;
         const assigned = await this.assign(
           context.task,
           context.cargo,
           vehicle.name,
           distance,
           vehicle.parkOrderName,
+          {
+            matcher: this.matcher,
+            batchSize: assignments.length,
+            altVehicleName: comparable ? alternative.vehicle.name : null,
+            altDistanceToSource: comparable ? alternative.distance : null,
+            ...measurement,
+          },
         );
         if (!assigned) {
           // The failure may be vehicle-specific (especially a stale/failed PARK
@@ -276,6 +430,25 @@ export class AssignmentEngineService {
     }
   }
 
+  private passedOverFor(taskId: string, now: number): number {
+    const since = this.reservedSince.get(taskId);
+    return since === undefined ? 0 : now - since;
+  }
+
+  private rememberPassedOver(
+    consideredTaskIds: readonly string[],
+    reservedTaskIds: ReadonlySet<string>,
+    now: number,
+  ): void {
+    for (const taskId of consideredTaskIds) {
+      if (!reservedTaskIds.has(taskId)) {
+        this.reservedSince.delete(taskId);
+      } else if (!this.reservedSince.has(taskId)) {
+        this.reservedSince.set(taskId, now);
+      }
+    }
+  }
+
   private async prioritise(
     tasks: TransportTaskEntity[],
     urgencyWeight: number,
@@ -288,8 +461,8 @@ export class AssignmentEngineService {
         now - task.createdAt.getTime(),
         blocking.get(task.id) ?? 0,
         urgencyWeight,
-        AGE_HORIZON_MS,
-        BLOCK_MAX,
+        this.ageHorizonMs,
+        this.blockMax,
       ),
     }));
     scored.sort((a, b) => {
@@ -300,9 +473,71 @@ export class AssignmentEngineService {
     return scored.map((s) => s.task);
   }
 
-  private async buildCandidates(): Promise<VehicleCandidate[]> {
+  private async computeLookahead(
+    busyTasks: ReadonlyMap<string, TransportTaskEntity>,
+    distancesTo: (point: string) => ReadonlyMap<string, number> | null,
+    hopsTo: (point: string) => ReadonlyMap<string, number> | null,
+  ): Promise<Map<string, VehicleLookahead>> {
+    const soonFree = new Map<string, VehicleLookahead>();
+    const delivering = [...busyTasks].filter(
+      ([, task]) => task.status === TaskStatus.DELIVERING && task.cargoId,
+    );
+    if (delivering.length === 0) return soonFree;
+
+    const cargos = await this.cargoRepo.find({
+      where: { id: In(delivering.map(([, task]) => task.cargoId as string)) },
+    });
+    const cargoById = new Map(cargos.map((cargo) => [cargo.id, cargo]));
+    const dropoffLocations = [
+      ...new Set(
+        delivering
+          .map(
+            ([, task]) =>
+              cargoById.get(task.cargoId as string)?.destinationLocationName,
+          )
+          .filter((name): name is string => !!name),
+      ),
+    ];
+    const pointOfLocation =
+      await this.routing.pointsOfLocations(dropoffLocations);
+
+    for (const [vehicleName, task] of delivering) {
+      const dropoffLocation = cargoById.get(
+        task.cargoId as string,
+      )?.destinationLocationName;
+      const finishPosition = dropoffLocation
+        ? pointOfLocation.get(dropoffLocation)
+        : undefined;
+      const position = this.vehicleStore.get(vehicleName)?.currentPosition;
+      if (!finishPosition || !position) continue;
+
+      const hopsRemaining = hopsTo(finishPosition)?.get(position);
+      if (hopsRemaining === undefined || hopsRemaining > this.lookaheadHops) {
+        continue;
+      }
+
+      const distanceRemaining = distancesTo(finishPosition)?.get(position);
+      if (
+        distanceRemaining === undefined ||
+        !Number.isFinite(distanceRemaining)
+      ) {
+        continue;
+      }
+
+      soonFree.set(vehicleName, {
+        finishPosition,
+        releaseDistance: distanceRemaining + this.dropoffPenaltyMm,
+      });
+    }
+    return soonFree;
+  }
+
+  private async buildCandidates(
+    busyTasks: ReadonlyMap<string, TransportTaskEntity>,
+    lookaheadByVehicle: ReadonlyMap<string, VehicleLookahead>,
+  ): Promise<VehicleCandidate[]> {
     const agvs = await this.agvRepo.find();
-    const busy = await this.busyVehicleNames();
+    const busy = new Set(busyTasks.keys());
 
     const agvsByName = new Map<string, AgvEntity[]>();
     for (const agv of agvs) {
@@ -340,20 +575,23 @@ export class AssignmentEngineService {
         operationalThreshold: agv.operationalBatteryThreshold,
         currentPosition: fms?.currentPosition ?? null,
         hasActiveTask,
+        lookahead: lookaheadByVehicle.get(agv.name) ?? null,
       };
     });
   }
 
-  private async busyVehicleNames(): Promise<Set<string>> {
+  private async busyTasksByVehicle(): Promise<
+    Map<string, TransportTaskEntity>
+  > {
     const tasks = await this.taskRepo.find({
       where: { status: In(BUSY_STATUSES) },
     });
-    const names = new Set<string>();
+    const byVehicle = new Map<string, TransportTaskEntity>();
     for (const task of tasks) {
       const name = task.metadata?.assignedVehicleName;
-      if (name) names.add(name);
+      if (name) byVehicle.set(name, task);
     }
-    return names;
+    return byVehicle;
   }
 
   private async assign(
@@ -362,6 +600,7 @@ export class AssignmentEngineService {
     vehicleName: string,
     distanceToSource: number | null,
     parkOrderName: string | null,
+    measurement: DispatchMeasurement,
   ): Promise<boolean> {
     // TO1 (PICK_UP) only needs the source; the drop-off slot is committed later,
     // at the TO2 barrier, so destinationLocationName is intentionally still null.
@@ -422,7 +661,7 @@ export class AssignmentEngineService {
     await this.transportTask.changeStatus(task, TaskStatus.PICKING_UP, {
       trigger: 'ASSIGNMENT_ENGINE',
       vehicleName,
-      context: { to1Name, distanceToSource },
+      context: { to1Name, distanceToSource, ...measurement },
     });
     this.logger.log(
       `Task ${task.id} → PICKING_UP on ${vehicleName} (${to1Name})`,

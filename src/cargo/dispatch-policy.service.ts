@@ -77,7 +77,10 @@ export class DispatchPolicyService {
     return this.toView(saved);
   }
 
-  async update(id: string, input: DispatchPolicyInput): Promise<DispatchPolicyView> {
+  async update(
+    id: string,
+    input: DispatchPolicyInput,
+  ): Promise<DispatchPolicyView> {
     const policy = await this.findOrThrow(id);
     if (input.name !== undefined) policy.name = input.name;
     if (input.weightUrgency !== undefined)
