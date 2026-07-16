@@ -13,5 +13,13 @@ services:
       # Auto-apply schema on first boot of an empty volume.
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
 
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: aubot-mqtt
+    ports:
+      - '1883:1883'
+    volumes:
+      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
 volumes:
   wes_pgdata:

@@ -197,21 +197,6 @@ export class AgvsService {
     const agv = await this.repo.findOne({ where: { id } });
     if (!agv) throw new NotFoundException('AGV không tồn tại.');
     await this.kernelApi.setVehicleAdapterEnabled(agv.name, true);
-    await this.kernelApi.setVehicleProperty(
-      agv.name,
-      'loopback:loadOperation',
-      'PICK_UP',
-    );
-    await this.kernelApi.setVehicleProperty(
-      agv.name,
-      'loopback:unloadOperation',
-      'DROP_OFF',
-    );
-    await this.kernelApi.setVehicleProperty(
-      agv.name,
-      'loopback:operatingTime',
-      '1000',
-    );
     await this.kernelApi.setVehicleIntegrationLevel(agv.name, 'TO_BE_UTILIZED');
   }
 

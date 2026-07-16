@@ -30,6 +30,11 @@ export interface PathDto {
   locked: boolean;
 }
 
+export interface PropertyDto {
+  name: string;
+  value: string;
+}
+
 export interface VehicleDto {
   name: string;
   maxVelocity: number;
@@ -38,6 +43,7 @@ export interface VehicleDto {
   energyLevelGood: number;
   energyLevelFullyRecharged: number;
   energyLevelSufficientlyRecharged: number;
+  properties: PropertyDto[];
 }
 
 export interface LocationTypeDto {
@@ -101,6 +107,11 @@ interface RawPath {
   '@_locked': string;
 }
 
+interface RawProperty {
+  '@_name': string;
+  '@_value': string;
+}
+
 interface RawVehicle {
   '@_name': string;
   '@_maxVelocity': string;
@@ -109,6 +120,7 @@ interface RawVehicle {
   '@_energyLevelGood': string;
   '@_energyLevelFullyRecharged': string;
   '@_energyLevelSufficientlyRecharged': string;
+  property?: RawProperty[];
 }
 
 interface RawAllowedOperation {
@@ -195,6 +207,7 @@ const ARRAY_TAGS = new Set([
   'layerGroup',
   'block',
   'member',
+  'property',
 ]);
 
 export function parseOpenTcsXml(xmlContent: string): PlantModelDto {
@@ -243,6 +256,10 @@ export function parseOpenTcsXml(xmlContent: string): PlantModelDto {
     energyLevelSufficientlyRecharged: parseInt(
       v['@_energyLevelSufficientlyRecharged'],
     ),
+    properties: (v.property ?? []).map((p) => ({
+      name: p['@_name'],
+      value: p['@_value'],
+    })),
   }));
 
   const locationTypes: LocationTypeDto[] = (model.locationType ?? []).map(
