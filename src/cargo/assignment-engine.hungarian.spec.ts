@@ -98,6 +98,8 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
     const kernelApi = {
       withdrawTransportOrder: jest.fn().mockResolvedValue(undefined),
       createTransportOrder: jest.fn().mockResolvedValue(undefined),
+      loadOperation: 'PICK_UP',
+      unloadOperation: 'DROP_OFF',
     };
     const states = new Map([
       [

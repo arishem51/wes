@@ -638,7 +638,7 @@ export class AssignmentEngineService {
         [
           {
             locationName: cargo.sourcePickupLocationName,
-            operation: 'PICK_UP',
+            operation: this.kernelApi.loadOperation,
           },
         ],
         vehicleName,

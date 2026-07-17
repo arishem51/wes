@@ -228,13 +228,37 @@ function toTransportOrderDebug(
   };
 }
 
+export type VehicleType = 'loopback' | 'vda5050';
+
+const VEHICLE_OPERATIONS: Record<
+  VehicleType,
+  { load: string; unload: string }
+> = {
+  loopback: { load: 'PICK_UP', unload: 'DROP_OFF' },
+  vda5050: { load: 'liftUp', unload: 'liftDown' },
+};
+
+function parseVehicleType(value: string): VehicleType {
+  if (value in VEHICLE_OPERATIONS) return value as VehicleType;
+  throw new Error(
+    `VEHICLE_TYPE không hợp lệ: "${value}". Chỉ chấp nhận: ${Object.keys(VEHICLE_OPERATIONS).join(' | ')}.`,
+  );
+}
+
 @Injectable()
 export class KernelApiService {
   private readonly logger = new Logger(KernelApiService.name);
   private readonly baseUrl: string;
+  readonly loadOperation: string;
+  readonly unloadOperation: string;
 
   constructor() {
     this.baseUrl = process.env.OPENTCS_KERNEL_URL ?? 'http://localhost:55200';
+    const vehicleType = parseVehicleType(
+      process.env.VEHICLE_TYPE ?? 'loopback',
+    );
+    this.loadOperation = VEHICLE_OPERATIONS[vehicleType].load;
+    this.unloadOperation = VEHICLE_OPERATIONS[vehicleType].unload;
   }
 
   async isReachable(): Promise<boolean> {
@@ -491,7 +515,7 @@ export class KernelApiService {
     const pickupTypeNames = new Set<string>(
       model.locationTypes
         .filter((locationType) =>
-          locationType.allowedOperations.includes('PICK_UP'),
+          locationType.allowedOperations.includes(this.loadOperation),
         )
         .map((locationType) => locationType.name),
     );

@@ -123,14 +123,16 @@ export class MapsService {
     const pickupTypeNames = new Set<string>(
       locationTypes
         .filter((locationType) =>
-          locationType.allowedOperations.includes('PICK_UP'),
+          locationType.allowedOperations.includes(this.kernelApi.loadOperation),
         )
         .map((locationType) => locationType.name),
     );
     const dropoffTypeNames = new Set<string>(
       locationTypes
         .filter((locationType) =>
-          locationType.allowedOperations.includes('DROP_OFF'),
+          locationType.allowedOperations.includes(
+            this.kernelApi.unloadOperation,
+          ),
         )
         .map((locationType) => locationType.name),
     );

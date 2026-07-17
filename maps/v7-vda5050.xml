@@ -6298,7 +6298,7 @@
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <locationType name="Drop off">
-        <allowedOperation name="DROP_OFF"/>
+        <allowedOperation name="liftDown"/>
         <locationTypeLayout locationRepresentation="NONE"/>
     </locationType>
     <locationType name="LType-0001">
@@ -6312,7 +6312,7 @@
         <locationTypeLayout locationRepresentation="NONE"/>
     </locationType>
     <locationType name="Pick up">
-        <allowedOperation name="PICK_UP"/>
+        <allowedOperation name="liftUp"/>
         <locationTypeLayout locationRepresentation="NONE"/>
     </locationType>
     <visualLayout name="VLayout" scaleX="10.0" scaleY="10.0">

@@ -235,7 +235,7 @@ export class TransportTaskSaga {
     const created = await this.createNextOrder(
       to3Name,
       slot,
-      'DROP_OFF',
+      this.kernelApi.unloadOperation,
       vehicle,
       { taskId: task.id, leg: 'DROPOFF' },
     );
