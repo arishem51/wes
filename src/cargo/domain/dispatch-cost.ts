@@ -20,6 +20,10 @@ export function positiveOr(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+export function nonNegativeOr(value: number, fallback: number): number {
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
 export function batteryCost(
   distance: number,
   energyLevel: number,

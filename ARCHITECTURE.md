@@ -377,13 +377,22 @@ preempt a park order the instant cargo arrives.
 
 **Park on idle** — `ParkingEngineService`, at the tail of the flush
 (leg-reconcile → release → assign → **park**). A vehicle idle with no cargo work
-for `PARK_IDLE_DELAY_MS` (default 10s) is sent to the nearest free `PARK_POSITION`
-via a `MOVE` order named `PARK-<uuid>` (`PARK_ORDER_PREFIX`, tagged `wes:leg=PARK`;
-the listener's leg gate ignores it so park orders never reach the saga). Rules are
-pure in `cargo/domain/parking.policy.ts` (`needsParking`, `pickParkingPoint`).
+is sent to the nearest free `PARK_POSITION` via a `MOVE` order named `PARK-<uuid>`
+(`PARK_ORDER_PREFIX`, tagged `wes:leg=PARK`; the listener's leg gate ignores it so
+park orders never reach the saga). Rules are pure in
+`cargo/domain/parking.policy.ts` (`needsParking`, `pickParkingPoint`).
 Suppressed while any `READY_TO_ASSIGN` task waits (don't park then preempt). The
 `idleSince` clock and in-flight point reservations (`parkTargets`, which stop two
 vehicles targeting one point) are in-RAM — on restart they simply re-arm.
+
+`PARK_IDLE_DELAY_MS` (default **0**) holds a vehicle back before parking. 0 means
+it parks on the first flush that sees it idle, which is the intended behaviour:
+assign has already run this cycle and declined the vehicle, so waiting cannot win
+it work, while an idle vehicle left on the mainline holds resources other vehicles
+need. Nothing is lost by leaving early — a vehicle en route to park stays fully
+dispatchable via **Preempt** below. Raise it only to damp park/preempt churn; note
+the delay is quantised by the flush cadence (heartbeat + debounce, ~5s), so any
+value inside one interval costs a whole extra cycle.
 
 **Preempt** — a vehicle en route to a park order is an eligible candidate
 (`preemptibleParking`), recognized by the `PARK-` name prefix WES owns (never

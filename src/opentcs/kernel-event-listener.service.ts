@@ -14,7 +14,12 @@ import {
   ORDER_PROP,
   TaskLeg,
 } from '../cargo/domain/events';
-import { KernelApiService } from './kernel-api.service';
+import {
+  KernelApiService,
+  orientationAngleFromSsePose,
+  precisePositionFromSsePose,
+  toAllocatedResources,
+} from './kernel-api.service';
 import type { KernelVehicleState } from './kernel-api.service';
 import { VehicleStateStore } from './vehicle-state.store';
 import { FleetTelemetryService } from './fleet-telemetry.service';
@@ -24,8 +29,6 @@ const HEARTBEAT_MS = Number(process.env.DISPATCH_HEARTBEAT_MS ?? 5_000);
 
 interface TCSObjectState {
   name: string;
-  // state/procState arrive as a plain string over REST but as a nested object
-  // ({ state: "IDLE", timestamp }) over SSE — typed unknown, unwrapped below.
   state?: unknown;
   procState?: unknown;
   integrationLevel?: string;
@@ -69,16 +72,6 @@ export class KernelEventListenerService
     this.currentRequest?.destroy();
   }
 
-  /**
-   * Level-triggered backstop for the edge-triggered SSE stream. SSE deltas can be
-   * lost — a dropped frame, a hot-reload, a transient network blip — leaving the
-   * store stale with no reconnect to re-seed it. A missed "→ IDLE" frame keeps a
-   * finished vehicle looking PROCESSING_ORDER, so dispatch never re-considers it
-   * and it stalls forever. Every HEARTBEAT_MS we re-pull the authoritative REST
-   * snapshot into the store and poke the dispatch cycle, so any drift self-heals
-   * within one tick regardless of which SSE events were delivered. SSE stays the
-   * low-latency fast path; this is the correctness guarantee.
-   */
   private startHeartbeat(): void {
     this.heartbeatTimer = setInterval(() => {
       void this.reconcileVehicleStates();
@@ -88,21 +81,14 @@ export class KernelEventListenerService
   private async reconcileVehicleStates(): Promise<void> {
     if (this.destroyed) return;
     const vehicles = await this.kernelApi.getVehicleStates();
-    // Empty ⇒ kernel unreachable/erroring: keep the last-known state rather than
-    // wiping the store, and skip the dispatch poke this tick.
     if (vehicles.length === 0) return;
 
     for (const v of vehicles) {
       const existing = this.vehicleStateStore.get(v.name);
-      // Kernel snapshot is the source of truth for every dispatch-relevant field;
-      // preserve only the SSE-derived observedAt (REST carries no kernel timestamp).
       const next: KernelVehicleState = { ...v };
       if (existing?.observedAt) next.observedAt = existing.observedAt;
       this.vehicleStateStore.set(v.name, next);
     }
-    // Null payload = "re-evaluate the fleet" (same signal seedStore uses). The
-    // DispatchScheduler debounces this into its normal flush, so an event burst
-    // and this heartbeat coalesce into one dispatch cycle.
     this.eventEmitter.emit(FMS_EVENTS.VEHICLE_AVAILABLE, null);
   }
 
@@ -129,8 +115,6 @@ export class KernelEventListenerService
       (res) => {
         this.logger.log(`SSE connected — status ${res.statusCode}`);
         this.vehicleStateStore.setConnected(true);
-        // Telemetry session brackets this connection; rows observed before the
-        // session row lands are buffered and flushed under it.
         void this.telemetry.openSession();
         void this.seedStore();
         res.setEncoding('utf8');
@@ -244,8 +228,6 @@ export class KernelEventListenerService
     );
   }
 
-  // Over SSE, order `properties` arrive as an object map ({ key: value }) —
-  // unlike the array form used when writing an order. Read defensively.
   private orderProps(value: unknown): Record<string, string> {
     if (value === null || typeof value !== 'object') return {};
     const out: Record<string, string> = {};
@@ -263,12 +245,8 @@ export class KernelEventListenerService
     const raw = payload.currentObjectState;
     if (!raw?.name) return;
 
-    // Over SSE, state/procState arrive as { state|procState: "IDLE", timestamp }
-    // (TimestampedVehicleState/ProcState) — unwrap to the enum string.
     const state = this.unwrapEnum(raw.state);
     const procState = this.unwrapEnum(raw.procState);
-    // Kernel-side observation time for telemetry: prefer the timestamp inside
-    // the wrapped enums; position-only updates carry none → ingest time.
     const observedAt =
       this.unwrapTimestamp(raw.state) ??
       this.unwrapTimestamp(raw.procState) ??
@@ -301,6 +279,13 @@ export class KernelEventListenerService
         currentPosition:
           typeof raw.currentPosition === 'string' ? raw.currentPosition : null,
       }),
+      ...(raw.pose !== undefined && {
+        orientationAngle: orientationAngleFromSsePose(raw.pose),
+        precisePosition: precisePositionFromSsePose(raw.pose),
+      }),
+      ...(raw.allocatedResources !== undefined && {
+        allocatedResources: toAllocatedResources(raw.allocatedResources),
+      }),
       ...(raw.transportOrder !== undefined && {
         transportOrder:
           typeof raw.transportOrder === 'string' ? raw.transportOrder : null,
@@ -312,11 +297,6 @@ export class KernelEventListenerService
     this.vehicleStateStore.set(raw.name, incoming);
 
     const nowAvailable = this.isDispatchAvailable(incoming);
-    // Fire on any state change that lands on an available state — not only the
-    // not-available→available edge. A vehicle settling AWAITING_ORDER→IDLE
-    // (both already "available") would otherwise be missed and a freed vehicle
-    // never re-dispatched. procState/integrationLevel only, so plain position
-    // updates while idle don't spam the dispatch cycle.
     const stateChanged =
       previous?.procState !== incoming.procState ||
       previous?.integrationLevel !== incoming.integrationLevel;
@@ -340,13 +320,6 @@ export class KernelEventListenerService
     );
   }
 
-  /**
-   * openTCS serializes enum fields differently per channel: the REST API sends
-   * a plain string ("IDLE"), while the SSE event wraps it in a timestamped
-   * object ({ state|procState: "IDLE", timestamp }). Accept either form and
-   * pull out the enum string (the first non-timestamp string property), so the
-   * exact inner key name doesn't matter.
-   */
   private unwrapEnum(value: unknown): string | undefined {
     if (typeof value === 'string') return value;
     if (value && typeof value === 'object') {
@@ -358,7 +331,6 @@ export class KernelEventListenerService
     return undefined;
   }
 
-  /** The timestamp of a wrapped enum ({ state, timestamp }); epoch or ISO. */
   private unwrapTimestamp(value: unknown): string | undefined {
     if (!value || typeof value !== 'object') return undefined;
     const ts = (value as Record<string, unknown>).timestamp;

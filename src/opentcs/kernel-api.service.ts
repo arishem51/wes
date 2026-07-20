@@ -2,6 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { PlantModelDto } from './map-loader/opentcs-xml.parser';
 
+export interface KernelVehiclePrecisePosition {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface KernelVehicleState {
   name: string;
   state:
@@ -20,6 +26,9 @@ export interface KernelVehicleState {
   energyLevel: number;
   paused: boolean;
   currentPosition: string | null;
+  precisePosition?: KernelVehiclePrecisePosition | null;
+  orientationAngle?: number | null;
+  allocatedResources?: string[][];
   /** Name of the transport order the vehicle is processing, when known. */
   transportOrder?: string | null;
   /** Kernel-side observation time (ISO) when the SSE payload carries one. */
@@ -71,6 +80,40 @@ interface KernelTransportOrderDebug {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
+}
+
+function toOrientationAngle(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function toPrecisePosition(
+  value: unknown,
+): KernelVehiclePrecisePosition | null {
+  if (!isRecord(value)) return null;
+  const { x, y, z } = value;
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof z !== 'number') {
+    return null;
+  }
+  return { x, y, z };
+}
+
+export function toAllocatedResources(value: unknown): string[][] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((group): group is unknown[] => Array.isArray(group))
+    .map((group) =>
+      group.filter((item): item is string => typeof item === 'string'),
+    );
+}
+
+export function orientationAngleFromSsePose(pose: unknown): number | null {
+  return isRecord(pose) ? toOrientationAngle(pose.orientationAngle) : null;
+}
+
+export function precisePositionFromSsePose(
+  pose: unknown,
+): KernelVehiclePrecisePosition | null {
+  return isRecord(pose) ? toPrecisePosition(pose.position) : null;
 }
 
 const PARKING_PRIORITY_KEY = 'tcs:parkingPositionPriority';
@@ -201,6 +244,9 @@ function toKernelVehicleState(value: unknown): KernelVehicleState | null {
     paused: typeof value.paused === 'boolean' ? value.paused : false,
     currentPosition:
       typeof value.currentPosition === 'string' ? value.currentPosition : null,
+    precisePosition: toPrecisePosition(value.precisePosition),
+    orientationAngle: toOrientationAngle(value.orientationAngle),
+    allocatedResources: toAllocatedResources(value.allocatedResources),
     transportOrder:
       typeof value.transportOrder === 'string' ? value.transportOrder : null,
   };
