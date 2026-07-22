@@ -2256,6 +2256,11 @@
         <outgoingPath name="0449 --- 0439"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
+    <point name="1000" positionX="26000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="1000 --- 0071"/>
+        <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
+    </point>
     <point name="1001" positionX="34000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="1001 --- 0079"/>
@@ -2299,11 +2304,6 @@
     <point name="1009" positionX="27000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="1009 --- 0072"/>
-        <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
-    </point>
-    <point name="1000" positionX="26000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
-        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="1000 --- 0071"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="3001" positionX="46000" positionY="-1000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
@@ -5094,6 +5094,9 @@
     <path name="0449 --- 0439" sourcePoint="0449" destinationPoint="0439" length="1000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="1000 --- 0071" sourcePoint="1000" destinationPoint="0071" length="1000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="1001 --- 0079" sourcePoint="1001" destinationPoint="0079" length="1000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
@@ -5119,9 +5122,6 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="1009 --- 0072" sourcePoint="1009" destinationPoint="0072" length="1000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="1000 --- 0071" sourcePoint="1000" destinationPoint="0071" length="1000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="3001 --- 3002" sourcePoint="3001" destinationPoint="3002" length="1000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
@@ -6075,234 +6075,230 @@
     <vehicle name="Vehicle-0001" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V01"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V01"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0002" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V02"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V02"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0003" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V03"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V03"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0004" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V04"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V04"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0005" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V05"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V05"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0006" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V06"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V06"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0007" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V07"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V07"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0008" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V08"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V08"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0009" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V09"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V09"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0010" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V10"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V10"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0011" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V11"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V11"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0012" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V12"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V12"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0013" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V13"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V13"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0014" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V14"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V14"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="Vehicle-0015" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
-        <property name="vda5050:serialNumber" value="V15"/>
-        <property name="vda5050:version" value="2.0"/>
         <property name="vda5050:mapId" value="F1"/>
-        <property name="vda5050:deviationXY" value="0.1"/>
-        <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:serialNumber" value="V15"/>
+        <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <locationType name="Drop off">
         <allowedOperation name="liftDown"/>
-        <locationTypeLayout locationRepresentation="NONE"/>
-    </locationType>
-    <locationType name="LType-0001">
-        <allowedOperation name="loadcargo"/>
         <locationTypeLayout locationRepresentation="NONE"/>
     </locationType>
     <locationType name="LType-0002">
@@ -6315,9 +6311,29 @@
         <allowedOperation name="liftUp"/>
         <locationTypeLayout locationRepresentation="NONE"/>
     </locationType>
+    <locationType name="charging">
+        <allowedOperation name="startCharging"/>
+        <locationTypeLayout locationRepresentation="NONE"/>
+    </locationType>
+    <location name="Charging Area 2" positionX="29700" positionY="3900" positionZ="0" locked="false" type="charging">
+        <link point="1000"/>
+        <link point="1006"/>
+        <link point="1007"/>
+        <link point="1008"/>
+        <link point="1009"/>
+        <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charging Area 1" positionX="1200" positionY="-3700" positionZ="0" locked="false" type="charging">
+        <link point="0200"/>
+        <link point="0210"/>
+        <link point="0220"/>
+        <link point="0230"/>
+        <link point="0240"/>
+        <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
     <visualLayout name="VLayout" scaleX="10.0" scaleY="10.0">
         <layer id="0" ordinal="0" visible="true" name="Default layer" groupId="0"/>
         <layerGroup id="0" name="Default layer group" visible="true"/>
     </visualLayout>
-    <property name="tcs:modelFileLastModified" value="2026-07-09T09:46:38Z"/>
+    <property name="tcs:modelFileLastModified" value="2026-07-22T15:49:00Z"/>
 </model>
