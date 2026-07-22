@@ -85,13 +85,13 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
           name: 'V1',
           isDispatchEnabled: true,
           isIgnored: false,
-          operationalBatteryThreshold: 20,
+          criticalBatteryThreshold: 20,
         },
         {
           name: 'V2',
           isDispatchEnabled: true,
           isIgnored: false,
-          operationalBatteryThreshold: 20,
+          criticalBatteryThreshold: 20,
         },
       ]),
     };
@@ -342,14 +342,14 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
         name: 'V1',
         isDispatchEnabled: true,
         isIgnored: false,
-        operationalBatteryThreshold: 20,
+        criticalBatteryThreshold: 20,
       },
       {
         id: 'duplicate-2',
         name: 'V1',
         isDispatchEnabled: true,
         isIgnored: false,
-        operationalBatteryThreshold: 20,
+        criticalBatteryThreshold: 20,
       },
     ]);
 

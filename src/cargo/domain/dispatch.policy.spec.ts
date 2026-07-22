@@ -18,7 +18,7 @@ const candidate = (
   preemptibleParking: false,
   parkOrderName: null,
   energyLevel: 80,
-  operationalThreshold: 20,
+  criticalThreshold: 20,
   currentPosition: null,
   hasActiveTask: false,
   ...overrides,
@@ -35,10 +35,10 @@ describe('dispatch.policy', () => {
       ['ignored', { ignored: true }],
       ['not available in FMS', { available: false }],
       ['already has an active task', { hasActiveTask: true }],
-      ['battery at threshold', { energyLevel: 20, operationalThreshold: 20 }],
+      ['battery at threshold', { energyLevel: 20, criticalThreshold: 20 }],
       [
         'battery below threshold',
-        { energyLevel: 15, operationalThreshold: 20 },
+        { energyLevel: 15, criticalThreshold: 20 },
       ],
     ])('rejects when %s', (_label, overrides) => {
       expect(isEligible(candidate(overrides))).toBe(false);
@@ -46,7 +46,7 @@ describe('dispatch.policy', () => {
 
     it('requires energy strictly above the threshold', () => {
       expect(
-        isEligible(candidate({ energyLevel: 21, operationalThreshold: 20 })),
+        isEligible(candidate({ energyLevel: 21, criticalThreshold: 20 })),
       ).toBe(true);
     });
 
@@ -73,7 +73,7 @@ describe('dispatch.policy', () => {
             available: false,
             preemptibleParking: true,
             parkOrderName: 'PARK-abc',
-            operationalThreshold: 20,
+            criticalThreshold: 20,
             ...overrides,
           }),
         ),

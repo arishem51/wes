@@ -8,8 +8,6 @@ const policyRow = (
   id: 'p1',
   name: 'default',
   weightUrgency: 1,
-  weightProximity: 1,
-  weightInventoryPosition: 1,
   weightBattery: 0,
   maxAgvPerBlock: 1,
   isActive: true,

@@ -13,8 +13,6 @@ export interface DispatchPolicyView {
   id: string;
   name: string;
   weightUrgency: number;
-  weightProximity: number;
-  weightInventoryPosition: number;
   weightBattery: number;
   maxAgvPerBlock: number;
   isActive: boolean;
@@ -25,8 +23,6 @@ export interface DispatchPolicyView {
 export interface DispatchPolicyInput {
   name?: string;
   weightUrgency?: number;
-  weightProximity?: number;
-  weightInventoryPosition?: number;
   weightBattery?: number;
 }
 
@@ -67,8 +63,6 @@ export class DispatchPolicyService {
       this.repo.create({
         name: input.name,
         weightUrgency: input.weightUrgency ?? 1.0,
-        weightProximity: input.weightProximity ?? 1.0,
-        weightInventoryPosition: input.weightInventoryPosition ?? 1.0,
         weightBattery: input.weightBattery ?? 0,
         isActive: false,
         createdBy,
@@ -85,10 +79,6 @@ export class DispatchPolicyService {
     if (input.name !== undefined) policy.name = input.name;
     if (input.weightUrgency !== undefined)
       policy.weightUrgency = input.weightUrgency;
-    if (input.weightProximity !== undefined)
-      policy.weightProximity = input.weightProximity;
-    if (input.weightInventoryPosition !== undefined)
-      policy.weightInventoryPosition = input.weightInventoryPosition;
     if (input.weightBattery !== undefined)
       policy.weightBattery = input.weightBattery;
     return this.toView(await this.repo.save(policy));
@@ -129,8 +119,6 @@ export class DispatchPolicyService {
       id: row.id,
       name: row.name,
       weightUrgency: row.weightUrgency,
-      weightProximity: row.weightProximity,
-      weightInventoryPosition: row.weightInventoryPosition,
       weightBattery: row.weightBattery,
       maxAgvPerBlock: row.maxAgvPerBlock,
       isActive: row.isActive,

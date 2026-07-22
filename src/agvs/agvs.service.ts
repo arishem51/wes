@@ -30,8 +30,8 @@ export interface AgvDto {
   serialNumber: string | null;
   isDispatchEnabled: boolean;
   isIgnored: boolean;
-  operationalBatteryThreshold: number;
-  chargingBatteryThreshold: number;
+  criticalBatteryThreshold: number;
+  sufficientBatteryThreshold: number;
   initialPosition: string | null;
   config: Record<string, unknown>;
   createdAt: Date;
@@ -101,8 +101,8 @@ export class AgvsService {
       serialNumber: agv.serialNumber,
       isDispatchEnabled: agv.isDispatchEnabled,
       isIgnored: agv.isIgnored,
-      operationalBatteryThreshold: agv.operationalBatteryThreshold,
-      chargingBatteryThreshold: agv.chargingBatteryThreshold,
+      criticalBatteryThreshold: agv.criticalBatteryThreshold,
+      sufficientBatteryThreshold: agv.sufficientBatteryThreshold,
       initialPosition: agv.initialPosition,
       config: agv.config,
       createdAt: agv.createdAt,
@@ -151,8 +151,8 @@ export class AgvsService {
       manufacturer: dto.manufacturer ?? null,
       serialNumber: dto.serialNumber ?? null,
       isDispatchEnabled: dto.isDispatchEnabled ?? true,
-      operationalBatteryThreshold: dto.operationalBatteryThreshold ?? 20,
-      chargingBatteryThreshold: dto.chargingBatteryThreshold ?? 10,
+      criticalBatteryThreshold: dto.criticalBatteryThreshold ?? 20,
+      sufficientBatteryThreshold: dto.sufficientBatteryThreshold ?? 60,
       initialPosition: dto.initialPosition ?? null,
       config: dto.config ?? {},
       createdById: userId,
@@ -177,11 +177,11 @@ export class AgvsService {
       ...(dto.model !== undefined && { model: dto.model }),
       ...(dto.manufacturer !== undefined && { manufacturer: dto.manufacturer }),
       ...(dto.serialNumber !== undefined && { serialNumber: dto.serialNumber }),
-      ...(dto.operationalBatteryThreshold !== undefined && {
-        operationalBatteryThreshold: dto.operationalBatteryThreshold,
+      ...(dto.criticalBatteryThreshold !== undefined && {
+        criticalBatteryThreshold: dto.criticalBatteryThreshold,
       }),
-      ...(dto.chargingBatteryThreshold !== undefined && {
-        chargingBatteryThreshold: dto.chargingBatteryThreshold,
+      ...(dto.sufficientBatteryThreshold !== undefined && {
+        sufficientBatteryThreshold: dto.sufficientBatteryThreshold,
       }),
       ...(dto.initialPosition !== undefined && {
         initialPosition: dto.initialPosition,

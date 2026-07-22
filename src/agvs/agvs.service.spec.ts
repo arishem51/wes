@@ -25,8 +25,8 @@ const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
   initialPosition: null,
   isDispatchEnabled: true,
   isIgnored: false,
-  operationalBatteryThreshold: 20,
-  chargingBatteryThreshold: 10,
+  criticalBatteryThreshold: 20,
+  sufficientBatteryThreshold: 10,
   config: {},
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'),
@@ -162,14 +162,14 @@ describe('AgvsService', () => {
 
       const result = await service.update(agv.id, {
         name: 'AGV 1 Renamed',
-        operationalBatteryThreshold: 30,
-        chargingBatteryThreshold: 15,
+        criticalBatteryThreshold: 30,
+        sufficientBatteryThreshold: 15,
       });
 
       expect(repo.save).toHaveBeenCalled();
       expect(result.name).toBe('AGV 1 Renamed');
-      expect(result.operationalBatteryThreshold).toBe(30);
-      expect(result.chargingBatteryThreshold).toBe(15);
+      expect(result.criticalBatteryThreshold).toBe(30);
+      expect(result.sufficientBatteryThreshold).toBe(15);
     });
 
     it('throws NotFoundException when AGV does not exist', async () => {

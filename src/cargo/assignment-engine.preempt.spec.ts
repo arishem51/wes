@@ -44,7 +44,7 @@ describe('AssignmentEngineService preempt', () => {
           name: 'V1',
           isDispatchEnabled: true,
           isIgnored: false,
-          operationalBatteryThreshold: 20,
+          criticalBatteryThreshold: 20,
         },
       ]),
     };

@@ -162,7 +162,7 @@ export class AssignmentEngineService {
         candidates
           .map(
             (c) =>
-              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},e:${c.energyLevel}/${c.operationalThreshold},pos:${c.currentPosition ?? '?'}}`,
+              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},e:${c.energyLevel}/${c.criticalThreshold},pos:${c.currentPosition ?? '?'}}`,
           )
           .join(' ') +
         ']',
@@ -404,7 +404,7 @@ export class AssignmentEngineService {
         preemptibleParking: parkOrderName !== null,
         parkOrderName,
         energyLevel: fms?.energyLevel ?? 0,
-        operationalThreshold: agv.operationalBatteryThreshold,
+        criticalThreshold: agv.criticalBatteryThreshold,
         currentPosition: fms?.currentPosition ?? null,
         hasActiveTask,
       };

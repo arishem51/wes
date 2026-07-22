@@ -23,18 +23,6 @@ export class CreateDispatchPolicyDto {
   @IsNumber()
   @Min(0)
   @Max(WEIGHT_MAX)
-  weightProximity?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(WEIGHT_MAX)
-  weightInventoryPosition?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(WEIGHT_MAX)
   weightBattery?: number;
 }
 
@@ -49,18 +37,6 @@ export class UpdateDispatchPolicyDto {
   @Min(0)
   @Max(WEIGHT_MAX)
   weightUrgency?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(WEIGHT_MAX)
-  weightProximity?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(WEIGHT_MAX)
-  weightInventoryPosition?: number;
 
   @IsOptional()
   @IsNumber()

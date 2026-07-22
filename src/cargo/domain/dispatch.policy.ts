@@ -25,7 +25,7 @@ export interface VehicleCandidate {
   /** Order to withdraw when preempting this vehicle; null when not preemptible. */
   readonly parkOrderName: string | null;
   readonly energyLevel: number;
-  readonly operationalThreshold: number;
+  readonly criticalThreshold: number;
   /** openTCS point the vehicle currently occupies, or null if not localized. */
   readonly currentPosition: string | null;
   /** Already carrying a PICKING_UP/DELIVERING task. */
@@ -38,7 +38,7 @@ export function isEligible(c: VehicleCandidate): boolean {
     !c.ignored &&
     (c.available || c.preemptibleParking) &&
     !c.hasActiveTask &&
-    c.energyLevel > c.operationalThreshold
+    c.energyLevel > c.criticalThreshold
   );
 }
 

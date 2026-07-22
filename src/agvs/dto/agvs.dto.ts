@@ -39,13 +39,13 @@ export class CreateAgvDto {
   @IsInt()
   @Min(0)
   @Max(100)
-  operationalBatteryThreshold?: number;
+  criticalBatteryThreshold?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(100)
-  chargingBatteryThreshold?: number;
+  sufficientBatteryThreshold?: number;
 
   @IsOptional()
   @IsString()
@@ -78,13 +78,13 @@ export class UpdateAgvDto {
   @IsInt()
   @Min(0)
   @Max(100)
-  operationalBatteryThreshold?: number;
+  criticalBatteryThreshold?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(100)
-  chargingBatteryThreshold?: number;
+  sufficientBatteryThreshold?: number;
 
   @IsOptional()
   @IsString()
