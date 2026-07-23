@@ -10,53 +10,13 @@ import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelVehicleState } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type {
+  AgvDto,
+  AgvListResponse,
   CreateAgvDto,
   ListAgvsQueryDto,
   UpdateAgvDto,
 } from './dto/agvs.dto';
-
-export type AgvKernelStatus =
-  | 'connected'
-  | 'reachable'
-  | 'unreachable'
-  | 'unknown';
-
-export interface AgvDto {
-  id: string;
-  code: string;
-  name: string;
-  model: string | null;
-  manufacturer: string | null;
-  serialNumber: string | null;
-  isDispatchEnabled: boolean;
-  isIgnored: boolean;
-  criticalBatteryThreshold: number;
-  sufficientBatteryThreshold: number;
-  initialPosition: string | null;
-  config: Record<string, unknown>;
-  createdAt: Date;
-  createdById: string | null;
-  kernelStatus: AgvKernelStatus;
-}
-
-export interface AgvListResponse {
-  agvs: AgvDto[];
-  total: number;
-  page: number;
-  limit: number;
-  kernelReachable: boolean;
-}
-
-function resolveKernelStatus(
-  kernelReachable: boolean,
-  vehicle: KernelVehicleState | undefined,
-): AgvKernelStatus {
-  if (!kernelReachable) return 'unknown';
-  if (!vehicle) return 'unreachable';
-  return vehicle.integrationLevel === 'TO_BE_UTILIZED'
-    ? 'connected'
-    : 'reachable';
-}
+import { resolveKernelStatus, toAgvDto } from './agvs.mapper';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -86,35 +46,18 @@ export class AgvsService {
       take: limit,
     });
 
-    const kernelVehicles = this.vehicleStateStore.getAll();
     const kernelReachable = this.vehicleStateStore.isConnected();
     const kernelByName = new Map<string, KernelVehicleState>(
-      kernelVehicles.map((v) => [v.name, v]),
+      this.vehicleStateStore.getAll().map((v) => [v.name, v]),
     );
 
-    const mappedAgvs: AgvDto[] = agvs.map((agv) => ({
-      id: agv.id,
-      code: agv.code,
-      name: agv.name,
-      model: agv.model,
-      manufacturer: agv.manufacturer,
-      serialNumber: agv.serialNumber,
-      isDispatchEnabled: agv.isDispatchEnabled,
-      isIgnored: agv.isIgnored,
-      criticalBatteryThreshold: agv.criticalBatteryThreshold,
-      sufficientBatteryThreshold: agv.sufficientBatteryThreshold,
-      initialPosition: agv.initialPosition,
-      config: agv.config,
-      createdAt: agv.createdAt,
-      createdById: agv.createdById,
-      kernelStatus: resolveKernelStatus(
-        kernelReachable,
-        kernelByName.get(agv.name),
-      ),
-    }));
-
     return {
-      agvs: mappedAgvs,
+      agvs: agvs.map((agv) =>
+        toAgvDto(
+          agv,
+          resolveKernelStatus(kernelReachable, kernelByName.get(agv.name)),
+        ),
+      ),
       total,
       page,
       limit,
@@ -122,18 +65,18 @@ export class AgvsService {
     };
   }
 
+  private toDto(agv: AgvEntity): AgvDto {
+    const kernelReachable = this.vehicleStateStore.isConnected();
+    const vehicle = this.vehicleStateStore
+      .getAll()
+      .find((v) => v.name === agv.name);
+    return toAgvDto(agv, resolveKernelStatus(kernelReachable, vehicle));
+  }
+
   async findOne(id: string): Promise<AgvDto> {
     const agv = await this.repo.findOne({ where: { id } });
     if (!agv) throw new NotFoundException('AGV không tồn tại.');
-
-    const kernelVehicles = this.vehicleStateStore.getAll();
-    const kernelReachable = this.vehicleStateStore.isConnected();
-    const kernelVehicle = kernelVehicles.find((v) => v.name === agv.name);
-
-    return {
-      ...agv,
-      kernelStatus: resolveKernelStatus(kernelReachable, kernelVehicle),
-    };
+    return this.toDto(agv);
   }
 
   async create(dto: CreateAgvDto, userId: string): Promise<AgvDto> {
@@ -158,7 +101,7 @@ export class AgvsService {
       createdById: userId,
     });
     const saved = await this.repo.save(agv);
-    return { ...saved, kernelStatus: 'unknown' };
+    return toAgvDto(saved, 'unknown');
   }
 
   async update(id: string, dto: UpdateAgvDto): Promise<AgvDto> {
@@ -190,7 +133,7 @@ export class AgvsService {
     });
 
     const saved = await this.repo.save(agv);
-    return { ...saved, kernelStatus: 'unknown' };
+    return toAgvDto(saved, 'unknown');
   }
 
   async connect(id: string): Promise<void> {

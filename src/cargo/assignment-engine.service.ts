@@ -54,18 +54,11 @@ function isFmsDispatchable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;
   return (
     (state.procState === 'IDLE' || state.procState === 'AWAITING_ORDER') &&
-    state.integrationLevel === 'TO_BE_UTILIZED'
+    state.integrationLevel === 'TO_BE_UTILIZED' &&
+    state.state !== 'CHARGING'
   );
 }
 
-/**
- * The order name to withdraw to preempt a vehicle driving to park, or null if it
- * is not preemptible. Identified by the PARK- name prefix WES itself stamps —
- * NOT inferred from "processing + no task", which could mistake a cargo order
- * (PICKUP-/APPROACH-/DROPOFF-) whose task is momentarily untracked (cancelled,
- * failed, or mid-assign) for a park order and wrongly withdraw it. The caller
- * still gates on no-active-task and battery.
- */
 function preemptibleParkOrderName(
   state: KernelVehicleState | undefined,
 ): string | null {

@@ -13,6 +13,7 @@ import { DispatchPolicyController } from './dispatch-policy.controller';
 import { TransportTaskService } from './transport-task.service';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
+import { ChargeEngineService } from './charge-engine.service';
 import { ParkingEngineService } from './parking-engine.service';
 import { LegReconcileService } from './leg-reconcile.service';
 import { TransportTaskSaga } from './transport-task.saga';
@@ -47,6 +48,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     ApproachPointService,
     ReleaseEngineService,
     AssignmentEngineService,
+    ChargeEngineService,
     ParkingEngineService,
     LegReconcileService,
     DispatchSchedulerService,

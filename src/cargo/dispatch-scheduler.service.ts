@@ -3,6 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { LegReconcileService } from './leg-reconcile.service';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
+import { ChargeEngineService } from './charge-engine.service';
 import { ParkingEngineService } from './parking-engine.service';
 import { FMS_EVENTS, TRANSPORT_TASK_EVENTS } from './domain/events';
 
@@ -22,6 +23,7 @@ export class DispatchSchedulerService implements OnApplicationBootstrap {
     private readonly legReconcile: LegReconcileService,
     private readonly releaseEngine: ReleaseEngineService,
     private readonly assignmentEngine: AssignmentEngineService,
+    private readonly chargeEngine: ChargeEngineService,
     private readonly parkingEngine: ParkingEngineService,
   ) {}
 
@@ -70,6 +72,7 @@ export class DispatchSchedulerService implements OnApplicationBootstrap {
       await this.legReconcile.run();
       await this.releaseEngine.run();
       await this.assignmentEngine.run();
+      await this.chargeEngine.run();
       await this.parkingEngine.run();
     } catch (err) {
       this.logger.error(

@@ -26,7 +26,7 @@ const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
   isDispatchEnabled: true,
   isIgnored: false,
   criticalBatteryThreshold: 20,
-  sufficientBatteryThreshold: 10,
+  sufficientBatteryThreshold: 60,
   config: {},
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'),

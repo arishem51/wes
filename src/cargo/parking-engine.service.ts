@@ -131,6 +131,8 @@ export class ParkingEngineService {
       idleAvailable: isIdleAvailable(fms),
       onOrder: fms?.transportOrder != null,
       hasActiveTask: busy.has(agv.name),
+      belowCritical:
+        fms != null && fms.energyLevel <= agv.criticalBatteryThreshold,
       currentPosition: fms?.currentPosition ?? null,
     };
   }
