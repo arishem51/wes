@@ -11,7 +11,6 @@ const makeZone = (overrides: Partial<ZoneEntity> = {}): ZoneEntity => ({
   type: ZoneType.DROPOFF,
   color: '#2563eb',
   kernelId: 1,
-  approachLocationName: 'zone_1',
   status: ZoneStatus.ACTIVE,
   members: [],
   createdAt: new Date('2026-01-01'),
@@ -110,7 +109,6 @@ describe('ZoneService.sync', () => {
       name,
       type: ZoneType.PICKUP,
       kernelId: null,
-      approachLocationName: null,
       status,
       members: locationNames.map((locationName, index) =>
         makeMember(locationName, index),
@@ -129,7 +127,6 @@ describe('ZoneService.sync', () => {
         locations: [
           { name: 'location_P1', links: ['P1'] },
           { name: 'location_P2', links: ['P2'] },
-          { name: 'zone_1', links: ['P1', 'P2'] },
         ],
       }),
     );
@@ -167,7 +164,6 @@ describe('ZoneService.sync', () => {
     expect(pushed.locations.map((location) => location.name).sort()).toEqual([
       'location_P1',
       'location_P2',
-      'zone_1',
     ]);
   });
 

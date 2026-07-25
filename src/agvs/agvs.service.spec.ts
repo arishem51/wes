@@ -37,7 +37,10 @@ const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
 describe('AgvsService', () => {
   let service: AgvsService;
   let repo: MockRepo;
-  let kernelApi: { getVehicles: jest.Mock };
+  let kernelApi: {
+    getVehicles: jest.Mock;
+    setVehicleIntegrationLevel: jest.Mock;
+  };
   let vehicleStore: { getAll: jest.Mock; isConnected: jest.Mock };
 
   beforeEach(async () => {
@@ -49,7 +52,10 @@ describe('AgvsService', () => {
       save: jest.fn(),
       remove: jest.fn(),
     };
-    kernelApi = { getVehicles: jest.fn() };
+    kernelApi = {
+      getVehicles: jest.fn(),
+      setVehicleIntegrationLevel: jest.fn().mockResolvedValue(undefined),
+    };
     // Kernel status is derived from the SSE-backed VehicleStateStore, not a
     // REST call. Default to reachable/empty; individual tests override.
     vehicleStore = {
@@ -208,6 +214,163 @@ describe('AgvsService', () => {
       await expect(
         service.create({ code: 'AGV-001', name: 'New AGV' }, 'user-1'),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('enable', () => {
+    it('turns a disabled AGV back on without touching the kernel', async () => {
+      const agv = makeAgv({ isDispatchEnabled: false, isIgnored: false });
+      repo.findOne.mockResolvedValue(agv);
+      repo.save.mockImplementation((entity) => Promise.resolve(entity));
+
+      const result = await service.enable(agv.id);
+
+      expect(result.acceptanceStatus).toBe('ENABLED');
+      expect(result.isDispatchEnabled).toBe(true);
+      expect(kernelApi.setVehicleIntegrationLevel).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the AGV is ignored', async () => {
+      repo.findOne.mockResolvedValue(makeAgv({ isIgnored: true }));
+
+      await expect(service.enable('agv-1')).rejects.toThrow(ConflictException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when already enabled', async () => {
+      repo.findOne.mockResolvedValue(makeAgv({ isDispatchEnabled: true }));
+
+      await expect(service.enable('agv-1')).rejects.toThrow(ConflictException);
+    });
+
+    it('throws NotFoundException when AGV does not exist', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await expect(service.enable('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('disable', () => {
+    it('stops an enabled AGV without touching the kernel', async () => {
+      const agv = makeAgv({ isDispatchEnabled: true, isIgnored: false });
+      repo.findOne.mockResolvedValue(agv);
+      repo.save.mockImplementation((entity) => Promise.resolve(entity));
+
+      const result = await service.disable(agv.id);
+
+      expect(result.acceptanceStatus).toBe('DISABLED');
+      expect(result.isDispatchEnabled).toBe(false);
+      expect(kernelApi.setVehicleIntegrationLevel).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the AGV is ignored', async () => {
+      repo.findOne.mockResolvedValue(makeAgv({ isIgnored: true }));
+
+      await expect(service.disable('agv-1')).rejects.toThrow(ConflictException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when already disabled', async () => {
+      repo.findOne.mockResolvedValue(makeAgv({ isDispatchEnabled: false }));
+
+      await expect(service.disable('agv-1')).rejects.toThrow(ConflictException);
+    });
+
+    it('throws NotFoundException when AGV does not exist', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await expect(service.disable('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('ignore', () => {
+    it('sets the kernel to TO_BE_RESPECTED before persisting the flag', async () => {
+      const agv = makeAgv({ isIgnored: false });
+      repo.findOne.mockResolvedValue(agv);
+      repo.save.mockImplementation((entity) => Promise.resolve(entity));
+
+      const result = await service.ignore(agv.id);
+
+      expect(kernelApi.setVehicleIntegrationLevel).toHaveBeenCalledWith(
+        agv.name,
+        'TO_BE_RESPECTED',
+      );
+      expect(result.acceptanceStatus).toBe('IGNORED');
+      expect(result.isIgnored).toBe(true);
+    });
+
+    it('does not persist when the kernel call fails', async () => {
+      const agv = makeAgv({ isIgnored: false });
+      repo.findOne.mockResolvedValue(agv);
+      kernelApi.setVehicleIntegrationLevel.mockRejectedValue(
+        new Error('kernel down'),
+      );
+
+      await expect(service.ignore(agv.id)).rejects.toThrow('kernel down');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when already ignored', async () => {
+      repo.findOne.mockResolvedValue(makeAgv({ isIgnored: true }));
+
+      await expect(service.ignore('agv-1')).rejects.toThrow(ConflictException);
+      expect(kernelApi.setVehicleIntegrationLevel).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when AGV does not exist', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await expect(service.ignore('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('restore', () => {
+    it('sets the kernel to TO_BE_UTILIZED and re-enables dispatch', async () => {
+      const agv = makeAgv({ isIgnored: true, isDispatchEnabled: false });
+      repo.findOne.mockResolvedValue(agv);
+      repo.save.mockImplementation((entity) => Promise.resolve(entity));
+
+      const result = await service.restore(agv.id);
+
+      expect(kernelApi.setVehicleIntegrationLevel).toHaveBeenCalledWith(
+        agv.name,
+        'TO_BE_UTILIZED',
+      );
+      expect(result.acceptanceStatus).toBe('ENABLED');
+      expect(result.isIgnored).toBe(false);
+      expect(result.isDispatchEnabled).toBe(true);
+    });
+
+    it('does not persist when the kernel call fails', async () => {
+      const agv = makeAgv({ isIgnored: true });
+      repo.findOne.mockResolvedValue(agv);
+      kernelApi.setVehicleIntegrationLevel.mockRejectedValue(
+        new Error('kernel down'),
+      );
+
+      await expect(service.restore(agv.id)).rejects.toThrow('kernel down');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the AGV is not ignored', async () => {
+      repo.findOne.mockResolvedValue(makeAgv({ isIgnored: false }));
+
+      await expect(service.restore('agv-1')).rejects.toThrow(ConflictException);
+      expect(kernelApi.setVehicleIntegrationLevel).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when AGV does not exist', async () => {
+      repo.findOne.mockResolvedValue(null);
+
+      await expect(service.restore('missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

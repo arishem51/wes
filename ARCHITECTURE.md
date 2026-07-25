@@ -219,7 +219,7 @@ CREATED ──► READY_TO_ASSIGN ──► PICKING_UP ──► DELIVERING ─�
   ReleaseEngine     AssignmentEngine    saga          saga
   passes dep →      picks AGV, creates  TO1 FINISHED  TO3 FINISHED →
   READY else        TO1 (PICK_UP)       → create TO2  DELIVERY_COMPLETED
-  BLOCKED                               (approach NOP) + cargo = DELIVERED
+  BLOCKED                               (approach MOVE) + cargo = DELIVERED
                                         → DELIVERING.
                                         TO2 FINISHED → create TO3
                                         (DROP_OFF), stays DELIVERING.
@@ -231,9 +231,10 @@ Terminal (no exits): DELIVERY_COMPLETED, CANCELLED, FAILED
 ```
 
 There are **three** openTCS transport orders per task: `TO1` = pick-up, `TO2` =
-approach (a NOP move to the drop-off zone's approach location), `TO3` = drop-off.
-The order-name prefix (`TO1-`/`TO2-`/`TO3-`) tells the saga which leg finished;
-the names are stored in `task.metadata.{to1Name,to2Name,to3Name}`.
+approach (a `MOVE` to a specific feeder-head point, with no load operation),
+`TO3` = drop-off. The order-name prefix (`TO1-`/`TO2-`/`TO3-`) tells the saga
+which leg finished; the names are stored in
+`task.metadata.{to1Name,to2Name,to3Name}`.
 
 **Drop-off slot is late-bound.** Creating a request only *reserves a seat* in the
 destination zone (`cargo.destination_zone_id`, capacity-checked against the zone's
@@ -242,9 +243,10 @@ committed at the **TO2 barrier** (`TransportTaskSaga.commitDropoffSlot` →
 `DeliverySlotEngine.findSlot`), under a per-zone advisory lock, when the vehicle is
 parked at the zone's approach head and occupancy reflects physical reality — this
 keeps the fill order correct on one-way lanes. `TO1` (pick-up) therefore only needs
-the source location. The zone's parent `zone_<id>` location links to the zone's
-**feeder points** (aisle heads), not every member, so the NOP stops at the
-entry-most head from which all slots stay forward-reachable.
+the source location. TO2's target is chosen at dispatch:
+`ApproachPointService.pickFor(zone, vehicle)` returns the **nearest reachable
+feeder-head point** (an aisle head from which all slots stay forward-reachable),
+and TO2 is a `MOVE` to that point — no `zone_<id>` approach location is involved.
 
 ### 4.3 State machine interface
 
@@ -382,8 +384,17 @@ is sent to the nearest free `PARK_POSITION` via a `MOVE` order named `PARK-<uuid
 park orders never reach the saga). Rules are pure in
 `cargo/domain/parking.policy.ts` (`needsParking`, `pickParkingPoint`).
 Suppressed while any `READY_TO_ASSIGN` task waits (don't park then preempt). The
-`idleSince` clock and in-flight point reservations (`parkTargets`, which stop two
-vehicles targeting one point) are in-RAM — on restart they simply re-arm.
+charge engine's no-slot fallback and its release-from-charger move also target
+park points, so both engines share **one** in-flight point ledger —
+`PointReservationStore` (`cargo/point-reservation.store.ts`). Every park-picking
+path excludes its `reservedPoints()`, so two vehicles never aim at one point
+across engines/paths; a reservation holds until the vehicle **arrives**, so a
+vehicle en route counts as occupying its point. `reconcile()` drops an entry only
+on arrival, or after confirming the order is terminal/gone with a single
+`getTransportOrderState` fetch by name (never the unbounded list) — a stale SSE
+snapshot alone never drops it. Charge points are excluded from the park pool so
+parking never lands on a charger. The `idleSince` clock and the ledger are in-RAM
+— on restart they simply re-arm.
 
 `PARK_IDLE_DELAY_MS` (default **0**) holds a vehicle back before parking. 0 means
 it parks on the first flush that sees it idle, which is the intended behaviour:
@@ -398,8 +409,8 @@ value inside one interval costs a whole extra cycle.
 (`preemptibleParking`), recognized by the `PARK-` name prefix WES owns (never
 inferred from "processing + no task", which could misclassify a cargo order whose
 task is momentarily untracked). When picked, `assign()` withdraws the park order
-before creating TO1; the `parkTargets` reservation frees itself once the vehicle
-leaves that order.
+before creating TO1; the `PointReservationStore` entry clears on the next
+`reconcile()` once the withdrawn order reads terminal or the vehicle has moved off it.
 
 **Lost-event reconcile** — the in-process bus can drop a frame (restart,
 hot-reload, network blip), so **correctness never depends on an event**. Two

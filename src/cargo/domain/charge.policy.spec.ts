@@ -16,6 +16,7 @@ const candidate = (
   idleAvailable: true,
   charging: false,
   onOrder: false,
+  hasActiveTask: false,
   currentPosition: 'P1',
   energyLevel: 15,
   criticalThreshold: 20,
@@ -58,6 +59,12 @@ describe('charge.policy', () => {
       );
       expect(
         needsCharging(candidate({ currentPosition: null }), CHARGE_POINTS),
+      ).toBe(false);
+    });
+
+    it('is false when carrying an active cargo task, even if idle and low', () => {
+      expect(
+        needsCharging(candidate({ hasActiveTask: true }), CHARGE_POINTS),
       ).toBe(false);
     });
 

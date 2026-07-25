@@ -385,11 +385,6 @@ export class KernelApiService {
     return toKernelPlantModel(await this.getPlantModel());
   }
 
-  /**
-   * Points of type PARK_POSITION from the plant model, with their parking
-   * priority (if set). The vehicle→park-point distance is left to the caller
-   * (road-graph Dijkstra), so only name + priority are returned here.
-   */
   async getParkingPoints(): Promise<KernelParkingPoint[]> {
     const model = await this.getPlantModel();
     if (!isRecord(model) || !Array.isArray(model.points)) return [];

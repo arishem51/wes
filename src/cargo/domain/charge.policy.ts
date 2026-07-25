@@ -10,6 +10,7 @@ export interface ChargeVehicleCandidate {
   readonly idleAvailable: boolean;
   readonly charging: boolean;
   readonly onOrder: boolean;
+  readonly hasActiveTask: boolean;
   readonly currentPosition: string | null;
   readonly energyLevel: number;
   readonly criticalThreshold: number;
@@ -25,6 +26,7 @@ export function needsCharging(
     !c.ignored &&
     c.idleAvailable &&
     !c.onOrder &&
+    !c.hasActiveTask &&
     c.currentPosition !== null &&
     !chargePointNames.has(c.currentPosition) &&
     c.energyLevel <= c.criticalThreshold

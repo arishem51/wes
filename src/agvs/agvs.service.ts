@@ -150,6 +150,62 @@ export class AgvsService {
     await this.kernelApi.setVehicleAdapterEnabled(agv.name, false);
   }
 
+  async enable(id: string): Promise<AgvDto> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    if (agv.isIgnored) {
+      throw new ConflictException('AGV đang bị bỏ qua — hãy dùng Khôi phục.');
+    }
+    if (agv.isDispatchEnabled) {
+      throw new ConflictException('AGV đã ở trạng thái nhận việc.');
+    }
+    agv.isDispatchEnabled = true;
+    const saved = await this.repo.save(agv);
+    return this.toDto(saved);
+  }
+
+  async disable(id: string): Promise<AgvDto> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    if (agv.isIgnored) {
+      throw new ConflictException('AGV đang bị bỏ qua — hãy dùng Khôi phục.');
+    }
+    if (!agv.isDispatchEnabled) {
+      throw new ConflictException('AGV đã ngừng nhận việc.');
+    }
+    agv.isDispatchEnabled = false;
+    const saved = await this.repo.save(agv);
+    return this.toDto(saved);
+  }
+
+  async ignore(id: string): Promise<AgvDto> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    if (agv.isIgnored) {
+      throw new ConflictException('AGV đã bị bỏ qua.');
+    }
+    await this.kernelApi.setVehicleIntegrationLevel(
+      agv.name,
+      'TO_BE_RESPECTED',
+    );
+    agv.isIgnored = true;
+    const saved = await this.repo.save(agv);
+    return this.toDto(saved);
+  }
+
+  async restore(id: string): Promise<AgvDto> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    if (!agv.isIgnored) {
+      throw new ConflictException('AGV không ở trạng thái bỏ qua.');
+    }
+    await this.kernelApi.setVehicleIntegrationLevel(agv.name, 'TO_BE_UTILIZED');
+    agv.isIgnored = false;
+    agv.isDispatchEnabled = true;
+    const saved = await this.repo.save(agv);
+    return this.toDto(saved);
+  }
+
   async setPosition(id: string, pointName: string): Promise<void> {
     const agv = await this.repo.findOne({ where: { id } });
     if (!agv) throw new NotFoundException('AGV không tồn tại.');

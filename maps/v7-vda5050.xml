@@ -894,7 +894,7 @@
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
-    <point name="0200" positionX="3000" positionY="-1000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+    <point name="0200" positionX="3000" positionY="-1000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0200 --- 0201"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
@@ -948,7 +948,7 @@
         <outgoingPath name="0209 --- 0038"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
-    <point name="0210" positionX="3000" positionY="-2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+    <point name="0210" positionX="3000" positionY="-2000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0210 --- 0211"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
@@ -1002,7 +1002,7 @@
         <outgoingPath name="0219 --- 0209"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
-    <point name="0220" positionX="3000" positionY="-3000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+    <point name="0220" positionX="3000" positionY="-3000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0220 --- 0221"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
@@ -1056,7 +1056,7 @@
         <outgoingPath name="0229 --- 0219"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
-    <point name="0230" positionX="3000" positionY="-4000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+    <point name="0230" positionX="3000" positionY="-4000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0230 --- 0231"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
@@ -2256,7 +2256,7 @@
         <outgoingPath name="0449 --- 0439"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
-    <point name="1000" positionX="26000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+    <point name="1000" positionX="26000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="1000 --- 0071"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
@@ -2291,19 +2291,34 @@
         <outgoingPath name="1006 --- 0075"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
-    <point name="1007" positionX="29000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+    <point name="1007" positionX="29000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="1007 --- 0074"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
-    <point name="1008" positionX="28000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+    <point name="1008" positionX="28000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="1008 --- 0073"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
-    <point name="1009" positionX="27000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+    <point name="1009" positionX="27000" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="1009 --- 0072"/>
+        <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
+    </point>
+    <point name="1010" positionX="33000" positionY="-1000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="1010 --- 0017"/>
+        <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
+    </point>
+    <point name="1011" positionX="34000" positionY="-1000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="1011 --- 0016"/>
+        <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
+    </point>
+    <point name="1012" positionX="35000" positionY="-1000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="1012 --- 0015"/>
         <pointLayout labelOffsetX="0" labelOffsetY="0" layerId="0"/>
     </point>
     <point name="3001" positionX="46000" positionY="-1000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
@@ -5124,6 +5139,15 @@
     <path name="1009 --- 0072" sourcePoint="1009" destinationPoint="0072" length="1000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="1010 --- 0017" sourcePoint="1010" destinationPoint="0017" length="1000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="1011 --- 0016" sourcePoint="1011" destinationPoint="0016" length="1000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="1012 --- 0015" sourcePoint="1012" destinationPoint="0015" length="1000" maxVelocity="10000" maxReverseVelocity="10000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="3001 --- 3002" sourcePoint="3001" destinationPoint="3002" length="1000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
@@ -6075,6 +6099,7 @@
     <vehicle name="Vehicle-0001" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6090,6 +6115,7 @@
     <vehicle name="Vehicle-0002" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6105,6 +6131,7 @@
     <vehicle name="Vehicle-0003" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6120,6 +6147,7 @@
     <vehicle name="Vehicle-0004" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6135,6 +6163,7 @@
     <vehicle name="Vehicle-0005" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6150,6 +6179,7 @@
     <vehicle name="Vehicle-0006" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6165,6 +6195,7 @@
     <vehicle name="Vehicle-0007" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6180,6 +6211,7 @@
     <vehicle name="Vehicle-0008" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6195,6 +6227,7 @@
     <vehicle name="Vehicle-0009" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6210,6 +6243,7 @@
     <vehicle name="Vehicle-0010" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6225,6 +6259,7 @@
     <vehicle name="Vehicle-0011" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6240,6 +6275,7 @@
     <vehicle name="Vehicle-0012" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6255,6 +6291,7 @@
     <vehicle name="Vehicle-0013" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6270,6 +6307,7 @@
     <vehicle name="Vehicle-0014" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6285,6 +6323,7 @@
     <vehicle name="Vehicle-0015" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
         <property name="vda5050:deviationTheta" value="10"/>
         <property name="vda5050:deviationXY" value="0.1"/>
         <property name="vda5050:interfaceName" value="aubotagv"/>
@@ -6315,25 +6354,41 @@
         <allowedOperation name="startCharging"/>
         <locationTypeLayout locationRepresentation="NONE"/>
     </locationType>
-    <location name="Charging Area 2" positionX="29700" positionY="3900" positionZ="0" locked="false" type="charging">
-        <link point="1000"/>
-        <link point="1006"/>
-        <link point="1007"/>
-        <link point="1008"/>
-        <link point="1009"/>
+    <location name="Charge-0001" positionX="1800" positionY="-1000" positionZ="0" locked="false" type="charging">
+        <link point="0200"/>
         <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
     </location>
-    <location name="Charging Area 1" positionX="1200" positionY="-3700" positionZ="0" locked="false" type="charging">
-        <link point="0200"/>
+    <location name="Charge-0002" positionX="1800" positionY="-2000" positionZ="0" locked="false" type="charging">
         <link point="0210"/>
+        <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charge-0003" positionX="1800" positionY="-3000" positionZ="0" locked="false" type="charging">
         <link point="0220"/>
+        <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charge-0004" positionX="1750" positionY="-3950" positionZ="0" locked="false" type="charging">
         <link point="0230"/>
-        <link point="0240"/>
+        <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charging-1000" positionX="25950" positionY="3050" positionZ="0" locked="false" type="charging">
+        <link point="1000"/>
+        <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charging-1007" positionX="29050" positionY="3150" positionZ="0" locked="false" type="charging">
+        <link point="1007"/>
+        <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charging-1008" positionX="27950" positionY="3150" positionZ="0" locked="false" type="charging">
+        <link point="1008"/>
+        <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charging-1009" positionX="26950" positionY="3050" positionZ="0" locked="false" type="charging">
+        <link point="1009"/>
         <locationLayout labelOffsetX="-10" labelOffsetY="-20" locationRepresentation="DEFAULT" layerId="0"/>
     </location>
     <visualLayout name="VLayout" scaleX="10.0" scaleY="10.0">
         <layer id="0" ordinal="0" visible="true" name="Default layer" groupId="0"/>
         <layerGroup id="0" name="Default layer group" visible="true"/>
     </visualLayout>
-    <property name="tcs:modelFileLastModified" value="2026-07-22T15:49:00Z"/>
+    <property name="tcs:modelFileLastModified" value="2026-07-25T08:32:10Z"/>
 </model>

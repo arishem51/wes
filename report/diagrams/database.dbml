@@ -98,7 +98,6 @@ Table zones {
   name varchar(255) [not null]
   type zone_type_enum [not null, note: 'PICKUP | DROPOFF']
   kernel_id integer [unique, note: 'Sequential ID used to name openTCS locations; NULL for PICKUP zones']
-  approach_location_name varchar(255)
   status zone_status_enum [not null, default: 'ACTIVE', note: 'ACTIVE | STALE']
   created_at timestamptz [not null]
   updated_at timestamptz [not null]
@@ -146,7 +145,7 @@ Table transport_requests {
   request_code varchar(50) [not null, unique]
   cargo_id uuid
   status transport_request_status_enum [not null, default: 'CREATED', note: 'CREATED | READY_TO_ASSIGN | BLOCKED | PICKING_UP | DELIVERING | DELIVERY_COMPLETED | CANCELLED | FAILED']
-  metadata jsonb [not null, default: '{}', note: 'assignedVehicleName, to1Name/to2Name/to3Name, approachLocationName, blockedReason']
+  metadata jsonb [not null, default: '{}', note: 'assignedVehicleName, to1Name/to2Name/to3Name, approachPointName, blockedReason']
   assigned_at timestamptz
   started_at timestamptz
   completed_at timestamptz

@@ -8,10 +8,13 @@ import {
   ORDER_PROP,
 } from './domain/events';
 import { AgvEntity } from '../agvs/entities/agv.entity';
+import { TransportTaskEntity } from './entities/transport-task.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelVehicleState } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { RoutingService } from './routing.service';
+import { activeCargoVehicleNames } from './task-queries';
+import { PointReservationStore } from './point-reservation.store';
 import { shortestDistancesFrom } from './domain/routing';
 import { ParkingPoint, pickParkingPoint } from './domain/parking.policy';
 import {
@@ -22,11 +25,13 @@ import {
   shouldRelease,
   pickChargeLocation,
 } from './domain/charge.policy';
-
-const CHARGE_LEG = 'CHARGE';
-const PARK_LEG = 'PARK';
-const STOP_CHARGING_ACTION = 'stopCharging';
-const DEFAULT_FULL_CHARGE_PCT = 85;
+import {
+  CHARGE_LEG,
+  PARK_LEG,
+  STOP_CHARGING_ACTION,
+  DEFAULT_FULL_CHARGE_PCT,
+  TERMINAL_ORDER_STATES,
+} from './charge-engine.constants';
 
 function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;
@@ -43,22 +48,17 @@ export class ChargeEngineService {
     string,
     { location: string; order: string }
   >();
-  private readonly releaseTargets = new Map<
-    string,
-    { point: string; order: string }
-  >();
-  private readonly parkTargets = new Map<
-    string,
-    { point: string; order: string }
-  >();
   private readonly fullChargePct: number;
 
   constructor(
+    @InjectRepository(TransportTaskEntity)
+    private readonly taskRepo: Repository<TransportTaskEntity>,
     @InjectRepository(AgvEntity)
     private readonly agvRepo: Repository<AgvEntity>,
     private readonly kernelApi: KernelApiService,
     private readonly vehicleStore: VehicleStateStore,
     private readonly routing: RoutingService,
+    private readonly reservations: PointReservationStore,
   ) {
     const parsed = Number(process.env.CHARGE_FULL_PCT);
     this.fullChargePct =
@@ -76,26 +76,32 @@ export class ChargeEngineService {
       for (const point of loc.points) chargePoints.add(point);
     }
 
+    await this.reservations.reconcile();
+    await this.reconcileChargeTargets(chargePoints);
+
     const agvs = await this.agvRepo.find();
+    const busy = await activeCargoVehicleNames(this.taskRepo);
     const parkingPoints = await this.kernelApi.getParkingPoints();
     const parkPointNames = new Set(parkingPoints.map((p) => p.name));
     const nonChargeParks = parkingPoints.filter(
       (p) => !chargePoints.has(p.name),
     );
 
-    await this.releaseCharged(agvs, nonChargeParks);
+    await this.releaseCharged(agvs, nonChargeParks, busy);
     await this.dispatchToCharge(
       agvs,
       locations,
       chargePoints,
       nonChargeParks,
       parkPointNames,
+      busy,
     );
   }
 
   private toCandidate(
     agv: AgvEntity,
     fms: KernelVehicleState | undefined,
+    busy: ReadonlySet<string>,
   ): ChargeVehicleCandidate {
     return {
       name: agv.name,
@@ -104,6 +110,7 @@ export class ChargeEngineService {
       idleAvailable: isIdleAvailable(fms),
       charging: fms?.state === 'CHARGING',
       onOrder: fms?.transportOrder != null,
+      hasActiveTask: busy.has(agv.name),
       currentPosition: fms?.currentPosition ?? null,
       energyLevel: fms?.energyLevel ?? 0,
       criticalThreshold: agv.criticalBatteryThreshold,
@@ -114,16 +121,16 @@ export class ChargeEngineService {
   private async releaseCharged(
     agvs: AgvEntity[],
     nonChargeParks: readonly ParkingPoint[],
+    busy: ReadonlySet<string>,
   ): Promise<void> {
     const releasable = agvs
       .map((agv) => ({
         agv,
-        cand: this.toCandidate(agv, this.vehicleStore.get(agv.name)),
+        cand: this.toCandidate(agv, this.vehicleStore.get(agv.name), busy),
       }))
       .filter(
         ({ agv, cand }) =>
-          isReleaseCandidate(cand) &&
-          !this.hasInFlightRelease(agv.name, cand.charging),
+          isReleaseCandidate(cand) && !this.reservations.has(agv.name),
       );
     if (releasable.length === 0) return;
 
@@ -134,8 +141,8 @@ export class ChargeEngineService {
 
     const graph = await this.routing.getRoadGraph();
     const excluded = this.occupiedPoints(agvs, nonChargeParks);
-    for (const target of this.releaseTargets.values()) {
-      excluded.add(target.point);
+    for (const point of this.reservations.reservedPoints()) {
+      excluded.add(point);
     }
 
     for (const { agv, cand } of toRelease) {
@@ -156,15 +163,6 @@ export class ChargeEngineService {
     }
   }
 
-  private hasInFlightRelease(vehicleName: string, charging: boolean): boolean {
-    if (!this.releaseTargets.has(vehicleName)) return false;
-    if (!charging) {
-      this.releaseTargets.delete(vehicleName);
-      return false;
-    }
-    return true;
-  }
-
   private async releaseChargeOrder(
     vehicleName: string,
     pointName: string,
@@ -178,10 +176,7 @@ export class ChargeEngineService {
         vehicleName,
         { [ORDER_PROP.LEG]: PARK_LEG },
       );
-      this.releaseTargets.set(vehicleName, {
-        point: pointName,
-        order: orderName,
-      });
+      this.reservations.reserve(vehicleName, pointName, orderName);
       this.logger.log(`Released ${vehicleName} from charge → ${pointName}`);
     } catch (err) {
       this.logger.warn(
@@ -209,13 +204,14 @@ export class ChargeEngineService {
     chargePoints: ReadonlySet<string>,
     nonChargeParks: readonly ParkingPoint[],
     parkPointNames: ReadonlySet<string>,
+    busy: ReadonlySet<string>,
   ): Promise<void> {
     const readyToCharge: Array<{ name: string; position: string }> = [];
     for (const agv of agvs) {
-      const cand = this.toCandidate(agv, this.vehicleStore.get(agv.name));
+      const cand = this.toCandidate(agv, this.vehicleStore.get(agv.name), busy);
       if (!needsCharging(cand, chargePoints)) continue;
       if (this.hasInFlightCharge(agv.name, chargePoints)) continue;
-      if (this.hasInFlightPark(agv.name)) continue;
+      if (this.reservations.has(agv.name)) continue;
       if (cand.currentPosition == null) continue;
       readyToCharge.push({ name: agv.name, position: cand.currentPosition });
     }
@@ -224,8 +220,8 @@ export class ChargeEngineService {
     const freeSlots = this.freeSlotsByLocation(locations, chargePoints);
     const graph = await this.routing.getRoadGraph();
     const parkExcluded = this.occupiedPoints(agvs, nonChargeParks);
-    for (const target of this.parkTargets.values()) {
-      parkExcluded.add(target.point);
+    for (const point of this.reservations.reservedPoints()) {
+      parkExcluded.add(point);
     }
 
     for (const { name, position } of readyToCharge) {
@@ -253,16 +249,6 @@ export class ChargeEngineService {
     }
   }
 
-  private hasInFlightPark(vehicleName: string): boolean {
-    const target = this.parkTargets.get(vehicleName);
-    if (!target) return false;
-    if (this.vehicleStore.get(vehicleName)?.currentPosition === target.point) {
-      this.parkTargets.delete(vehicleName);
-      return false;
-    }
-    return true;
-  }
-
   private async parkForNoSlot(
     vehicleName: string,
     pointName: string,
@@ -275,7 +261,7 @@ export class ChargeEngineService {
         vehicleName,
         { [ORDER_PROP.LEG]: PARK_LEG },
       );
-      this.parkTargets.set(vehicleName, { point: pointName, order: orderName });
+      this.reservations.reserve(vehicleName, pointName, orderName);
       this.logger.log(`No charge slot — parking ${vehicleName} → ${pointName}`);
     } catch (err) {
       this.logger.warn(
@@ -314,6 +300,25 @@ export class ChargeEngineService {
       );
     }
     return free;
+  }
+
+  private async reconcileChargeTargets(
+    chargePoints: ReadonlySet<string>,
+  ): Promise<void> {
+    for (const [vehicleName, target] of [...this.chargeTargets]) {
+      const state = this.vehicleStore.get(vehicleName);
+      if (state?.currentPosition && chargePoints.has(state.currentPosition)) {
+        this.chargeTargets.delete(vehicleName);
+        continue;
+      }
+      if (state?.transportOrder === target.order) continue;
+      const orderState = await this.kernelApi.getTransportOrderState(
+        target.order,
+      );
+      if (orderState === null || TERMINAL_ORDER_STATES.has(orderState)) {
+        this.chargeTargets.delete(vehicleName);
+      }
+    }
   }
 
   private hasInFlightCharge(
