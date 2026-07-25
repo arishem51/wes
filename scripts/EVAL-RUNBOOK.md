@@ -243,6 +243,49 @@ Vehicles are left as-is; a kernel restart clears them (and you re-trigger per §
 
 ---
 
+## Warm-up after growing the fleet (E-series)
+
+`set-fleet.js` shrinks safely — a vehicle that keeps its position keeps working. **Growing is
+different.** A vehicle that was disconnected loses its kernel position, and on reconnect the
+simulator reports it back at wherever it was parked, which is the `0200`–`0250` staging row.
+The `POST /agvs/:id/position` call returns 204 but does not stick: the comm adapter's own
+report wins. From deep in staging those vehicles are never the cheapest candidate in the
+Hungarian matching, so they can sit idle for a whole run.
+
+This is what happened to run #35 (`E1|cond=S1|n=15|lam=8|seed=1`): vehicles 0013/0014/0015
+logged **2 state transitions each** across the entire run — effective *n* = 12, not 15, and
+the lowest throughput of its group. It is not the park-area one-way trap; once assigned, the
+same vehicles left staging normally (`0230 → 0231 → 0232 → 0222 → 0212 → 0202 → 0045`). The
+cause is assignment, not routing.
+
+So after any fleet **increase** — which in practice means right after `restart-kernel.js` at a
+condition boundary — run a throwaway workload before the first recorded cell:
+
+```bash
+node scripts/gen-scenario.js --lambda 12 --seed 999 --count 30 --out /tmp/warmup.json
+node scripts/run-scenario.js /tmp/warmup.json --label WARMUP
+node scripts/cleanup-batch.js
+node scripts/set-fleet.js --n 15 --verify-only
+```
+
+`WARMUP` is ignored by `--aggregate --prefix E1`. Confirm every vehicle moved before starting
+the matrix:
+
+```sql
+SELECT vehicle_name, count(*) FROM vehicle_state_transitions
+ WHERE occurred_at > now() - interval '15 min' GROUP BY 1 ORDER BY 1;
+```
+
+Any vehicle with a near-zero count is still parked — re-run the warm-up rather than starting
+the cell.
+
+**Matrix cell order matters for the same reason.** `e1.json` lists `"n": [15, 4]`, largest
+first, so each condition performs exactly one fleet increase (at its start, where the warm-up
+already happens) and then only shrinks. Listing `[4, 15]` would force a grow-from-staging in
+the middle of the condition, with no warm-up.
+
+---
+
 ## Observed baseline (v7-bidir, this environment)
 
 | Scenario | Fleet | Typical result |

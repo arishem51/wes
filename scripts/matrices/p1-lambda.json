@@ -1,0 +1,10 @@
+{
+  "exp": "P1",
+  "map": "v7",
+  "conditions": ["S1"],
+  "n": [15],
+  "lambda": [6, 8, 10, 12],
+  "seeds": [1, 2],
+  "count": 80,
+  "timeoutMs": 2400000
+}
