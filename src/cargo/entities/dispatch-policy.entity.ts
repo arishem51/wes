@@ -14,9 +14,6 @@ export class DispatchPolicyEntity {
   @Column({ length: 100 })
   name!: string;
 
-  @Column({ name: 'weight_urgency', type: 'double precision', default: 1.0 })
-  weightUrgency!: number;
-
   @Column({ name: 'weight_battery', type: 'double precision', default: 0 })
   weightBattery!: number;
 

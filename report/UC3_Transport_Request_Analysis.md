@@ -255,10 +255,12 @@ Step 5 — Dispatch tuần tự:
 ```
 
 Việc giới hạn solver ở FIFO head giữ fairness khi backlog lớn hơn fleet; Hungarian
-chỉ tối ưu cách ghép AGV trong batch, không chọn task mới hơn vì ở gần hơn. Weighted
-scoring (`weight_urgency`, `weight_proximity`, `weight_inventory_position`) vẫn là
-extension point sau khi `dispatch_policies` được nối vào domain/service và có quy
-tắc normalization rõ ràng. Nếu một pairing bị block hoặc openTCS từ chối khi
+chỉ tối ưu cách ghép AGV trong batch, không chọn task mới hơn vì ở gần hơn. Thứ tự
+chọn task là FIFO thuần theo `createdAt`: `weight_urgency`, `weight_proximity` và
+`weight_inventory_position` đã bị gỡ khỏi schema — ràng buộc lane đã là hard
+constraint ở `PickupDependencyService` nên không cần lặp lại dưới dạng điểm số.
+Trọng số duy nhất còn sống là `weight_battery`, và nó nằm ở tầng ghép (ma trận chi
+phí), không phải tầng chọn task. Nếu một pairing bị block hoặc openTCS từ chối khi
 dispatch, capacity còn trống được backfill và ma trận được giải lại trong cycle;
 AGV vừa lỗi bị quarantine đến cycle kế tiếp.
 

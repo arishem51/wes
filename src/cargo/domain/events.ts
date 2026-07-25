@@ -1,4 +1,5 @@
 import { TaskStatus } from '../entities/transport-task.entity';
+import { ORDER_TYPE } from './transport-order-name';
 
 export const TRANSPORT_TASK_EVENTS = {
   CREATED: 'transport-task.created',
@@ -12,29 +13,16 @@ export const FMS_EVENTS = {
   VEHICLE_AVAILABLE: 'fms.vehicle.available',
 } as const;
 
-/**
- * The physical leg an openTCS order represents. Carried on the order as a
- * property (see ORDER_PROP) so the saga routes finished orders by leg + task id
- * instead of parsing the order name — order names are opaque unique tokens.
- */
 export type TaskLeg = 'PICKUP' | 'APPROACH' | 'DROPOFF';
 
-/** openTCS transport-order property keys WES sets to correlate orders to tasks. */
 export const ORDER_PROP = {
   TASK_ID: 'wes:taskId',
   LEG: 'wes:leg',
 } as const;
 
-/**
- * Prefix WES stamps on every park-order name. WES owns this name, so a vehicle's
- * order can be classified as a park order from the vehicle snapshot alone
- * (`transportOrder` starts with this) — no order fetch, and no unsafe inference
- * from "processing + no task" that could mistake a cargo order for a park order.
- * Cargo orders use the PICKUP-/APPROACH-/DROPOFF- prefixes instead.
- */
-export const PARK_ORDER_PREFIX = 'PARK-';
+export const PARK_ORDER_PREFIX = `${ORDER_TYPE.PARK}-`;
 
-export const CHARGE_ORDER_PREFIX = 'CHARGE-';
+export const CHARGE_ORDER_PREFIX = `${ORDER_TYPE.CHARGE}-`;
 
 export class TransportTaskCreatedEvent {
   constructor(

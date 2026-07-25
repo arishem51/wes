@@ -6096,7 +6096,7 @@
     <path name="3180 --- 3170" sourcePoint="3180" destinationPoint="3170" length="1000" maxVelocity="10000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <vehicle name="Vehicle-0001" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0001" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6112,7 +6112,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0002" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0002" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6128,7 +6128,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0003" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0003" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6144,7 +6144,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0004" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0004" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6160,7 +6160,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0005" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0005" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6176,7 +6176,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0006" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0006" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6192,7 +6192,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0007" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0007" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6208,7 +6208,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0008" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0008" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6224,7 +6224,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0009" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0009" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6240,7 +6240,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0010" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0010" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6256,7 +6256,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0011" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0011" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6272,7 +6272,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0012" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0012" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6288,7 +6288,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0013" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0013" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6304,7 +6304,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0014" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0014" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>
@@ -6320,7 +6320,7 @@
         <property name="vda5050:version" value="2.0"/>
         <vehicleLayout color="#00FF00"/>
     </vehicle>
-    <vehicle name="Vehicle-0015" energyLevelCritical="30" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+    <vehicle name="Vehicle-0015" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
         <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.commadapter.vehicle.vda5050.CommAdapterFactoryImpl"/>
         <property name="vda5050:rechargeOperation" value="startCharging"/>

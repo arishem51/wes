@@ -31,8 +31,9 @@ DOCS = [
     ("3", "1sLImCWyhR1zsPeqJRALl5cyBdc9ioGgo", "docx", "report3-srs"),
     ("4", "1CdQtuqG_uXj1p39vkQ-2SEOGb1zfcWet", "docx", "report4-sds"),
     ("5.0", "1KUw-qlsLUqn5Uf6aXB7hSF4Ojcr4pbJt", "docx", "report5.0-test-documentation"),
-    ("5.2", "1ZZEzImpKNF-K2f5fzOuNCAeIz3AqidT-", "xlsx", "report5.2-integration-test"),
-    ("5.3", "1LYABMblvFA9hTXYjTAqLYleiFNsaZmwZ", "xlsx", "report5.3-system-test"),
+    ("5.1", "17YE1E5bNCjOKyNVAkeinmpK9bRPcPh9r", "xlsx", "report5.1-unit-test"),
+    ("5.2", "14p_koi6dWMwweDIdlgUAuCm249SM1hKL", "xlsx", "report5.2-integration-test"),
+    ("5.3", "1Ob88NdeHWvQq_wx5kYjm4h_PIHqlnBLr", "xlsx", "report5.3-system-test"),
     ("weekly", "1Kd4m0Q9J_QCReyGdkE92lGCMCxCqgtzt", "xlsx", "weekly-report"),
 ]
 
@@ -186,7 +187,6 @@ def main() -> int:
 
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"\nmanifest: {manifest_path.relative_to(REPO)}")
-    print("NOTE: Report 5.1 Unit Test is legacy .xls — not mirrored (openpyxl cannot read it).")
     return 0
 
 

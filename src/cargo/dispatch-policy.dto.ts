@@ -17,12 +17,6 @@ export class CreateDispatchPolicyDto {
   @IsNumber()
   @Min(0)
   @Max(WEIGHT_MAX)
-  weightUrgency?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(WEIGHT_MAX)
   weightBattery?: number;
 }
 
@@ -31,12 +25,6 @@ export class UpdateDispatchPolicyDto {
   @IsString()
   @Length(1, 100)
   name?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(WEIGHT_MAX)
-  weightUrgency?: number;
 
   @IsOptional()
   @IsNumber()

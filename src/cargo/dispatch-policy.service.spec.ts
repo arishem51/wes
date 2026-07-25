@@ -7,7 +7,6 @@ const policyRow = (
 ): DispatchPolicyEntity => ({
   id: 'p1',
   name: 'default',
-  weightUrgency: 1,
   weightBattery: 0,
   maxAgvPerBlock: 1,
   isActive: true,
@@ -48,23 +47,16 @@ describe('DispatchPolicyService', () => {
     });
 
     it('returns the active weights', async () => {
-      const { service } = build(
-        policyRow({ weightUrgency: 2, weightBattery: 3 }),
-      );
-      expect(await service.getActiveWeights()).toEqual({
-        urgency: 2,
-        battery: 3,
-      });
+      const { service } = build(policyRow({ weightBattery: 3 }));
+      expect(await service.getActiveWeights()).toEqual({ battery: 3 });
     });
 
     it('clamps out-of-range weights into [0, 10]', async () => {
-      const { service } = build(
-        policyRow({ weightUrgency: 5000, weightBattery: -4 }),
-      );
-      expect(await service.getActiveWeights()).toEqual({
-        urgency: 10,
-        battery: 0,
-      });
+      const { service } = build(policyRow({ weightBattery: 5000 }));
+      expect(await service.getActiveWeights()).toEqual({ battery: 10 });
+
+      const { service: negative } = build(policyRow({ weightBattery: -4 }));
+      expect(await negative.getActiveWeights()).toEqual({ battery: 0 });
     });
   });
 

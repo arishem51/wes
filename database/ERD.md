@@ -225,9 +225,7 @@ erDiagram
   dispatch_policies {
     uuid    id PK
     varchar name
-    float   weight_urgency
-    float   weight_proximity
-    float   weight_inventory_position
+    float   weight_battery
     smallint max_agv_per_block
     boolean is_active
     uuid    created_by FK

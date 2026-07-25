@@ -60,7 +60,6 @@ export interface KernelPlantModel {
 
 export interface KernelParkingPoint {
   name: string;
-  /** From the point's `tcs:parkingPositionPriority` property; lower = higher priority. Null when unset. */
   priority: number | null;
 }
 
@@ -69,11 +68,29 @@ export interface KernelChargeLocation {
   points: string[];
 }
 
+export interface KernelTransportOrderSummary {
+  name: string;
+  state: string;
+  destinations: string[];
+}
+
 export interface KernelRoute {
   destinationPoint: string;
-  /** openTCS route cost, or -1 when the destination is unreachable for the vehicle. */
   costs: number;
   steps: unknown[] | null;
+}
+
+interface DestinationStateDto {
+  locationName: string;
+  operation: string;
+}
+
+interface TransportOrderStateDto {
+  name: string;
+  state: string;
+  intendedVehicle: string | null;
+  processingVehicle: string | null;
+  destinations: DestinationStateDto[];
 }
 
 interface KernelTransportOrderDebug {
@@ -502,10 +519,7 @@ export class KernelApiService {
     destinations: Array<{ locationName: string; operation: string }>,
     intendedVehicle: string,
     properties?: Record<string, string>,
-  ): Promise<void> {
-    // openTCS wants properties as an array of {key,value} on write (it is echoed
-    // back as an object map over SSE — see the listener). Omit the field entirely
-    // when there are none so we don't send `properties: []` needlessly.
+  ): Promise<KernelTransportOrderSummary> {
     const body: Record<string, unknown> = { destinations, intendedVehicle };
     if (properties) {
       body.properties = Object.entries(properties).map(([key, value]) => ({
@@ -513,13 +527,22 @@ export class KernelApiService {
         value,
       }));
     }
-    await axios.post(
+    const res = await axios.post<TransportOrderStateDto>(
       `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}`,
       body,
       { timeout: 10_000 },
     );
     this.logger.log(`Created TO "${name}" → ${intendedVehicle}`);
     await this.triggerDispatcher();
+
+    const created = res.data;
+    return {
+      name: created.name,
+      state: created.state,
+      destinations: created.destinations.map(
+        (destination) => destination.locationName,
+      ),
+    };
   }
 
   async computeRoutes(

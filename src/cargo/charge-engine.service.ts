@@ -2,11 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
-import {
-  CHARGE_ORDER_PREFIX,
-  PARK_ORDER_PREFIX,
-  ORDER_PROP,
-} from './domain/events';
+import { ORDER_PROP } from './domain/events';
 import { AgvEntity } from '../agvs/entities/agv.entity';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
@@ -32,6 +28,7 @@ import {
   DEFAULT_FULL_CHARGE_PCT,
   TERMINAL_ORDER_STATES,
 } from './charge-engine.constants';
+import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 
 function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;
@@ -76,7 +73,7 @@ export class ChargeEngineService {
       for (const point of loc.points) chargePoints.add(point);
     }
 
-    await this.reservations.reconcile();
+    this.reservations.reconcile();
     await this.reconcileChargeTargets(chargePoints);
 
     const agvs = await this.agvRepo.find();
@@ -87,7 +84,7 @@ export class ChargeEngineService {
       (p) => !chargePoints.has(p.name),
     );
 
-    await this.releaseCharged(agvs, nonChargeParks, busy);
+    await this.releaseCharged(agvs, busy);
     await this.dispatchToCharge(
       agvs,
       locations,
@@ -120,64 +117,20 @@ export class ChargeEngineService {
 
   private async releaseCharged(
     agvs: AgvEntity[],
-    nonChargeParks: readonly ParkingPoint[],
     busy: ReadonlySet<string>,
   ): Promise<void> {
-    const releasable = agvs
-      .map((agv) => ({
-        agv,
-        cand: this.toCandidate(agv, this.vehicleStore.get(agv.name), busy),
-      }))
-      .filter(
-        ({ agv, cand }) =>
-          isReleaseCandidate(cand) && !this.reservations.has(agv.name),
-      );
-    if (releasable.length === 0) return;
-
-    const toRelease = releasable.filter(({ cand }) =>
-      shouldRelease(cand, this.fullChargePct),
-    );
-    if (toRelease.length === 0) return;
-
-    const graph = await this.routing.getRoadGraph();
-    const excluded = this.occupiedPoints(agvs, nonChargeParks);
-    for (const point of this.reservations.reservedPoints()) {
-      excluded.add(point);
-    }
-
-    for (const { agv, cand } of toRelease) {
-      const position = cand.currentPosition;
-      if (!position) continue;
-      const distances = graph
-        ? shortestDistancesFrom(graph, position)
-        : new Map<string, number>();
-      const point = pickParkingPoint(nonChargeParks, distances, excluded);
-      if (!point) {
-        this.logger.debug(
-          `No free non-charge park for ${agv.name} — staying on charger`,
-        );
-        continue;
-      }
-      excluded.add(point.name);
-      await this.releaseChargeOrder(agv.name, point.name);
+    for (const agv of agvs) {
+      const cand = this.toCandidate(agv, this.vehicleStore.get(agv.name), busy);
+      if (!isReleaseCandidate(cand)) continue;
+      if (!shouldRelease(cand, this.fullChargePct)) continue;
+      await this.stopCharging(agv.name);
     }
   }
 
-  private async releaseChargeOrder(
-    vehicleName: string,
-    pointName: string,
-  ): Promise<void> {
-    const orderName = `${PARK_ORDER_PREFIX}${randomUUID()}`;
+  private async stopCharging(vehicleName: string): Promise<void> {
     try {
       await this.kernelApi.sendInstantAction(vehicleName, STOP_CHARGING_ACTION);
-      await this.kernelApi.createTransportOrder(
-        orderName,
-        [{ locationName: pointName, operation: 'MOVE' }],
-        vehicleName,
-        { [ORDER_PROP.LEG]: PARK_LEG },
-      );
-      this.reservations.reserve(vehicleName, pointName, orderName);
-      this.logger.log(`Released ${vehicleName} from charge → ${pointName}`);
+      this.logger.log(`Released ${vehicleName} from charge`);
     } catch (err) {
       this.logger.warn(
         `Failed to release ${vehicleName}: ${(err as Error).message}`,
@@ -253,7 +206,12 @@ export class ChargeEngineService {
     vehicleName: string,
     pointName: string,
   ): Promise<void> {
-    const orderName = `${PARK_ORDER_PREFIX}${randomUUID()}`;
+    const orderName = buildOrderName(
+      ORDER_TYPE.PARK,
+      vehicleName,
+      pointName,
+      randomUUID(),
+    );
     try {
       await this.kernelApi.createTransportOrder(
         orderName,
@@ -339,7 +297,12 @@ export class ChargeEngineService {
     vehicleName: string,
     locationName: string,
   ): Promise<void> {
-    const orderName = `${CHARGE_ORDER_PREFIX}${randomUUID()}`;
+    const orderName = buildOrderName(
+      ORDER_TYPE.CHARGE,
+      vehicleName,
+      locationName,
+      randomUUID(),
+    );
     try {
       await this.kernelApi.createTransportOrder(
         orderName,

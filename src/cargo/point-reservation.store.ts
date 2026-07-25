@@ -1,31 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import { KernelApiService } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 
 interface PointReservation {
   point: string;
   order: string;
-  createdAt: number;
 }
-
-const TERMINAL_ORDER_STATES = new Set([
-  'FINISHED',
-  'FAILED',
-  'UNROUTABLE',
-  'WITHDRAWN',
-]);
 
 @Injectable()
 export class PointReservationStore {
   private readonly byVehicle = new Map<string, PointReservation>();
 
-  constructor(
-    private readonly vehicleStore: VehicleStateStore,
-    private readonly kernelApi: KernelApiService,
-  ) {}
+  constructor(private readonly vehicleStore: VehicleStateStore) {}
 
   reserve(vehicle: string, point: string, order: string): void {
-    this.byVehicle.set(vehicle, { point, order, createdAt: Date.now() });
+    this.byVehicle.set(vehicle, { point, order });
   }
 
   clear(vehicle: string): void {
@@ -44,24 +32,12 @@ export class PointReservationStore {
     return points;
   }
 
-  async reconcile(): Promise<void> {
-    for (const [vehicle, reservation] of [...this.byVehicle]) {
-      if (await this.isStale(vehicle, reservation)) {
+  // TODO: should handle timeout case
+  reconcile(): void {
+    for (const vehicle of [...this.byVehicle.keys()]) {
+      if (this.vehicleStore.get(vehicle)?.transportOrder != null) {
         this.byVehicle.delete(vehicle);
       }
     }
-  }
-
-  private async isStale(
-    vehicle: string,
-    reservation: PointReservation,
-  ): Promise<boolean> {
-    const state = this.vehicleStore.get(vehicle);
-    if (state?.currentPosition === reservation.point) return true;
-    if (state?.transportOrder === reservation.order) return false;
-    const orderState = await this.kernelApi.getTransportOrderState(
-      reservation.order,
-    );
-    return orderState === null || TERMINAL_ORDER_STATES.has(orderState);
   }
 }

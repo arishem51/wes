@@ -53,7 +53,7 @@ export class ApproachPointService {
     return nearest.destinationPoint;
   }
 
-  private async feederPointsOf(zone: ZoneEntity): Promise<string[]> {
+  async feederPointsOf(zone: ZoneEntity): Promise<string[]> {
     if (!zone.members || zone.members.length === 0) return [];
 
     const plantModel = (await this.kernelApi.getPlantModel()) as Record<

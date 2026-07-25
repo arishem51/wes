@@ -2,10 +2,11 @@
 
 > Read `ARCHITECTURE.md` (same folder) first. This file adds NestJS-specific conventions on top.
 
-## Docs are binding — check them before and after you code
+## Docs are reference, not authority — but keep them in sync
 
-Every feature and every code change is decided against the official SEP490_G4
-reports, not against the code alone. A text mirror of those reports lives in
+Correctness decides. The official SEP490_G4 reports and `ARCHITECTURE.md` describe
+what the system was meant to do; when they are wrong, fix the document — never bend
+working code to match a bad spec. A text mirror of those reports lives in
 `report/specs/` — grep it, it is cheap. Never read the `.docx` files for this.
 
 The mirror is generated and **not committed**. If `report/specs/` is missing or
@@ -28,12 +29,11 @@ it comes from. Three outcomes, and each has a required action:
 
 1. *Specified and consistent* → implement to the spec.
 2. *Specified but the spec contradicts reality* (state name that does not exist,
-   a knob that is never read, a flow the kernel cannot perform) → do NOT silently
-   follow the code. Report the contradiction to the user and record it under
-   "Doc drift" below. `report/srs-1.4.3-non-ui-functions.md` is the worked example.
-3. *Not in the docs at all* → stop and flag it as **potentially out of scope**
-   before writing code. If the user confirms it is needed, it must be written back
-   into the docs — see below.
+   a knob that is never read, a flow the kernel cannot perform) → the spec loses.
+   Say so, implement what is correct, and update the document.
+   `report/srs-1.4.3-non-ui-functions.md` is the worked example.
+3. *Not in the docs at all* → say so, then use judgement. Flag it if it looks
+   genuinely out of scope; otherwise build it and write it back into the docs.
 
 **After implementing** — anything that is not derivable from the docs must be
 captured, or the work is lost at acceptance. This is the failure mode this rule
@@ -46,8 +46,11 @@ official `.docx` later.
 
 Known gaps to fill rather than re-discover: SRS §4.1 External Interfaces is an
 empty table (openTCS REST/SSE and VDA5050 MQTT are undocumented); the dispatch
-policy knobs `weight_proximity` and `weight_inventory_position` are documented but
-never read by the code.
+policy knobs `weight_proximity`, `weight_inventory_position` and `weight_urgency`
+are documented in the reports but have been dropped from the schema — the only
+surviving weight is `weight_battery` (§6.1). Task selection is plain FIFO by
+`createdAt`; lane blocking is enforced as a hard constraint by
+`PickupDependencyService`, not as a scoring term.
 
 **Refreshing the mirror** (never hand-edit `report/specs/` — a re-sync overwrites
 it; real edits belong in the Drive `.docx`):

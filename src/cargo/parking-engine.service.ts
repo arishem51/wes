@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
-import { ORDER_PROP, PARK_ORDER_PREFIX } from './domain/events';
+import { ORDER_PROP } from './domain/events';
 import {
   TransportTaskEntity,
   TaskStatus,
@@ -16,6 +16,11 @@ import { shortestDistancesFrom } from './domain/routing';
 import { nonNegativeOr } from './domain/dispatch-cost';
 import { activeCargoVehicleNames } from './task-queries';
 import { PointReservationStore } from './point-reservation.store';
+import {
+  ORDER_TYPE,
+  buildOrderName,
+  parkPointFromOrderName,
+} from './domain/transport-order-name';
 import {
   ParkingPoint,
   ParkVehicleCandidate,
@@ -66,7 +71,7 @@ export class ParkingEngineService {
     if (parkingPoints.length === 0) return;
     const parkPointNames = new Set(parkingPoints.map((p) => p.name));
 
-    await this.reservations.reconcile();
+    this.reservations.reconcile();
 
     const hasPendingWork = await this.hasPendingWork();
     const busy = await activeCargoVehicleNames(this.taskRepo);
@@ -100,10 +105,7 @@ export class ParkingEngineService {
     if (readyToPark.length === 0) return;
 
     const graph = await this.routing.getRoadGraph();
-    const excluded = this.occupiedParkPoints(agvs, parkPointNames);
-    for (const point of this.reservations.reservedPoints()) {
-      excluded.add(point);
-    }
+    const excluded = this.unavailableParkPoints(parkPointNames);
 
     for (const { name, position } of readyToPark) {
       const distances = graph
@@ -156,23 +158,34 @@ export class ParkingEngineService {
     return count > 0;
   }
 
-  private occupiedParkPoints(
-    agvs: AgvEntity[],
+  private unavailableParkPoints(
     parkPointNames: ReadonlySet<string>,
   ): Set<string> {
-    const occupied = new Set<string>();
-    for (const agv of agvs) {
-      const pos = this.vehicleStore.get(agv.name)?.currentPosition;
-      if (pos && parkPointNames.has(pos)) occupied.add(pos);
+    const excluded = new Set<string>();
+    for (const state of this.vehicleStore.getAll()) {
+      const position = state.currentPosition;
+      if (position && parkPointNames.has(position)) excluded.add(position);
+
+      const target = parkPointFromOrderName(state.transportOrder, state.name);
+      if (target && parkPointNames.has(target)) excluded.add(target);
     }
-    return occupied;
+    for (const point of this.reservations.reservedPoints()) {
+      excluded.add(point);
+    }
+    return excluded;
   }
 
   private async createParkOrder(
     vehicleName: string,
     pointName: string,
   ): Promise<void> {
-    const orderName = `${PARK_ORDER_PREFIX}${randomUUID()}`;
+    const orderName = buildOrderName(
+      ORDER_TYPE.PARK,
+      vehicleName,
+      pointName,
+      randomUUID(),
+    );
+    this.reservations.reserve(vehicleName, pointName, orderName);
     try {
       await this.kernelApi.createTransportOrder(
         orderName,
@@ -181,9 +194,9 @@ export class ParkingEngineService {
         { [ORDER_PROP.LEG]: PARK_LEG },
       );
       this.idleSince.delete(vehicleName);
-      this.reservations.reserve(vehicleName, pointName, orderName);
       this.logger.log(`Parking ${vehicleName} → ${pointName} (${orderName})`);
     } catch (err) {
+      this.reservations.clear(vehicleName);
       this.logger.warn(
         `Failed to park ${vehicleName}: ${(err as Error).message}`,
       );

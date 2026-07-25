@@ -19,6 +19,7 @@ import {
   ORDER_PROP,
   TaskLeg,
 } from './domain/events';
+import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 
 /**
  * Drives a transport task through its physical legs in openTCS:
@@ -132,7 +133,12 @@ export class TransportTaskSaga {
       return;
     }
 
-    const to2Name = `APPROACH-${randomUUID()}`;
+    const to2Name = buildOrderName(
+      ORDER_TYPE.APPROACH,
+      vehicle,
+      approachPoint,
+      randomUUID(),
+    );
     const created = await this.createNextOrder(
       to2Name,
       approachPoint,
@@ -231,7 +237,12 @@ export class TransportTaskSaga {
       }
     }
 
-    const to3Name = `DROPOFF-${randomUUID()}`;
+    const to3Name = buildOrderName(
+      ORDER_TYPE.DROPOFF,
+      vehicle,
+      slot,
+      randomUUID(),
+    );
     const created = await this.createNextOrder(
       to3Name,
       slot,
