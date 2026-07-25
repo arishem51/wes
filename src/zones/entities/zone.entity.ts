@@ -39,14 +39,6 @@ export class ZoneEntity {
   kernelId!: number | null;
 
   @Column({
-    name: 'approach_location_name',
-    type: 'varchar',
-    length: 255,
-    nullable: true,
-  })
-  approachLocationName!: string | null;
-
-  @Column({
     type: 'enum',
     enum: ZoneStatus,
     enumName: 'zone_status_enum',

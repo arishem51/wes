@@ -10,16 +10,18 @@ import { DataSource, Repository } from 'typeorm';
 import { ZoneEntity, ZoneStatus, ZoneType } from './entities/zone.entity';
 import { ZoneMemberEntity } from './entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import { savePlantModel } from '../opentcs/save-plant-model';
-import type { CreateZoneDto, UpdateZoneDto } from './zone.dto';
 import {
-  checkZoneReachability,
-  computeFeederPoints,
-  type PlantPath,
-} from './domain/zone-topology';
+  readPlantTopology,
+  removeLocations,
+  upsertMemberLocations,
+  type KernelLocationType,
+  type MemberLocationSpec,
+  type PlantTopology,
+} from '../opentcs/plant-model-locations';
+import type { CreateZoneDto, UpdateZoneDto } from './zone.dto';
+import { checkZoneReachability } from './domain/zone-topology';
 
 export const LOCATION_PREFIX = 'location_';
-export const ZONE_PREFIX = 'zone_';
 
 /**
  * Curated, contrast-safe hues used to color zones on the map. When an operator
@@ -55,26 +57,6 @@ export interface SyncResult {
   markedActive: number;
   kernelUnreachable: boolean;
 }
-
-type KernelLocationType = 'Pick up' | 'Drop off';
-
-type KernelLocationMeta = {
-  useTypeNameKey: 'typeName' | 'type';
-  useArrayLinks: boolean;
-  layout?: Record<string, unknown>;
-};
-
-type KernelModelContext = {
-  model: Record<string, unknown>;
-  locations: Record<string, unknown>[];
-  kernelPoints: Record<string, unknown>[];
-  updatedLocations: Record<string, unknown>[];
-};
-
-type RuntimePlantModel = {
-  pointNames: Set<string>;
-  locations: Map<string, Set<string>>;
-};
 
 @Injectable()
 export class ZoneService {
@@ -118,8 +100,6 @@ export class ZoneService {
         type: dto.type,
         color,
         kernelId,
-        approachLocationName:
-          kernelId != null ? `${ZONE_PREFIX}${kernelId}` : null,
         status: ZoneStatus.ACTIVE,
       });
 
@@ -137,14 +117,10 @@ export class ZoneService {
       );
       await memberRepo.save(members);
 
-      if (dto.type === ZoneType.DROPOFF) {
-        await this.applyDropoffZoneToKernel(
-          `${ZONE_PREFIX}${kernelId}`,
-          memberLocationNames,
-        );
-      } else if (dto.type === ZoneType.PICKUP) {
-        await this.applyPickupZoneToKernel(memberLocationNames);
-      }
+      await this.applyZoneLocationsToKernel(
+        memberLocationNames,
+        this.kernelLocationType(dto.type),
+      );
 
       return saved.id;
     });
@@ -192,203 +168,42 @@ export class ZoneService {
     return best;
   }
 
-  private async applyDropoffZoneToKernel(
-    parentLocationName: string,
+  private kernelLocationType(zoneType: ZoneType): KernelLocationType {
+    return zoneType === ZoneType.DROPOFF ? 'Drop off' : 'Pick up';
+  }
+
+  private toMemberSpecs(
     memberLocationNames: string[],
+    type: KernelLocationType,
+  ): MemberLocationSpec[] {
+    return memberLocationNames.map((locationName) => ({
+      locationName,
+      pointName: this.getPointNameFromLocation(locationName),
+      type,
+    }));
+  }
+
+  private async applyZoneLocationsToKernel(
+    memberLocationNames: string[],
+    type: KernelLocationType,
   ): Promise<void> {
-    const context = await this.loadKernelModelContext();
-    this.appendDropoffZoneLocations(
-      context,
-      parentLocationName,
-      memberLocationNames,
+    await upsertMemberLocations(
+      this.kernelApi,
+      this.toMemberSpecs(memberLocationNames, type),
     );
-    await savePlantModel(this.kernelApi, {
-      ...context.model,
-      locations: context.updatedLocations,
-    });
     this.logger.log(
-      `Zone "${parentLocationName}": đã tạo ${memberLocationNames.length} location con và 1 location cha trong kernel`,
+      `Zone (${type}): đã tạo ${memberLocationNames.length} location con trong kernel`,
     );
   }
 
-  /**
-   * Builds a dropoff zone's child locations + parent (`zone_<id>`) location and
-   * upserts them into `context.updatedLocations`. Does NOT persist — callers save
-   * the model, so several zones can be batched into one PUT.
-   */
-  private appendDropoffZoneLocations(
-    context: KernelModelContext,
-    parentLocationName: string,
-    memberLocationNames: string[],
-  ): void {
-    const locationMeta = this.getLocationMeta(context.locations, 'Drop off');
-    const pointSummaries = this.upsertMemberLocations(
-      context,
-      memberLocationNames,
-      'Drop off',
-      locationMeta,
-    );
-    const memberPointNames = new Set(pointSummaries.map((p) => p.pointName));
-    // The parent `zone_<id>` location is the NOP approach target. Link it to the
-    // zone's feeder points — the entry-most MEMBER heads (aisle heads inside the
-    // zone), not the external mainline point before them and not every member —
-    // so the NOP stops the vehicle AT an aisle head, off the through-lane,
-    // instead of waiting on the mainline. Fall back to all members if the map
-    // exposes no external inbound path, so the parent never ends up with zero
-    // links.
-    let parentLinkedPoints = computeFeederPoints(
-      (context.model.paths as PlantPath[] | undefined) ?? [],
-      memberPointNames,
-    );
-    if (parentLinkedPoints.length === 0) {
-      this.logger.warn(
-        `Zone "${parentLocationName}": no feeder (entry head) found — linking parent to all member points`,
-      );
-      parentLinkedPoints = [...memberPointNames];
-    }
-    const positionedPoints = pointSummaries.filter((p) => p.hasPosition);
-    const sumX = positionedPoints.reduce((sum, point) => sum + point.x, 0);
-    const sumY = positionedPoints.reduce((sum, point) => sum + point.y, 0);
-    const count = positionedPoints.length;
-
-    const parentLocation = this.buildKernelLocation(
-      parentLocationName,
-      'Drop off',
-      parentLinkedPoints,
-      {
-        x: count > 0 ? Math.round(sumX / count) : 0,
-        y: count > 0 ? Math.round(sumY / count) : 0,
-        z: 0,
-      },
-      locationMeta,
-    );
-    this.upsertLocation(context.updatedLocations, parentLocation);
-  }
-
-  private async applyPickupZoneToKernel(
-    memberLocationNames: string[],
-  ): Promise<void> {
-    const context = await this.loadKernelModelContext();
-    this.appendPickupZoneLocations(context, memberLocationNames);
-    await savePlantModel(this.kernelApi, {
-      ...context.model,
-      locations: context.updatedLocations,
-    });
-    this.logger.log(
-      `Zone lấy hàng: đã tạo ${memberLocationNames.length} location con trong kernel`,
-    );
-  }
-
-  /**
-   * Builds a pickup zone's child locations and upserts them into
-   * `context.updatedLocations` without persisting (see appendDropoffZoneLocations).
-   */
-  private appendPickupZoneLocations(
-    context: KernelModelContext,
-    memberLocationNames: string[],
-  ): void {
-    const locationMeta = this.getLocationMeta(context.locations, 'Pick up');
-    this.upsertMemberLocations(
-      context,
-      memberLocationNames,
-      'Pick up',
-      locationMeta,
-    );
-  }
-
-  private appendZoneLocations(
-    context: KernelModelContext,
-    zone: ZoneEntity,
-  ): void {
-    const memberLocationNames = this.zoneMemberLocationNames(zone);
-    if (zone.type === ZoneType.DROPOFF && zone.approachLocationName) {
-      this.appendDropoffZoneLocations(
-        context,
-        zone.approachLocationName,
-        memberLocationNames,
-      );
-    } else {
-      this.appendPickupZoneLocations(context, memberLocationNames);
-    }
-  }
-
-  /**
-   * A zone can be rebuilt onto the current kernel map only if every member's
-   * underlying point still exists (locations are derived from points). A dropoff
-   * zone additionally needs its parent identity (`approachLocationName`). Missing
-   * *location* is what we repair; missing *point* is unrepairable.
-   */
   private canRepairZone(
     zone: ZoneEntity,
-    kernelPointNames: Set<string>,
+    pointNames: ReadonlySet<string>,
   ): boolean {
     if (zone.members.length === 0) return false;
-    if (zone.type === ZoneType.DROPOFF && !zone.approachLocationName) {
-      return false;
-    }
     return zone.members.every((member) =>
-      kernelPointNames.has(this.getPointNameFromLocation(member.locationName)),
+      pointNames.has(this.getPointNameFromLocation(member.locationName)),
     );
-  }
-
-  private async loadKernelModelContext(): Promise<KernelModelContext> {
-    return this.buildKernelModelContext(await this.kernelApi.getPlantModel());
-  }
-
-  private buildKernelModelContext(rawModel: unknown): KernelModelContext {
-    if (!rawModel || typeof rawModel !== 'object') {
-      throw new ServiceUnavailableException('Không thể kết nối kernel.');
-    }
-
-    const model = rawModel as Record<string, unknown>;
-    const locations = Array.isArray(model.locations)
-      ? (model.locations as Record<string, unknown>[])
-      : [];
-    const kernelPoints = Array.isArray(model.points)
-      ? (model.points as Record<string, unknown>[])
-      : [];
-
-    return {
-      model,
-      locations,
-      kernelPoints,
-      updatedLocations: [...locations],
-    };
-  }
-
-  private upsertMemberLocations(
-    context: KernelModelContext,
-    memberLocationNames: string[],
-    locationType: KernelLocationType,
-    meta: KernelLocationMeta,
-  ): Array<{ pointName: string; x: number; y: number; hasPosition: boolean }> {
-    return memberLocationNames.map((locationName) => {
-      const pointName = this.getPointNameFromLocation(locationName);
-      const point = context.kernelPoints.find(
-        (candidate) => candidate.name === pointName,
-      );
-      const position = point?.position as Record<string, number> | undefined;
-      const x = position?.x ?? 0;
-      const y = position?.y ?? 0;
-
-      this.upsertLocation(
-        context.updatedLocations,
-        this.buildKernelLocation(
-          locationName,
-          locationType,
-          [pointName],
-          { x, y, z: 0 },
-          meta,
-        ),
-      );
-
-      return {
-        pointName,
-        x,
-        y,
-        hasPosition: !!position,
-      };
-    });
   }
 
   private getPointNameFromLocation(locationName: string): string {
@@ -400,15 +215,17 @@ export class ZoneService {
   /**
    * Rejects a dropoff zone whose layout would strand a vehicle: every member
    * slot must be forward-reachable from the zone's feeder (approach) points on
-   * the kernel path graph. Reachable-but-long-detour only warns. Relies on
-   * loadKernelModelContext to throw ServiceUnavailableException if the kernel is
-   * down — a missing model must not be read as "unreachable".
+   * the kernel path graph. Reachable-but-long-detour only warns. A missing model
+   * throws ServiceUnavailableException — it must not be read as "unreachable".
    */
   private async assertDropoffZoneReachable(
     memberLocationNames: string[],
   ): Promise<void> {
-    const context = await this.loadKernelModelContext();
-    const paths = (context.model.paths as PlantPath[] | undefined) ?? [];
+    const topology = await readPlantTopology(this.kernelApi);
+    if (!topology) {
+      throw new ServiceUnavailableException('Không thể kết nối kernel.');
+    }
+
     const pointToLocation = new Map(
       memberLocationNames.map((name) => [
         this.getPointNameFromLocation(name),
@@ -418,7 +235,7 @@ export class ZoneService {
     const memberPointNames = new Set(pointToLocation.keys());
 
     const { feeders, unreachable, maxHops } = checkZoneReachability(
-      paths,
+      topology.paths,
       memberPointNames,
     );
 
@@ -440,64 +257,6 @@ export class ZoneService {
       this.logger.warn(
         `Zone reachability: layout reachable but with a long detour (maxHops=${maxHops}, members=${memberPointNames.size})`,
       );
-    }
-  }
-
-  private getLocationMeta(
-    locations: Record<string, unknown>[],
-    locationType: KernelLocationType,
-  ): KernelLocationMeta {
-    const sampleLocation = locations.find(
-      (location) => (location.typeName ?? location.type) === locationType,
-    );
-    return {
-      useTypeNameKey:
-        !sampleLocation || 'typeName' in sampleLocation ? 'typeName' : 'type',
-      useArrayLinks: !sampleLocation || Array.isArray(sampleLocation.links),
-      layout:
-        sampleLocation?.layout && typeof sampleLocation.layout === 'object'
-          ? { ...(sampleLocation.layout as Record<string, unknown>) }
-          : undefined,
-    } as const;
-  }
-
-  private buildKernelLocation(
-    name: string,
-    locationType: KernelLocationType,
-    pointNames: string[],
-    position: { x: number; y: number; z: number },
-    meta: {
-      useTypeNameKey: 'typeName' | 'type';
-      useArrayLinks: boolean;
-      layout?: Record<string, unknown>;
-    },
-  ): Record<string, unknown> {
-    const location: Record<string, unknown> = {
-      name,
-      [meta.useTypeNameKey]: locationType,
-      position,
-      locked: false,
-      links: meta.useArrayLinks
-        ? pointNames.map((pointName) => ({ pointName }))
-        : Object.fromEntries(pointNames.map((pointName) => [pointName, []])),
-    };
-
-    if (meta.layout) {
-      location.layout = { ...meta.layout };
-    }
-
-    return location;
-  }
-
-  private upsertLocation(
-    locations: Record<string, unknown>[],
-    location: Record<string, unknown>,
-  ): void {
-    const index = locations.findIndex((item) => item.name === location.name);
-    if (index >= 0) {
-      locations[index] = location;
-    } else {
-      locations.push(location);
     }
   }
 
@@ -567,10 +326,9 @@ export class ZoneService {
   async sync(): Promise<SyncResult> {
     // Sync may rewrite the kernel map, so always read it fresh (not from cache).
     this.kernelApi.invalidatePlantModelCache();
-    const rawModel = await this.kernelApi.getPlantModel();
-    const runtime = this.buildRuntimePlantModel(rawModel);
+    const topology = await readPlantTopology(this.kernelApi);
 
-    if (!runtime) {
+    if (!topology) {
       this.logger.warn('Sync skipped: kernel unreachable');
       return {
         total: 0,
@@ -580,14 +338,13 @@ export class ZoneService {
       };
     }
 
-    const context = this.buildKernelModelContext(rawModel);
     const zones = await this.zoneRepo.find({ relations: { members: true } });
 
     // Candidates: currently ACTIVE and still repairable (member points exist).
     const candidates = zones.filter(
       (zone) =>
         zone.status === ZoneStatus.ACTIVE &&
-        this.canRepairZone(zone, runtime.pointNames),
+        this.canRepairZone(zone, topology.pointNames),
     );
 
     // Any member location claimed by two+ candidates disqualifies every zone
@@ -616,21 +373,24 @@ export class ZoneService {
       zones.map((zone) => [zone.id, ZoneStatus.STALE]),
     );
     const toRebuild: ZoneEntity[] = [];
+    const rebuildSpecs: MemberLocationSpec[] = [];
     for (const zone of winners) {
       desiredStatus.set(zone.id, ZoneStatus.ACTIVE);
-      if (!this.isZoneValid(zone, runtime)) {
+      if (!this.isZoneValid(zone, topology)) {
         // Locations missing but repairable → queue a rebuild.
-        this.appendZoneLocations(context, zone);
+        rebuildSpecs.push(
+          ...this.toMemberSpecs(
+            this.zoneMemberLocationNames(zone),
+            this.kernelLocationType(zone.type),
+          ),
+        );
         toRebuild.push(zone);
       }
     }
 
     if (toRebuild.length > 0) {
       try {
-        await savePlantModel(this.kernelApi, {
-          ...context.model,
-          locations: context.updatedLocations,
-        });
+        await upsertMemberLocations(this.kernelApi, rebuildSpecs);
       } catch (err) {
         // Kernel refused the write (read-only / OPERATING) — can't restore now.
         // Winners that were already valid keep ACTIVE; only those needing a
@@ -677,118 +437,20 @@ export class ZoneService {
     return [...new Set(zone.members.map((member) => member.locationName))];
   }
 
-  private isZoneValid(zone: ZoneEntity, model: RuntimePlantModel): boolean {
-    const expectedMemberPoints = new Set<string>();
-
+  private isZoneValid(zone: ZoneEntity, topology: PlantTopology): boolean {
     for (const member of zone.members) {
-      const memberLinks = model.locations.get(member.locationName);
+      const memberLinks = topology.locationLinks.get(member.locationName);
       if (!memberLinks) {
         return false;
       }
 
       const pointName = this.getPointNameFromLocation(member.locationName);
-      if (!model.pointNames.has(pointName) || !memberLinks.has(pointName)) {
+      if (!topology.pointNames.has(pointName) || !memberLinks.has(pointName)) {
         return false;
-      }
-
-      expectedMemberPoints.add(pointName);
-    }
-
-    if (zone.type === ZoneType.DROPOFF && zone.approachLocationName) {
-      const approachLinks = model.locations.get(zone.approachLocationName);
-      if (!approachLinks || approachLinks.size === 0) {
-        return false;
-      }
-
-      for (const pointName of approachLinks) {
-        if (
-          !model.pointNames.has(pointName) ||
-          !expectedMemberPoints.has(pointName)
-        ) {
-          return false;
-        }
       }
     }
 
     return true;
-  }
-
-  private buildRuntimePlantModel(rawModel: unknown): RuntimePlantModel | null {
-    if (!rawModel || typeof rawModel !== 'object') {
-      return null;
-    }
-
-    const model = rawModel as Record<string, unknown>;
-    const modelName = typeof model.name === 'string' ? model.name : null;
-    const rawPoints = Array.isArray(model.points) ? model.points : [];
-    const rawLocations = Array.isArray(model.locations) ? model.locations : [];
-    const rawPaths = Array.isArray(model.paths) ? model.paths : [];
-    const rawVehicles = Array.isArray(model.vehicles) ? model.vehicles : [];
-    if (
-      modelName === 'unnamed' &&
-      rawPoints.length === 0 &&
-      rawLocations.length === 0 &&
-      rawPaths.length === 0 &&
-      rawVehicles.length === 0
-    ) {
-      return null;
-    }
-
-    const pointNames = new Set(
-      rawPoints
-        .map((point) =>
-          point &&
-          typeof point === 'object' &&
-          typeof (point as { name?: unknown }).name === 'string'
-            ? (point as { name: string }).name
-            : null,
-        )
-        .filter((name): name is string => name !== null),
-    );
-    const locations = new Map<string, Set<string>>();
-
-    if (rawLocations.length > 0) {
-      for (const location of rawLocations) {
-        if (!location || typeof location !== 'object') {
-          continue;
-        }
-
-        const { name } = location as { name?: unknown };
-        if (typeof name !== 'string') {
-          continue;
-        }
-
-        locations.set(
-          name,
-          this.extractLinkedPointNames((location as { links?: unknown }).links),
-        );
-      }
-    }
-
-    return { pointNames, locations };
-  }
-
-  private extractLinkedPointNames(links: unknown): Set<string> {
-    if (Array.isArray(links)) {
-      return new Set(
-        links
-          .map((link) =>
-            link && typeof link === 'object'
-              ? ((link as { pointName?: unknown }).pointName ??
-                (link as { point?: unknown }).point)
-              : null,
-          )
-          .filter(
-            (pointName): pointName is string => typeof pointName === 'string',
-          ),
-      );
-    }
-
-    if (links && typeof links === 'object') {
-      return new Set(Object.keys(links));
-    }
-
-    return new Set();
   }
 
   private validateMembers(dto: CreateZoneDto): void {
@@ -806,55 +468,32 @@ export class ZoneService {
   }
 
   private async removeZoneLocationsFromKernel(zone: ZoneEntity): Promise<void> {
-    const context = await this.loadKernelModelContext();
-    const removableNames = new Set<string>();
-    const memberLocationNames = [
-      ...new Set(zone.members.map((member) => member.locationName)),
-    ];
+    const memberLocationNames = this.zoneMemberLocationNames(zone);
+    if (memberLocationNames.length === 0) return;
 
-    if (memberLocationNames.length > 0) {
-      const sharedLocationRows = await this.dataSource.query<
-        Array<{ location_name: string }>
-      >(
-        `
-          SELECT DISTINCT zm.location_name
-          FROM zone_members zm
-          JOIN zones z ON z.id = zm.zone_id
-          WHERE zm.zone_id <> $1
-            AND z.deleted_at IS NULL
-            AND zm.location_name = ANY($2)
-        `,
-        [zone.id, memberLocationNames],
-      );
-      const sharedLocationNames = new Set(
-        sharedLocationRows.map((row) => row.location_name),
-      );
+    const sharedLocationRows = await this.dataSource.query<
+      Array<{ location_name: string }>
+    >(
+      `
+        SELECT DISTINCT zm.location_name
+        FROM zone_members zm
+        JOIN zones z ON z.id = zm.zone_id
+        WHERE zm.zone_id <> $1
+          AND z.deleted_at IS NULL
+          AND zm.location_name = ANY($2)
+      `,
+      [zone.id, memberLocationNames],
+    );
+    const sharedLocationNames = new Set(
+      sharedLocationRows.map((row) => row.location_name),
+    );
 
-      for (const locationName of memberLocationNames) {
-        if (!sharedLocationNames.has(locationName)) {
-          removableNames.add(locationName);
-        }
-      }
-    }
+    const removableNames = memberLocationNames.filter(
+      (locationName) => !sharedLocationNames.has(locationName),
+    );
+    if (removableNames.length === 0) return;
 
-    if (zone.type === ZoneType.DROPOFF && zone.approachLocationName) {
-      removableNames.add(zone.approachLocationName);
-    }
-
-    if (removableNames.size === 0) {
-      return;
-    }
-
-    const nextLocations = context.updatedLocations.filter((location) => {
-      const name =
-        typeof location.name === 'string' ? location.name : undefined;
-      return !name || !removableNames.has(name);
-    });
-
-    await savePlantModel(this.kernelApi, {
-      ...context.model,
-      locations: nextLocations,
-    });
+    await removeLocations(this.kernelApi, removableNames);
     this.logger.log(`Zone "${zone.name}" (${zone.id}) soft-deleted`);
   }
 }

@@ -34,6 +34,8 @@ export const ORDER_PROP = {
  */
 export const PARK_ORDER_PREFIX = 'PARK-';
 
+export const CHARGE_ORDER_PREFIX = 'CHARGE-';
+
 export class TransportTaskCreatedEvent {
   constructor(
     readonly taskId: string,

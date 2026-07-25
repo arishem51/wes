@@ -1,4 +1,5 @@
 import { ParkingEngineService } from './parking-engine.service';
+import { PointReservationStore } from './point-reservation.store';
 import { buildRoadGraph } from './domain/routing';
 import type { KernelVehicleState } from '../opentcs/kernel-api.service';
 import type { AgvEntity } from '../agvs/entities/agv.entity';
@@ -46,10 +47,16 @@ function setup(
       { name: 'PARK-1', priority: null },
       { name: 'PARK-2', priority: null },
     ]),
+    getChargeLocations: jest.fn().mockResolvedValue([]),
+    getTransportOrderState: jest.fn().mockResolvedValue('BEING_PROCESSED'),
     createTransportOrder: jest.fn().mockResolvedValue(undefined),
   };
   const vehicleStore = { get: jest.fn((n: string) => states[n]) };
   const routing = { getRoadGraph: jest.fn().mockResolvedValue(graph) };
+  const reservations = new PointReservationStore(
+    vehicleStore as never,
+    kernelApi as never,
+  );
   const svc = withParkIdleDelay(
     delayMs,
     () =>
@@ -59,6 +66,7 @@ function setup(
         kernelApi as never,
         vehicleStore as never,
         routing as never,
+        reservations,
       ),
   );
   return { svc, taskRepo, kernelApi, states };

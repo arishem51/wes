@@ -11,6 +11,7 @@ import { AgvsController } from '../src/agvs/agvs.controller';
 import { AgvsService } from '../src/agvs/agvs.service';
 import { AgvEntity } from '../src/agvs/entities/agv.entity';
 import { KernelApiService } from '../src/opentcs/kernel-api.service';
+import { VehicleStateStore } from '../src/opentcs/vehicle-state.store';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../src/auth/guards/roles.guard';
 
@@ -48,7 +49,7 @@ class AllowAllGuard {
 interface AgvBody {
   id: string;
   name: string;
-  operationalBatteryThreshold: number;
+  criticalBatteryThreshold: number;
 }
 
 interface AgvListBody {
@@ -87,6 +88,10 @@ describe('AgvsController (e2e)', () => {
         AgvsService,
         { provide: getRepositoryToken(AgvEntity), useValue: repo },
         { provide: KernelApiService, useValue: kernelApi },
+        {
+          provide: VehicleStateStore,
+          useValue: { getAll: () => [], isConnected: () => true },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -138,7 +143,7 @@ describe('AgvsController (e2e)', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       const callArg: { where?: unknown[] } = repo.findAndCount.mock.calls[0][0];
-      expect(callArg.where).toHaveLength(3);
+      expect(callArg.where).toHaveLength(2);
     });
   });
 
@@ -153,7 +158,7 @@ describe('AgvsController (e2e)', () => {
 
       const body = res.body as AgvBody;
       expect(body.id).toBe(agv.id);
-      expect(body.operationalBatteryThreshold).toBe(20);
+      expect(body.criticalBatteryThreshold).toBe(20);
     });
 
     it('returns 404 when AGV does not exist', async () => {
@@ -171,12 +176,12 @@ describe('AgvsController (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .patch(`/agvs/${agv.id}`)
-        .send({ name: 'AGV Renamed', operationalBatteryThreshold: 35 })
+        .send({ name: 'AGV Renamed', criticalBatteryThreshold: 35 })
         .expect(200);
 
       const body = res.body as AgvBody;
       expect(body.name).toBe('AGV Renamed');
-      expect(body.operationalBatteryThreshold).toBe(35);
+      expect(body.criticalBatteryThreshold).toBe(35);
     });
 
     it('returns 400 when threshold is out of range', async () => {
@@ -185,7 +190,7 @@ describe('AgvsController (e2e)', () => {
 
       await request(app.getHttpServer())
         .patch(`/agvs/${agv.id}`)
-        .send({ operationalBatteryThreshold: 150 })
+        .send({ criticalBatteryThreshold: 150 })
         .expect(400);
     });
 

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ORDER_PROP, PARK_ORDER_PREFIX } from './domain/events';
 import {
   TransportTaskEntity,
@@ -14,7 +14,10 @@ import type { KernelVehicleState } from '../opentcs/kernel-api.service';
 import { RoutingService } from './routing.service';
 import { shortestDistancesFrom } from './domain/routing';
 import { nonNegativeOr } from './domain/dispatch-cost';
+import { activeCargoVehicleNames } from './task-queries';
+import { PointReservationStore } from './point-reservation.store';
 import {
+  ParkingPoint,
   ParkVehicleCandidate,
   needsParking,
   pickParkingPoint,
@@ -22,7 +25,6 @@ import {
 
 const DEFAULT_PARK_IDLE_DELAY_MS = 0;
 const PARK_LEG = 'PARK';
-const ACTIVE_TASK_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
 
 function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;
@@ -36,10 +38,6 @@ function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
 export class ParkingEngineService {
   private readonly logger = new Logger(ParkingEngineService.name);
   private readonly idleSince = new Map<string, number>();
-  private readonly parkTargets = new Map<
-    string,
-    { point: string; order: string }
-  >();
   private readonly parkIdleDelayMs: number;
 
   constructor(
@@ -50,6 +48,7 @@ export class ParkingEngineService {
     private readonly kernelApi: KernelApiService,
     private readonly vehicleStore: VehicleStateStore,
     private readonly routing: RoutingService,
+    private readonly reservations: PointReservationStore,
   ) {
     this.parkIdleDelayMs = nonNegativeOr(
       Number(process.env.PARK_IDLE_DELAY_MS),
@@ -63,12 +62,14 @@ export class ParkingEngineService {
   }
 
   async run(): Promise<void> {
-    const parkingPoints = await this.kernelApi.getParkingPoints();
+    const parkingPoints = await this.parkPool();
     if (parkingPoints.length === 0) return;
     const parkPointNames = new Set(parkingPoints.map((p) => p.name));
 
+    await this.reservations.reconcile();
+
     const hasPendingWork = await this.hasPendingWork();
-    const busy = await this.busyVehicleNames();
+    const busy = await activeCargoVehicleNames(this.taskRepo);
     const agvs = await this.agvRepo.find();
     const now = Date.now();
 
@@ -76,6 +77,7 @@ export class ParkingEngineService {
     const stillCandidate = new Set<string>();
 
     for (const agv of agvs) {
+      if (this.reservations.has(agv.name)) continue;
       const fms = this.vehicleStore.get(agv.name);
       const candidate = this.toCandidate(agv, fms, busy);
       if (!needsParking(candidate, parkPointNames, hasPendingWork)) continue;
@@ -99,8 +101,8 @@ export class ParkingEngineService {
 
     const graph = await this.routing.getRoadGraph();
     const excluded = this.occupiedParkPoints(agvs, parkPointNames);
-    for (const target of this.inFlightParkTargets().values()) {
-      excluded.add(target);
+    for (const point of this.reservations.reservedPoints()) {
+      excluded.add(point);
     }
 
     for (const { name, position } of readyToPark) {
@@ -119,6 +121,16 @@ export class ParkingEngineService {
     }
   }
 
+  private async parkPool(): Promise<ParkingPoint[]> {
+    const parkingPoints = await this.kernelApi.getParkingPoints();
+    const chargeLocations = await this.kernelApi.getChargeLocations();
+    const chargePoints = new Set<string>();
+    for (const location of chargeLocations) {
+      for (const point of location.points) chargePoints.add(point);
+    }
+    return parkingPoints.filter((p) => !chargePoints.has(p.name));
+  }
+
   private toCandidate(
     agv: AgvEntity,
     fms: KernelVehicleState | undefined,
@@ -131,6 +143,8 @@ export class ParkingEngineService {
       idleAvailable: isIdleAvailable(fms),
       onOrder: fms?.transportOrder != null,
       hasActiveTask: busy.has(agv.name),
+      belowCritical:
+        fms != null && fms.energyLevel <= agv.criticalBatteryThreshold,
       currentPosition: fms?.currentPosition ?? null,
     };
   }
@@ -140,30 +154,6 @@ export class ParkingEngineService {
       where: { status: TaskStatus.READY_TO_ASSIGN },
     });
     return count > 0;
-  }
-
-  private async busyVehicleNames(): Promise<Set<string>> {
-    const tasks = await this.taskRepo.find({
-      where: { status: In(ACTIVE_TASK_STATUSES) },
-    });
-    const names = new Set<string>();
-    for (const task of tasks) {
-      const name = task.metadata?.assignedVehicleName;
-      if (name) names.add(name);
-    }
-    return names;
-  }
-
-  private inFlightParkTargets(): Map<string, string> {
-    const live = new Map<string, string>();
-    for (const [vehicle, target] of [...this.parkTargets]) {
-      if (this.vehicleStore.get(vehicle)?.transportOrder === target.order) {
-        live.set(vehicle, target.point);
-      } else {
-        this.parkTargets.delete(vehicle);
-      }
-    }
-    return live;
   }
 
   private occupiedParkPoints(
@@ -191,7 +181,7 @@ export class ParkingEngineService {
         { [ORDER_PROP.LEG]: PARK_LEG },
       );
       this.idleSince.delete(vehicleName);
-      this.parkTargets.set(vehicleName, { point: pointName, order: orderName });
+      this.reservations.reserve(vehicleName, pointName, orderName);
       this.logger.log(`Parking ${vehicleName} → ${pointName} (${orderName})`);
     } catch (err) {
       this.logger.warn(
