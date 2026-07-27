@@ -87,27 +87,6 @@ export function shortestDistancesFrom(
   return dist;
 }
 
-export function shortestHopsFrom(
-  graph: RoadGraph,
-  source: string,
-): Map<string, number> {
-  const hops = new Map<string, number>();
-  if (!graph.has(source)) return hops;
-
-  hops.set(source, 0);
-  const queue: string[] = [source];
-  for (let head = 0; head < queue.length; head++) {
-    const node = queue[head];
-    const nodeHops = hops.get(node) as number;
-    for (const edge of graph.get(node) ?? []) {
-      if (hops.has(edge.to)) continue;
-      hops.set(edge.to, nodeHops + 1);
-      queue.push(edge.to);
-    }
-  }
-  return hops;
-}
-
 class MinHeap {
   private readonly items: Array<{ node: string; priority: number }> = [];
 

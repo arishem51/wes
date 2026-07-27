@@ -10,53 +10,13 @@ import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelVehicleState } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type {
+  AgvDto,
+  AgvListResponse,
   CreateAgvDto,
   ListAgvsQueryDto,
   UpdateAgvDto,
 } from './dto/agvs.dto';
-
-export type AgvKernelStatus =
-  | 'connected'
-  | 'reachable'
-  | 'unreachable'
-  | 'unknown';
-
-export interface AgvDto {
-  id: string;
-  code: string;
-  name: string;
-  model: string | null;
-  manufacturer: string | null;
-  serialNumber: string | null;
-  isDispatchEnabled: boolean;
-  isIgnored: boolean;
-  operationalBatteryThreshold: number;
-  chargingBatteryThreshold: number;
-  initialPosition: string | null;
-  config: Record<string, unknown>;
-  createdAt: Date;
-  createdById: string | null;
-  kernelStatus: AgvKernelStatus;
-}
-
-export interface AgvListResponse {
-  agvs: AgvDto[];
-  total: number;
-  page: number;
-  limit: number;
-  kernelReachable: boolean;
-}
-
-function resolveKernelStatus(
-  kernelReachable: boolean,
-  vehicle: KernelVehicleState | undefined,
-): AgvKernelStatus {
-  if (!kernelReachable) return 'unknown';
-  if (!vehicle) return 'unreachable';
-  return vehicle.integrationLevel === 'TO_BE_UTILIZED'
-    ? 'connected'
-    : 'reachable';
-}
+import { resolveKernelStatus, toAgvDto } from './agvs.mapper';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -86,35 +46,18 @@ export class AgvsService {
       take: limit,
     });
 
-    const kernelVehicles = this.vehicleStateStore.getAll();
     const kernelReachable = this.vehicleStateStore.isConnected();
     const kernelByName = new Map<string, KernelVehicleState>(
-      kernelVehicles.map((v) => [v.name, v]),
+      this.vehicleStateStore.getAll().map((v) => [v.name, v]),
     );
 
-    const mappedAgvs: AgvDto[] = agvs.map((agv) => ({
-      id: agv.id,
-      code: agv.code,
-      name: agv.name,
-      model: agv.model,
-      manufacturer: agv.manufacturer,
-      serialNumber: agv.serialNumber,
-      isDispatchEnabled: agv.isDispatchEnabled,
-      isIgnored: agv.isIgnored,
-      operationalBatteryThreshold: agv.operationalBatteryThreshold,
-      chargingBatteryThreshold: agv.chargingBatteryThreshold,
-      initialPosition: agv.initialPosition,
-      config: agv.config,
-      createdAt: agv.createdAt,
-      createdById: agv.createdById,
-      kernelStatus: resolveKernelStatus(
-        kernelReachable,
-        kernelByName.get(agv.name),
-      ),
-    }));
-
     return {
-      agvs: mappedAgvs,
+      agvs: agvs.map((agv) =>
+        toAgvDto(
+          agv,
+          resolveKernelStatus(kernelReachable, kernelByName.get(agv.name)),
+        ),
+      ),
       total,
       page,
       limit,
@@ -122,18 +65,18 @@ export class AgvsService {
     };
   }
 
+  private toDto(agv: AgvEntity): AgvDto {
+    const kernelReachable = this.vehicleStateStore.isConnected();
+    const vehicle = this.vehicleStateStore
+      .getAll()
+      .find((v) => v.name === agv.name);
+    return toAgvDto(agv, resolveKernelStatus(kernelReachable, vehicle));
+  }
+
   async findOne(id: string): Promise<AgvDto> {
     const agv = await this.repo.findOne({ where: { id } });
     if (!agv) throw new NotFoundException('AGV không tồn tại.');
-
-    const kernelVehicles = this.vehicleStateStore.getAll();
-    const kernelReachable = this.vehicleStateStore.isConnected();
-    const kernelVehicle = kernelVehicles.find((v) => v.name === agv.name);
-
-    return {
-      ...agv,
-      kernelStatus: resolveKernelStatus(kernelReachable, kernelVehicle),
-    };
+    return this.toDto(agv);
   }
 
   async create(dto: CreateAgvDto, userId: string): Promise<AgvDto> {
@@ -151,14 +94,14 @@ export class AgvsService {
       manufacturer: dto.manufacturer ?? null,
       serialNumber: dto.serialNumber ?? null,
       isDispatchEnabled: dto.isDispatchEnabled ?? true,
-      operationalBatteryThreshold: dto.operationalBatteryThreshold ?? 20,
-      chargingBatteryThreshold: dto.chargingBatteryThreshold ?? 10,
+      criticalBatteryThreshold: dto.criticalBatteryThreshold ?? 20,
+      sufficientBatteryThreshold: dto.sufficientBatteryThreshold ?? 60,
       initialPosition: dto.initialPosition ?? null,
       config: dto.config ?? {},
       createdById: userId,
     });
     const saved = await this.repo.save(agv);
-    return { ...saved, kernelStatus: 'unknown' };
+    return toAgvDto(saved, 'unknown');
   }
 
   async update(id: string, dto: UpdateAgvDto): Promise<AgvDto> {
@@ -177,11 +120,11 @@ export class AgvsService {
       ...(dto.model !== undefined && { model: dto.model }),
       ...(dto.manufacturer !== undefined && { manufacturer: dto.manufacturer }),
       ...(dto.serialNumber !== undefined && { serialNumber: dto.serialNumber }),
-      ...(dto.operationalBatteryThreshold !== undefined && {
-        operationalBatteryThreshold: dto.operationalBatteryThreshold,
+      ...(dto.criticalBatteryThreshold !== undefined && {
+        criticalBatteryThreshold: dto.criticalBatteryThreshold,
       }),
-      ...(dto.chargingBatteryThreshold !== undefined && {
-        chargingBatteryThreshold: dto.chargingBatteryThreshold,
+      ...(dto.sufficientBatteryThreshold !== undefined && {
+        sufficientBatteryThreshold: dto.sufficientBatteryThreshold,
       }),
       ...(dto.initialPosition !== undefined && {
         initialPosition: dto.initialPosition,
@@ -190,7 +133,7 @@ export class AgvsService {
     });
 
     const saved = await this.repo.save(agv);
-    return { ...saved, kernelStatus: 'unknown' };
+    return toAgvDto(saved, 'unknown');
   }
 
   async connect(id: string): Promise<void> {
@@ -205,6 +148,62 @@ export class AgvsService {
     if (!agv) throw new NotFoundException('AGV không tồn tại.');
     await this.kernelApi.setVehicleIntegrationLevel(agv.name, 'TO_BE_IGNORED');
     await this.kernelApi.setVehicleAdapterEnabled(agv.name, false);
+  }
+
+  async enable(id: string): Promise<AgvDto> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    if (agv.isIgnored) {
+      throw new ConflictException('AGV đang bị bỏ qua — hãy dùng Khôi phục.');
+    }
+    if (agv.isDispatchEnabled) {
+      throw new ConflictException('AGV đã ở trạng thái nhận việc.');
+    }
+    agv.isDispatchEnabled = true;
+    const saved = await this.repo.save(agv);
+    return this.toDto(saved);
+  }
+
+  async disable(id: string): Promise<AgvDto> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    if (agv.isIgnored) {
+      throw new ConflictException('AGV đang bị bỏ qua — hãy dùng Khôi phục.');
+    }
+    if (!agv.isDispatchEnabled) {
+      throw new ConflictException('AGV đã ngừng nhận việc.');
+    }
+    agv.isDispatchEnabled = false;
+    const saved = await this.repo.save(agv);
+    return this.toDto(saved);
+  }
+
+  async ignore(id: string): Promise<AgvDto> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    if (agv.isIgnored) {
+      throw new ConflictException('AGV đã bị bỏ qua.');
+    }
+    await this.kernelApi.setVehicleIntegrationLevel(
+      agv.name,
+      'TO_BE_RESPECTED',
+    );
+    agv.isIgnored = true;
+    const saved = await this.repo.save(agv);
+    return this.toDto(saved);
+  }
+
+  async restore(id: string): Promise<AgvDto> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) throw new NotFoundException('AGV không tồn tại.');
+    if (!agv.isIgnored) {
+      throw new ConflictException('AGV không ở trạng thái bỏ qua.');
+    }
+    await this.kernelApi.setVehicleIntegrationLevel(agv.name, 'TO_BE_UTILIZED');
+    agv.isIgnored = false;
+    agv.isDispatchEnabled = true;
+    const saved = await this.repo.save(agv);
+    return this.toDto(saved);
   }
 
   async setPosition(id: string, pointName: string): Promise<void> {

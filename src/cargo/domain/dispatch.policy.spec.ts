@@ -18,7 +18,7 @@ const candidate = (
   preemptibleParking: false,
   parkOrderName: null,
   energyLevel: 80,
-  operationalThreshold: 20,
+  criticalThreshold: 20,
   currentPosition: null,
   hasActiveTask: false,
   ...overrides,
@@ -35,18 +35,15 @@ describe('dispatch.policy', () => {
       ['ignored', { ignored: true }],
       ['not available in FMS', { available: false }],
       ['already has an active task', { hasActiveTask: true }],
-      ['battery at threshold', { energyLevel: 20, operationalThreshold: 20 }],
-      [
-        'battery below threshold',
-        { energyLevel: 15, operationalThreshold: 20 },
-      ],
+      ['battery at threshold', { energyLevel: 20, criticalThreshold: 20 }],
+      ['battery below threshold', { energyLevel: 15, criticalThreshold: 20 }],
     ])('rejects when %s', (_label, overrides) => {
       expect(isEligible(candidate(overrides))).toBe(false);
     });
 
     it('requires energy strictly above the threshold', () => {
       expect(
-        isEligible(candidate({ energyLevel: 21, operationalThreshold: 20 })),
+        isEligible(candidate({ energyLevel: 21, criticalThreshold: 20 })),
       ).toBe(true);
     });
 
@@ -73,7 +70,7 @@ describe('dispatch.policy', () => {
             available: false,
             preemptibleParking: true,
             parkOrderName: 'PARK-abc',
-            operationalThreshold: 20,
+            criticalThreshold: 20,
             ...overrides,
           }),
         ),
@@ -347,6 +344,69 @@ describe('dispatch.policy', () => {
         ['T1', 'V1', 160],
         ['T2', 'V2', 50],
       ]);
+    });
+
+    describe('loaded approach leg', () => {
+      const vehicles = [
+        candidate({ name: 'V1', currentPosition: 'P1', energyLevel: 90 }),
+        candidate({ name: 'V2', currentPosition: 'P2', energyLevel: 25 }),
+      ];
+      const pickupOnly = [
+        {
+          taskId: 'T1',
+          distanceByPoint: new Map([
+            ['P1', 20],
+            ['P2', 10],
+          ]),
+        },
+        {
+          taskId: 'T2',
+          distanceByPoint: new Map([
+            ['P1', 12],
+            ['P2', 30],
+          ]),
+        },
+      ];
+      const withApproach = [
+        { ...pickupOnly[0], approachDistance: 200 },
+        { ...pickupOnly[1], approachDistance: 5 },
+      ];
+      const pairingOf = (plan: VehicleTaskAssignment[]) =>
+        plan.map(({ taskId, vehicle, distance }) => [
+          taskId,
+          vehicle.name,
+          distance,
+        ]);
+
+      it('cannot change the pairing on its own — it is a per-task row constant', () => {
+        expect(planVehicleAssignments(vehicles, withApproach)).toEqual(
+          planVehicleAssignments(vehicles, pickupOnly),
+        );
+        expect(planVehicleAssignmentsGreedy(vehicles, withApproach)).toEqual(
+          planVehicleAssignmentsGreedy(vehicles, pickupOnly),
+        );
+      });
+
+      it('under the battery term it keeps the long delivery off the weak vehicle', () => {
+        expect(
+          pairingOf(planVehicleAssignments(vehicles, pickupOnly, 3)),
+        ).toEqual([
+          ['T1', 'V2', 10],
+          ['T2', 'V1', 12],
+        ]);
+
+        expect(
+          pairingOf(planVehicleAssignments(vehicles, withApproach, 3)),
+        ).toEqual([
+          ['T1', 'V1', 20],
+          ['T2', 'V2', 30],
+        ]);
+      });
+
+      it('reports the raw distance to the source, not the whole trip', () => {
+        const [first] = planVehicleAssignments(vehicles, withApproach, 3);
+        expect(first.distance).toBe(20);
+      });
     });
 
     it('battery weight 0 is the exact fast path — cost equals raw distance', () => {

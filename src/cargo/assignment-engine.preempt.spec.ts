@@ -1,6 +1,8 @@
 import { AssignmentEngineService } from './assignment-engine.service';
 import { TaskStatus } from './entities/transport-task.entity';
 
+const stub = <T>(value: unknown): T => value as T;
+
 /**
  * Focused test for the preempt path: when the picked vehicle is en route to a
  * park order, `assign()` must withdraw that order BEFORE creating the pickup TO.
@@ -44,7 +46,7 @@ describe('AssignmentEngineService preempt', () => {
           name: 'V1',
           isDispatchEnabled: true,
           isIgnored: false,
-          operationalBatteryThreshold: 20,
+          criticalBatteryThreshold: 20,
         },
       ]),
     };
@@ -61,17 +63,23 @@ describe('AssignmentEngineService preempt', () => {
     const dispatchPolicy = {
       getActiveWeights: jest.fn().mockResolvedValue(null),
     };
+    const zoneRepo = { findOne: jest.fn().mockResolvedValue(null) };
+    const approachPoint = {
+      feederPointsOf: jest.fn().mockResolvedValue([]),
+    };
 
     const svc = new AssignmentEngineService(
-      taskRepo as never,
-      cargoRepo as never,
-      agvRepo as never,
-      kernelApi as never,
-      vehicleStore as never,
-      transportTask as never,
-      pickupDependency as never,
-      routing as never,
-      dispatchPolicy as never,
+      stub(taskRepo),
+      stub(cargoRepo),
+      stub(agvRepo),
+      stub(zoneRepo),
+      stub(kernelApi),
+      stub(vehicleStore),
+      stub(transportTask),
+      stub(pickupDependency),
+      stub(routing),
+      stub(approachPoint),
+      stub(dispatchPolicy),
     );
     return { svc, kernelApi, transportTask, vehicleStore };
   }

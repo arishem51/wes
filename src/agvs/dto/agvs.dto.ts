@@ -39,13 +39,13 @@ export class CreateAgvDto {
   @IsInt()
   @Min(0)
   @Max(100)
-  operationalBatteryThreshold?: number;
+  criticalBatteryThreshold?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(100)
-  chargingBatteryThreshold?: number;
+  sufficientBatteryThreshold?: number;
 
   @IsOptional()
   @IsString()
@@ -78,13 +78,13 @@ export class UpdateAgvDto {
   @IsInt()
   @Min(0)
   @Max(100)
-  operationalBatteryThreshold?: number;
+  criticalBatteryThreshold?: number;
 
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(100)
-  chargingBatteryThreshold?: number;
+  sufficientBatteryThreshold?: number;
 
   @IsOptional()
   @IsString()
@@ -112,4 +112,39 @@ export class ListAgvsQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+}
+
+export type AgvKernelStatus =
+  | 'connected'
+  | 'reachable'
+  | 'unreachable'
+  | 'unknown';
+
+export type AgvAcceptanceStatus = 'ENABLED' | 'DISABLED' | 'IGNORED';
+
+export interface AgvDto {
+  id: string;
+  code: string;
+  name: string;
+  model: string | null;
+  manufacturer: string | null;
+  serialNumber: string | null;
+  isDispatchEnabled: boolean;
+  isIgnored: boolean;
+  acceptanceStatus: AgvAcceptanceStatus;
+  criticalBatteryThreshold: number;
+  sufficientBatteryThreshold: number;
+  initialPosition: string | null;
+  config: Record<string, unknown>;
+  createdAt: Date;
+  createdById: string | null;
+  kernelStatus: AgvKernelStatus;
+}
+
+export interface AgvListResponse {
+  agvs: AgvDto[];
+  total: number;
+  page: number;
+  limit: number;
+  kernelReachable: boolean;
 }

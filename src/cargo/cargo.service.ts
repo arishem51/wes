@@ -130,9 +130,7 @@ export class CargoService {
             requestCode,
             cargoId: saved.id,
             status: TaskStatus.CREATED,
-            metadata: {
-              approachLocationName: zone.approachLocationName ?? undefined,
-            },
+            metadata: {},
           }),
         );
 

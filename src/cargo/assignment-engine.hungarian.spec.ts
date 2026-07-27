@@ -11,6 +11,8 @@ const twoWay = (from: string, to: string, length: number) => ({
   maxReverseVelocity: 1,
 });
 
+const stub = <T>(value: unknown): T => value as T;
+
 describe('AssignmentEngineService Hungarian dispatch', () => {
   function build(blockedTaskIds: ReadonlySet<string> = new Set()) {
     const tasks = [
@@ -63,6 +65,9 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
       ],
     ]);
 
+    const zones = new Map<string, { id: string }>();
+    const feedersByZone = new Map<string, string[]>();
+
     const taskRepo = {
       find: jest
         .fn()
@@ -85,13 +90,13 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
           name: 'V1',
           isDispatchEnabled: true,
           isIgnored: false,
-          operationalBatteryThreshold: 20,
+          criticalBatteryThreshold: 20,
         },
         {
           name: 'V2',
           isDispatchEnabled: true,
           isIgnored: false,
-          operationalBatteryThreshold: 20,
+          criticalBatteryThreshold: 20,
         },
       ]),
     };
@@ -135,7 +140,6 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
         .mockImplementation((task: { id: string }) =>
           Promise.resolve(blockedTaskIds.has(task.id)),
         ),
-      blockingCounts: jest.fn().mockResolvedValue(new Map<string, number>()),
     };
     const dispatchPolicy = {
       getActiveWeights: jest.fn().mockResolvedValue(null),
@@ -148,16 +152,33 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
         ),
     };
 
+    const zoneRepo = {
+      findOne: jest
+        .fn()
+        .mockImplementation((opts: { where: { id: string } }) =>
+          Promise.resolve(zones.get(opts.where.id) ?? null),
+        ),
+    };
+    const approachPoint = {
+      feederPointsOf: jest
+        .fn()
+        .mockImplementation((zone: { id: string }) =>
+          Promise.resolve(feedersByZone.get(zone.id) ?? []),
+        ),
+    };
+
     const service = new AssignmentEngineService(
-      taskRepo as never,
-      cargoRepo as never,
-      agvRepo as never,
-      kernelApi as never,
-      vehicleStore as never,
-      transportTask as never,
-      pickupDependency as never,
-      routing as never,
-      dispatchPolicy as never,
+      stub(taskRepo),
+      stub(cargoRepo),
+      stub(agvRepo),
+      stub(zoneRepo),
+      stub(kernelApi),
+      stub(vehicleStore),
+      stub(transportTask),
+      stub(pickupDependency),
+      stub(routing),
+      stub(approachPoint),
+      stub(dispatchPolicy),
     );
     return {
       service,
@@ -299,30 +320,9 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
     expect(dispatchedTaskIds).toEqual(['t2', 't3']);
   });
 
-  it('with an active urgency policy, a lane-blocking task jumps the FIFO queue', async () => {
-    const { service, dispatchPolicy, kernelApi, pickupDependency } = build();
-    dispatchPolicy.getActiveWeights.mockResolvedValue({
-      urgency: 5,
-      battery: 0,
-    });
-    pickupDependency.blockingCounts.mockResolvedValue(new Map([['t3', 3]]));
-
-    await service.run();
-
-    const dispatchedTaskIds = kernelApi.createTransportOrder.mock.calls.map(
-      (call: unknown[]) =>
-        (call[3] as Record<string, string>)[ORDER_PROP.TASK_ID],
-    );
-    expect(dispatchedTaskIds).toEqual(['t3', 't1']);
-    expect(pickupDependency.blockingCounts).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps plain FIFO when the active policy has urgency weight 0', async () => {
-    const { service, dispatchPolicy, kernelApi, pickupDependency } = build();
-    dispatchPolicy.getActiveWeights.mockResolvedValue({
-      urgency: 0,
-      battery: 0,
-    });
+  it('keeps plain FIFO when a policy is active', async () => {
+    const { service, dispatchPolicy, kernelApi } = build();
+    dispatchPolicy.getActiveWeights.mockResolvedValue({ battery: 0 });
 
     await service.run();
 
@@ -331,7 +331,6 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
         (call[3] as Record<string, string>)[ORDER_PROP.TASK_ID],
     );
     expect(dispatchedTaskIds).toEqual(['t1', 't2']);
-    expect(pickupDependency.blockingCounts).not.toHaveBeenCalled();
   });
 
   it('excludes an ambiguous duplicate vehicle name from dispatch', async () => {
@@ -342,14 +341,14 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
         name: 'V1',
         isDispatchEnabled: true,
         isIgnored: false,
-        operationalBatteryThreshold: 20,
+        criticalBatteryThreshold: 20,
       },
       {
         id: 'duplicate-2',
         name: 'V1',
         isDispatchEnabled: true,
         isIgnored: false,
-        operationalBatteryThreshold: 20,
+        criticalBatteryThreshold: 20,
       },
     ]);
 

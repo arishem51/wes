@@ -1,6 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
+import { randomUUID } from 'crypto';
 import { PlantModelDto } from './map-loader/opentcs-xml.parser';
+
+export interface KernelVehiclePrecisePosition {
+  x: number;
+  y: number;
+  z: number;
+}
 
 export interface KernelVehicleState {
   name: string;
@@ -20,6 +27,9 @@ export interface KernelVehicleState {
   energyLevel: number;
   paused: boolean;
   currentPosition: string | null;
+  precisePosition?: KernelVehiclePrecisePosition | null;
+  orientationAngle?: number | null;
+  allocatedResources?: string[][];
   /** Name of the transport order the vehicle is processing, when known. */
   transportOrder?: string | null;
   /** Kernel-side observation time (ISO) when the SSE payload carries one. */
@@ -50,15 +60,37 @@ export interface KernelPlantModel {
 
 export interface KernelParkingPoint {
   name: string;
-  /** From the point's `tcs:parkingPositionPriority` property; lower = higher priority. Null when unset. */
   priority: number | null;
+}
+
+export interface KernelChargeLocation {
+  name: string;
+  points: string[];
+}
+
+export interface KernelTransportOrderSummary {
+  name: string;
+  state: string;
+  destinations: string[];
 }
 
 export interface KernelRoute {
   destinationPoint: string;
-  /** openTCS route cost, or -1 when the destination is unreachable for the vehicle. */
   costs: number;
   steps: unknown[] | null;
+}
+
+interface DestinationStateDto {
+  locationName: string;
+  operation: string;
+}
+
+interface TransportOrderStateDto {
+  name: string;
+  state: string;
+  intendedVehicle: string | null;
+  processingVehicle: string | null;
+  destinations: DestinationStateDto[];
 }
 
 interface KernelTransportOrderDebug {
@@ -71,6 +103,40 @@ interface KernelTransportOrderDebug {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
+}
+
+function toOrientationAngle(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function toPrecisePosition(
+  value: unknown,
+): KernelVehiclePrecisePosition | null {
+  if (!isRecord(value)) return null;
+  const { x, y, z } = value;
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof z !== 'number') {
+    return null;
+  }
+  return { x, y, z };
+}
+
+export function toAllocatedResources(value: unknown): string[][] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((group): group is unknown[] => Array.isArray(group))
+    .map((group) =>
+      group.filter((item): item is string => typeof item === 'string'),
+    );
+}
+
+export function orientationAngleFromSsePose(pose: unknown): number | null {
+  return isRecord(pose) ? toOrientationAngle(pose.orientationAngle) : null;
+}
+
+export function precisePositionFromSsePose(
+  pose: unknown,
+): KernelVehiclePrecisePosition | null {
+  return isRecord(pose) ? toPrecisePosition(pose.position) : null;
 }
 
 const PARKING_PRIORITY_KEY = 'tcs:parkingPositionPriority';
@@ -201,6 +267,9 @@ function toKernelVehicleState(value: unknown): KernelVehicleState | null {
     paused: typeof value.paused === 'boolean' ? value.paused : false,
     currentPosition:
       typeof value.currentPosition === 'string' ? value.currentPosition : null,
+    precisePosition: toPrecisePosition(value.precisePosition),
+    orientationAngle: toOrientationAngle(value.orientationAngle),
+    allocatedResources: toAllocatedResources(value.allocatedResources),
     transportOrder:
       typeof value.transportOrder === 'string' ? value.transportOrder : null,
   };
@@ -232,11 +301,21 @@ export type VehicleType = 'loopback' | 'vda5050';
 
 const VEHICLE_OPERATIONS: Record<
   VehicleType,
-  { load: string; unload: string }
+  { load: string; unload: string; charge: string }
 > = {
-  loopback: { load: 'PICK_UP', unload: 'DROP_OFF' },
-  vda5050: { load: 'liftUp', unload: 'liftDown' },
+  loopback: { load: 'PICK_UP', unload: 'DROP_OFF', charge: 'CHARGE' },
+  vda5050: { load: 'liftUp', unload: 'liftDown', charge: 'startCharging' },
 };
+
+function locationPointNames(links: KernelLocation['links']): string[] {
+  if (Array.isArray(links)) {
+    return links
+      .map((link) => link.pointName ?? link.point)
+      .filter((point): point is string => typeof point === 'string');
+  }
+  if (isRecord(links)) return Object.keys(links);
+  return [];
+}
 
 function parseVehicleType(value: string): VehicleType {
   if (value in VEHICLE_OPERATIONS) return value as VehicleType;
@@ -251,6 +330,7 @@ export class KernelApiService {
   private readonly baseUrl: string;
   readonly loadOperation: string;
   readonly unloadOperation: string;
+  readonly chargeOperation: string;
 
   constructor() {
     this.baseUrl = process.env.OPENTCS_KERNEL_URL ?? 'http://localhost:55200';
@@ -259,6 +339,7 @@ export class KernelApiService {
     );
     this.loadOperation = VEHICLE_OPERATIONS[vehicleType].load;
     this.unloadOperation = VEHICLE_OPERATIONS[vehicleType].unload;
+    this.chargeOperation = VEHICLE_OPERATIONS[vehicleType].charge;
   }
 
   async isReachable(): Promise<boolean> {
@@ -321,11 +402,6 @@ export class KernelApiService {
     return toKernelPlantModel(await this.getPlantModel());
   }
 
-  /**
-   * Points of type PARK_POSITION from the plant model, with their parking
-   * priority (if set). The vehicle→park-point distance is left to the caller
-   * (road-graph Dijkstra), so only name + priority are returned here.
-   */
   async getParkingPoints(): Promise<KernelParkingPoint[]> {
     const model = await this.getPlantModel();
     if (!isRecord(model) || !Array.isArray(model.points)) return [];
@@ -340,6 +416,26 @@ export class KernelApiService {
         continue;
       }
       out.push({ name: raw.name, priority: parkingPriority(raw.properties) });
+    }
+    return out;
+  }
+
+  async getChargeLocations(): Promise<KernelChargeLocation[]> {
+    const model = await this.getLocationModel();
+    if (!model) return [];
+
+    const chargeTypeNames = new Set<string>(
+      model.locationTypes
+        .filter((type) => type.allowedOperations.includes(this.chargeOperation))
+        .map((type) => type.name),
+    );
+
+    const out: KernelChargeLocation[] = [];
+    for (const loc of model.locations) {
+      const typeName = loc.typeName ?? loc.type ?? '';
+      if (!chargeTypeNames.has(typeName)) continue;
+      const points = locationPointNames(loc.links);
+      if (points.length > 0) out.push({ name: loc.name, points });
     }
     return out;
   }
@@ -423,10 +519,7 @@ export class KernelApiService {
     destinations: Array<{ locationName: string; operation: string }>,
     intendedVehicle: string,
     properties?: Record<string, string>,
-  ): Promise<void> {
-    // openTCS wants properties as an array of {key,value} on write (it is echoed
-    // back as an object map over SSE — see the listener). Omit the field entirely
-    // when there are none so we don't send `properties: []` needlessly.
+  ): Promise<KernelTransportOrderSummary> {
     const body: Record<string, unknown> = { destinations, intendedVehicle };
     if (properties) {
       body.properties = Object.entries(properties).map(([key, value]) => ({
@@ -434,13 +527,22 @@ export class KernelApiService {
         value,
       }));
     }
-    await axios.post(
+    const res = await axios.post<TransportOrderStateDto>(
       `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}`,
       body,
       { timeout: 10_000 },
     );
     this.logger.log(`Created TO "${name}" → ${intendedVehicle}`);
     await this.triggerDispatcher();
+
+    const created = res.data;
+    return {
+      name: created.name,
+      state: created.state,
+      destinations: created.destinations.map(
+        (destination) => destination.locationName,
+      ),
+    };
   }
 
   async computeRoutes(
@@ -580,6 +682,24 @@ export class KernelApiService {
         parameters: [
           { key: 'key', value: key },
           { key: 'value', value: value },
+        ],
+      },
+      { timeout: 5_000 },
+    );
+  }
+
+  async sendInstantAction(
+    vehicleName: string,
+    actionType: string,
+  ): Promise<void> {
+    await axios.post(
+      `${this.baseUrl}/v1/vehicles/${encodeURIComponent(vehicleName)}/commAdapter/message`,
+      {
+        type: 'vda5050:sendInstantAction',
+        parameters: [
+          { key: 'actionType', value: actionType },
+          { key: 'actionId', value: randomUUID() },
+          { key: 'blockingType', value: 'NONE' },
         ],
       },
       { timeout: 5_000 },

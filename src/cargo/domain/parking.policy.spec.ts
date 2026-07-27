@@ -14,6 +14,7 @@ const candidate = (
   idleAvailable: true,
   onOrder: false,
   hasActiveTask: false,
+  belowCritical: false,
   currentPosition: 'P-lane',
   ...overrides,
 });
@@ -36,6 +37,7 @@ describe('parking.policy', () => {
       ['not idle in FMS', { idleAvailable: false }],
       ['already on an order', { onOrder: true }],
       ['carrying an active task', { hasActiveTask: true }],
+      ['below the critical threshold', { belowCritical: true }],
       ['not localized', { currentPosition: null }],
       ['already standing on a park point', { currentPosition: 'PARK-1' }],
     ])('rejects when %s', (_label, overrides) => {

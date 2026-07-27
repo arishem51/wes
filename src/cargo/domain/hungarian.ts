@@ -9,7 +9,6 @@
  * O(rows * columns) auxiliary space in the transposed case.
  */
 export interface HungarianResult {
-  /** `assignment[row]` is the selected column, or -1 when the row is unmatched. */
   readonly assignment: number[];
   readonly totalCost: number;
 }
@@ -68,15 +67,12 @@ function validateCostMatrix(
   }
 }
 
-/** Solve a matrix with at least as many columns as rows. */
 function solveRows(
   costMatrix: readonly (readonly number[])[],
 ): HungarianResult {
   const rowCount = costMatrix.length;
   const columnCount = costMatrix[0].length;
 
-  // Potentials (u/v), column matching (p), and augmenting path predecessors
-  // (way) are one-indexed; column 0 is the algorithm's sentinel.
   const u = Array<number>(rowCount + 1).fill(0);
   const v = Array<number>(columnCount + 1).fill(0);
   const p = Array<number>(columnCount + 1).fill(0);
@@ -102,7 +98,6 @@ function solveRows(
           minSlack[column] = reducedCost;
           way[column] = currentColumn;
         }
-        // Lowest column wins exact ties, keeping the result deterministic.
         if (
           minSlack[column] < delta ||
           (minSlack[column] === delta &&

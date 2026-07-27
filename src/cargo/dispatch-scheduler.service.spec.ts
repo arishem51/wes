@@ -18,11 +18,13 @@ describe('DispatchSchedulerService single-flight', () => {
     const leg = jest.fn().mockReturnValue(gate.promise); // hold flush #1 open
     const release = jest.fn().mockResolvedValue(undefined);
     const assign = jest.fn().mockResolvedValue(undefined);
+    const charge = jest.fn().mockResolvedValue(undefined);
     const park = jest.fn().mockResolvedValue(undefined);
     const svc = new DispatchSchedulerService(
       engine(leg),
       engine(release),
       engine(assign),
+      engine(charge),
       engine(park),
     );
 
@@ -41,6 +43,7 @@ describe('DispatchSchedulerService single-flight', () => {
     expect(leg).toHaveBeenCalledTimes(1);
     expect(release).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledTimes(1);
+    expect(charge).toHaveBeenCalledTimes(1);
     expect(park).toHaveBeenCalledTimes(1);
   });
 
@@ -50,6 +53,7 @@ describe('DispatchSchedulerService single-flight', () => {
     const ok = () => jest.fn().mockResolvedValue(undefined);
     const svc = new DispatchSchedulerService(
       engine(leg),
+      engine(ok()),
       engine(ok()),
       engine(ok()),
       engine(ok()),

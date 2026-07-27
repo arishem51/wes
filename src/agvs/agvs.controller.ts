@@ -56,6 +56,30 @@ export class AgvsController {
     return this.service.disconnect(id);
   }
 
+  @Post(':id/enable')
+  @HttpCode(200)
+  enable(@Param('id') id: string) {
+    return this.service.enable(id);
+  }
+
+  @Post(':id/disable')
+  @HttpCode(200)
+  disable(@Param('id') id: string) {
+    return this.service.disable(id);
+  }
+
+  @Post(':id/ignore')
+  @HttpCode(200)
+  ignore(@Param('id') id: string) {
+    return this.service.ignore(id);
+  }
+
+  @Post(':id/restore')
+  @HttpCode(200)
+  restore(@Param('id') id: string) {
+    return this.service.restore(id);
+  }
+
   @Post(':id/position')
   @HttpCode(204)
   setPosition(@Param('id') id: string, @Body('pointName') pointName: string) {

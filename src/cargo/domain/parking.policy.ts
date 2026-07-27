@@ -27,6 +27,7 @@ export interface ParkVehicleCandidate {
   readonly onOrder: boolean;
   /** Carrying a PICKING_UP/DELIVERING cargo task. */
   readonly hasActiveTask: boolean;
+  readonly belowCritical: boolean;
   /** openTCS point the vehicle currently occupies, or null if not localized. */
   readonly currentPosition: string | null;
 }
@@ -52,6 +53,7 @@ export function needsParking(
     c.idleAvailable &&
     !c.onOrder &&
     !c.hasActiveTask &&
+    !c.belowCritical &&
     c.currentPosition !== null &&
     !parkingPointNames.has(c.currentPosition)
   );

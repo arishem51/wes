@@ -1,11 +1,9 @@
 import {
-  DEFAULT_AGE_HORIZON_MS,
   WEIGHT_MAX,
   batteryCost,
   clamp01,
   clampWeight,
-  positiveOr,
-  selectionScore,
+  nonNegativeOr,
 } from './dispatch-cost';
 
 describe('dispatch-cost', () => {
@@ -37,14 +35,14 @@ describe('dispatch-cost', () => {
     });
   });
 
-  describe('positiveOr', () => {
+  describe('nonNegativeOr', () => {
     it.each([
       [5, 9, 5],
-      [0, 9, 9],
+      [0, 9, 0],
       [-2, 9, 9],
       [Number.NaN, 9, 9],
-    ])('positiveOr(%p, %p) = %p', (value, fallback, expected) => {
-      expect(positiveOr(value, fallback)).toBe(expected);
+    ])('nonNegativeOr(%p, %p) = %p', (value, fallback, expected) => {
+      expect(nonNegativeOr(value, fallback)).toBe(expected);
     });
   });
 
@@ -82,48 +80,6 @@ describe('dispatch-cost', () => {
           expect(batteryCost(777, energy, weight)).toBeGreaterThanOrEqual(777);
         }
       }
-    });
-  });
-
-  describe('selectionScore', () => {
-    it('reduces to pure age (FIFO) when the urgency weight is 0', () => {
-      const older = selectionScore(120_000, 5, 0);
-      const newer = selectionScore(60_000, 5, 0);
-      expect(older).toBeGreaterThan(newer);
-      expect(selectionScore(60_000, 99, 0)).toBe(selectionScore(60_000, 0, 0));
-    });
-
-    it('ranks a lane-blocking task above a same-age non-blocking one', () => {
-      const blocking = selectionScore(60_000, 3, 1);
-      const plain = selectionScore(60_000, 0, 1);
-      expect(blocking).toBeGreaterThan(plain);
-    });
-
-    it('caps the blocking contribution at blockMax', () => {
-      expect(selectionScore(0, 5, 1, DEFAULT_AGE_HORIZON_MS, 5)).toBe(
-        selectionScore(0, 50, 1, DEFAULT_AGE_HORIZON_MS, 5),
-      );
-    });
-
-    it('lets a sufficiently old task overtake any blocking-heavy newcomer (starvation guard)', () => {
-      const maxUrgencyNewcomer = selectionScore(0, 999, WEIGHT_MAX);
-      const veryOldPlainTask = selectionScore(
-        DEFAULT_AGE_HORIZON_MS * (WEIGHT_MAX + 1),
-        0,
-        WEIGHT_MAX,
-      );
-      expect(veryOldPlainTask).toBeGreaterThan(maxUrgencyNewcomer);
-    });
-
-    it('falls back to defaults on invalid horizon or blockMax', () => {
-      const score = selectionScore(60_000, 2, 1, 0, -1);
-      expect(Number.isFinite(score)).toBe(true);
-      expect(score).toBe(selectionScore(60_000, 2, 1));
-    });
-
-    it('treats negative or non-finite age as 0', () => {
-      expect(selectionScore(-5, 0, 0)).toBe(0);
-      expect(selectionScore(Number.NaN, 0, 0)).toBe(0);
     });
   });
 });

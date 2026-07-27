@@ -219,7 +219,7 @@ CREATED ──► READY_TO_ASSIGN ──► PICKING_UP ──► DELIVERING ─�
   ReleaseEngine     AssignmentEngine    saga          saga
   passes dep →      picks AGV, creates  TO1 FINISHED  TO3 FINISHED →
   READY else        TO1 (PICK_UP)       → create TO2  DELIVERY_COMPLETED
-  BLOCKED                               (approach NOP) + cargo = DELIVERED
+  BLOCKED                               (approach MOVE) + cargo = DELIVERED
                                         → DELIVERING.
                                         TO2 FINISHED → create TO3
                                         (DROP_OFF), stays DELIVERING.
@@ -231,9 +231,10 @@ Terminal (no exits): DELIVERY_COMPLETED, CANCELLED, FAILED
 ```
 
 There are **three** openTCS transport orders per task: `TO1` = pick-up, `TO2` =
-approach (a NOP move to the drop-off zone's approach location), `TO3` = drop-off.
-The order-name prefix (`TO1-`/`TO2-`/`TO3-`) tells the saga which leg finished;
-the names are stored in `task.metadata.{to1Name,to2Name,to3Name}`.
+approach (a `MOVE` to a specific feeder-head point, with no load operation),
+`TO3` = drop-off. The order-name prefix (`TO1-`/`TO2-`/`TO3-`) tells the saga
+which leg finished; the names are stored in
+`task.metadata.{to1Name,to2Name,to3Name}`.
 
 **Drop-off slot is late-bound.** Creating a request only *reserves a seat* in the
 destination zone (`cargo.destination_zone_id`, capacity-checked against the zone's
@@ -242,9 +243,10 @@ committed at the **TO2 barrier** (`TransportTaskSaga.commitDropoffSlot` →
 `DeliverySlotEngine.findSlot`), under a per-zone advisory lock, when the vehicle is
 parked at the zone's approach head and occupancy reflects physical reality — this
 keeps the fill order correct on one-way lanes. `TO1` (pick-up) therefore only needs
-the source location. The zone's parent `zone_<id>` location links to the zone's
-**feeder points** (aisle heads), not every member, so the NOP stops at the
-entry-most head from which all slots stay forward-reachable.
+the source location. TO2's target is chosen at dispatch:
+`ApproachPointService.pickFor(zone, vehicle)` returns the **nearest reachable
+feeder-head point** (an aisle head from which all slots stay forward-reachable),
+and TO2 is a `MOVE` to that point — no `zone_<id>` approach location is involved.
 
 ### 4.3 State machine interface
 
@@ -352,6 +354,24 @@ vehicle name are ambiguous, so that name is excluded from the cycle and logged.
 > respects aisles/walls. The Hungarian solver is a pure TypeScript domain
 > function (`cargo/domain/hungarian.ts`) with no external runtime dependency.
 
+**Battery-weighted cost spans the loaded approach leg.** With an active
+`dispatch_policies` row carrying `weight_battery > 0`, a reachable pair costs
+`(d_pickup + d_approach) × (1 + weight_battery × (1 − energyLevel/100))`, where
+`d_approach` is the distance from the cargo's source point to the cheapest
+approach point of its destination zone (`ApproachPointService.feederPointsOf`,
+same feeder the saga commits at the TO2 barrier — §6.3). The destination *zone*
+is known at request creation; only the concrete slot waits for TO2. The
+drop-off leg is deliberately excluded: its point is unknown until that barrier.
+
+`d_approach` never enters the unweighted cost, and must not be added there: it
+is constant across a matrix row, and adding a constant to a row cannot change
+which pairing the solver selects. It changes the outcome only once multiplied
+by the per-vehicle battery factor, which is what makes the penalty track the
+whole job instead of the empty run to the source. With `weight_battery = 0`
+(including no active policy row) cost is the raw pickup distance and the term
+is inert. The `distance` recorded on the assignment stays the raw distance to
+the source so deadhead measurements remain comparable across settings.
+
 ### 6.2 Battery management
 - Battery level is read from `KernelVehicleState.energyLevel` (FMS telemetry); WES
   never writes battery level to `AgvEntity`.
@@ -377,20 +397,66 @@ preempt a park order the instant cargo arrives.
 
 **Park on idle** — `ParkingEngineService`, at the tail of the flush
 (leg-reconcile → release → assign → **park**). A vehicle idle with no cargo work
-for `PARK_IDLE_DELAY_MS` (default 10s) is sent to the nearest free `PARK_POSITION`
-via a `MOVE` order named `PARK-<uuid>` (`PARK_ORDER_PREFIX`, tagged `wes:leg=PARK`;
-the listener's leg gate ignores it so park orders never reach the saga). Rules are
-pure in `cargo/domain/parking.policy.ts` (`needsParking`, `pickParkingPoint`).
-Suppressed while any `READY_TO_ASSIGN` task waits (don't park then preempt). The
-`idleSince` clock and in-flight point reservations (`parkTargets`, which stop two
-vehicles targeting one point) are in-RAM — on restart they simply re-arm.
+is sent to the nearest free `PARK_POSITION` via a `MOVE` order named `PARK-<uuid>`
+(`PARK_ORDER_PREFIX`, tagged `wes:leg=PARK`; the listener's leg gate ignores it so
+park orders never reach the saga). Rules are pure in
+`cargo/domain/parking.policy.ts` (`needsParking`, `pickParkingPoint`).
+Suppressed while any `READY_TO_ASSIGN` task waits (don't park then preempt).
+
+**Order names carry their target** — `buildOrderName` / `destinationFromOrderName`
+(`cargo/domain/transport-order-name.ts`) format *every* WES-issued order as
+`<TYPE>-<vehicle>-<destination>-<uuid>`, where TYPE is one of PARK, CHARGE,
+PICKUP, APPROACH, DROPOFF. The destination therefore travels inside the name the
+kernel stores and echoes back on the vehicle stream, so WES needs no local
+order→destination table and nothing to rebuild after a restart. Parsing is
+unambiguous because the reader already knows the vehicle: strip
+`<TYPE>-<vehicle>-` from the front and the fixed-width uuid from the back. (The one
+collision left is a fleet where one vehicle name is another plus a hyphenated
+suffix — `V1` and `V1-spare`. Fixed-width names avoid it.)
+
+The destination segment is **whatever was sent to the kernel**: a point for PARK
+and APPROACH, a location for PICKUP, DROPOFF and CHARGE — those three must target
+a Location because openTCS binds the load/unload/charge operation to one. Deriving
+a point for them would cost a `findPointForLocation` round-trip per order and is
+ambiguous when a location links several points.
+
+**A park point is unavailable** when, reading the vehicle snapshot alone
+(`unavailableParkPoints`): a vehicle stands on it, or a vehicle is processing a
+park order whose name decodes to it. Both facts come from the *same* snapshot
+object, so the handoff from "en route" to "arrived" cannot fall through a gap the
+way two independent streams could. **No kernel call is made per flush** — the
+unbounded `/transportOrders` list is never pulled (its history grows without
+bound and the API offers no state filter, only `intendedVehicle`).
+
+`PointReservationStore` (`cargo/point-reservation.store.ts`) now covers only the
+window between issuing an order and the kernel handing it to the vehicle, during
+which `transportOrder` is still null and the name is invisible. It is shared by
+both engines — the charge engine's no-slot fallback and its release-from-charger
+move also target park points and use the same names. `reconcile()` drops an entry
+the moment the snapshot shows the vehicle on any order; from then on the name
+carries the reservation. It also stops the same vehicle being issued a second park
+order before the first is assigned. **TODO:** an order that dies before assignment
+leaves its entry stuck and that vehicle never parks again — needs a timeout.
+
+Charge points are excluded from the park pool so parking never lands on a charger.
+The `idleSince` clock and the ledger are in-RAM — on restart they simply re-arm.
+
+`PARK_IDLE_DELAY_MS` (default **0**) holds a vehicle back before parking. 0 means
+it parks on the first flush that sees it idle, which is the intended behaviour:
+assign has already run this cycle and declined the vehicle, so waiting cannot win
+it work, while an idle vehicle left on the mainline holds resources other vehicles
+need. Nothing is lost by leaving early — a vehicle en route to park stays fully
+dispatchable via **Preempt** below. Raise it only to damp park/preempt churn; note
+the delay is quantised by the flush cadence (heartbeat + debounce, ~5s), so any
+value inside one interval costs a whole extra cycle.
 
 **Preempt** — a vehicle en route to a park order is an eligible candidate
 (`preemptibleParking`), recognized by the `PARK-` name prefix WES owns (never
 inferred from "processing + no task", which could misclassify a cargo order whose
 task is momentarily untracked). When picked, `assign()` withdraws the park order
-before creating TO1; the `parkTargets` reservation frees itself once the vehicle
-leaves that order.
+before creating TO1; the vehicle then shows the cargo order in its snapshot, which
+both clears any `PointReservationStore` entry and stops the withdrawn park order's
+name from reserving its point.
 
 **Lost-event reconcile** — the in-process bus can drop a frame (restart,
 hot-reload, network blip), so **correctness never depends on an event**. Two
