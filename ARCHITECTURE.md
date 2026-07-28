@@ -390,6 +390,13 @@ The anti-congestion gate — the reason this product exists.
   `READY_TO_ASSIGN`; fail → `BLOCKED` with a reason on `metadata`.
 - BLOCKED tasks are re-evaluated on `@OnEvent('transport-task.completed')` (the
   blocker in front was delivered), moving them to `READY_TO_ASSIGN` when freed.
+- The gate is **release-time only**. A task already `PICKING_UP` is never
+  preempted, even when a later cargo makes it fail the rule: withdrawing an
+  in-flight order halts the vehicle wherever it stands, and inside a one-way lane
+  (`maxReverseVelocity=0`) it can neither reverse nor be rerouted — openTCS logs
+  `can't be rerouted when its transport order was withdrawn` — so it blocks every
+  vehicle queued behind it until the fleet drains. Serialising a lane belongs to
+  the kernel (`FmsSingleVehicleBlockModule` goal locking), not to this gate.
 
 ### 6.4 Idle parking, preemption & lost-event reconcile (WES-owned)
 openTCS's own `parkIdleVehicles` is left **off** — WES owns parking so it can

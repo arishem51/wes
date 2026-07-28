@@ -591,7 +591,10 @@ export class KernelApiService {
         { timeout: 5_000 },
       );
       return (res.data as { state?: string })?.state ?? null;
-    } catch {
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        return 'NOT_FOUND';
+      }
       return null;
     }
   }

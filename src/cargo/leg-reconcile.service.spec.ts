@@ -158,6 +158,42 @@ describe('LegReconcileService', () => {
     expect(transportTask.changeStatus).not.toHaveBeenCalled();
   });
 
+  it('re-fires FINISHED when a completed order was purged (NOT_FOUND, aged past grace)', async () => {
+    const { svc, taskRepo, store, kernel, emitter } = setup();
+    const t = task(TaskStatus.DELIVERING, {
+      assignedVehicleName: 'V1',
+      to3Name: 'DROPOFF-1',
+    });
+    (t as { updatedAt: Date }).updatedAt = new Date(Date.now() - 60_000);
+    taskRepo.find.mockResolvedValue([t]);
+    store.get.mockReturnValue({ transportOrder: null });
+    kernel.getTransportOrderState.mockResolvedValue('NOT_FOUND');
+
+    await svc.run();
+
+    expect(emitter.emit).toHaveBeenCalledWith(
+      FMS_EVENTS.TRANSPORT_ORDER_FINISHED,
+      expect.objectContaining({ orderName: 'DROPOFF-1', leg: 'DROPOFF' }),
+    );
+  });
+
+  it('leaves a NOT_FOUND task alone until it ages past the grace', async () => {
+    const { svc, taskRepo, store, kernel, emitter, transportTask } = setup();
+    const t = task(TaskStatus.DELIVERING, {
+      assignedVehicleName: 'V1',
+      to3Name: 'DROPOFF-1',
+    });
+    (t as { updatedAt: Date }).updatedAt = new Date();
+    taskRepo.find.mockResolvedValue([t]);
+    store.get.mockReturnValue({ transportOrder: null });
+    kernel.getTransportOrderState.mockResolvedValue('NOT_FOUND');
+
+    await svc.run();
+
+    expect(emitter.emit).not.toHaveBeenCalled();
+    expect(transportTask.changeStatus).not.toHaveBeenCalled();
+  });
+
   it('skips a task with no recorded order for its leg', async () => {
     const { svc, taskRepo, kernel, emitter } = setup();
     taskRepo.find.mockResolvedValue([

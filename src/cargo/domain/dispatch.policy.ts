@@ -20,6 +20,7 @@ export function isEligible(c: VehicleCandidate): boolean {
     !c.ignored &&
     (c.available || c.preemptibleParking) &&
     !c.hasActiveTask &&
+    c.currentPosition !== null &&
     c.energyLevel > c.criticalThreshold
   );
 }

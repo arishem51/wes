@@ -19,7 +19,7 @@ const candidate = (
   parkOrderName: null,
   energyLevel: 80,
   criticalThreshold: 20,
-  currentPosition: null,
+  currentPosition: '1000',
   hasActiveTask: false,
   ...overrides,
 });
@@ -34,6 +34,7 @@ describe('dispatch.policy', () => {
       ['dispatch disabled', { dispatchEnabled: false }],
       ['ignored', { ignored: true }],
       ['not available in FMS', { available: false }],
+      ['no known position (ghost after kernel restart)', { currentPosition: null }],
       ['already has an active task', { hasActiveTask: true }],
       ['battery at threshold', { energyLevel: 20, criticalThreshold: 20 }],
       ['battery below threshold', { energyLevel: 15, criticalThreshold: 20 }],
@@ -259,7 +260,7 @@ describe('dispatch.policy', () => {
         [candidate({ name: 'V2' }), candidate({ name: 'V1' })],
         [
           { taskId: 'T1', distanceByPoint: null },
-          { taskId: 'T2', distanceByPoint: new Map() },
+          { taskId: 'T2', distanceByPoint: null },
         ],
       );
 

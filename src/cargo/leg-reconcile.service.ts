@@ -16,6 +16,9 @@ import {
 } from './domain/events';
 
 const LIVE_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
+const PURGED_ORDER_GRACE_MS = Number(
+  process.env.LEG_RECONCILE_PURGE_GRACE_MS ?? 15_000,
+);
 
 /**
  * Level-triggered backstop for the transport-order SSE stream, mirroring the
@@ -74,18 +77,9 @@ export class LegReconcileService {
       expected.orderName,
     );
     if (state === 'FINISHED') {
-      this.logger.warn(
-        `Leg reconcile: task ${task.id} ${expected.leg} order ${expected.orderName} FINISHED but unadvanced — re-firing`,
-      );
-      // Idempotent: the saga bails if the next leg already exists.
-      this.eventEmitter.emit(
-        FMS_EVENTS.TRANSPORT_ORDER_FINISHED,
-        new FmsTransportOrderFinishedEvent(
-          expected.orderName,
-          task.id,
-          expected.leg,
-        ),
-      );
+      this.refireFinished(task, expected, 'FINISHED but unadvanced');
+    } else if (state === 'NOT_FOUND' && this.agedPastPurgeGrace(task)) {
+      this.refireFinished(task, expected, 'purged after completion');
     } else if (state === 'FAILED' || state === 'UNROUTABLE') {
       this.logger.warn(
         `Leg reconcile: task ${task.id} ${expected.leg} order ${state} — failing task`,
@@ -95,8 +89,35 @@ export class LegReconcileService {
         reason: `${expected.leg} order ${state}`,
       });
     }
-    // RAW/DISPATCHABLE/BEING_PROCESSED/WITHDRAWN/null → not a settled outcome
-    // yet; leave the task alone and re-check next cycle.
+    // RAW/DISPATCHABLE/BEING_PROCESSED/WITHDRAWN/recent-NOT_FOUND/null → not a
+    // settled outcome yet; leave the task alone and re-check next cycle.
+  }
+
+  private refireFinished(
+    task: TransportTaskEntity,
+    expected: { leg: TaskLeg; orderName: string },
+    reason: string,
+  ): void {
+    this.logger.warn(
+      `Leg reconcile: task ${task.id} ${expected.leg} order ${expected.orderName} ${reason} — re-firing`,
+    );
+    // Idempotent: the saga bails if the next leg already exists.
+    this.eventEmitter.emit(
+      FMS_EVENTS.TRANSPORT_ORDER_FINISHED,
+      new FmsTransportOrderFinishedEvent(
+        expected.orderName,
+        task.id,
+        expected.leg,
+      ),
+    );
+  }
+
+  private agedPastPurgeGrace(task: TransportTaskEntity): boolean {
+    const lastChange = task.updatedAt?.getTime();
+    return (
+      lastChange === undefined ||
+      Date.now() - lastChange >= PURGED_ORDER_GRACE_MS
+    );
   }
 
   /**

@@ -273,7 +273,11 @@ export class ChargeEngineService {
       const orderState = await this.kernelApi.getTransportOrderState(
         target.order,
       );
-      if (orderState === null || TERMINAL_ORDER_STATES.has(orderState)) {
+      if (
+        orderState === null ||
+        orderState === 'NOT_FOUND' ||
+        TERMINAL_ORDER_STATES.has(orderState)
+      ) {
         this.chargeTargets.delete(vehicleName);
       }
     }
