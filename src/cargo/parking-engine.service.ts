@@ -155,6 +155,7 @@ export class ParkingEngineService {
       hasActiveTask: busy.has(agv.name),
       belowCritical:
         fms != null && fms.energyLevel <= agv.criticalBatteryThreshold,
+      charging: fms?.state === 'CHARGING',
       currentPosition: fms?.currentPosition ?? null,
     };
   }

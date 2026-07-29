@@ -11,6 +11,7 @@ export interface ParkVehicleCandidate {
   readonly onOrder: boolean;
   readonly hasActiveTask: boolean;
   readonly belowCritical: boolean;
+  readonly charging: boolean;
   readonly currentPosition: string | null;
 }
 
@@ -27,6 +28,7 @@ export function needsParking(
     !c.onOrder &&
     !c.hasActiveTask &&
     !c.belowCritical &&
+    !c.charging &&
     c.currentPosition !== null &&
     !parkingPointNames.has(c.currentPosition)
   );
