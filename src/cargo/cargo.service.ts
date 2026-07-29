@@ -12,6 +12,7 @@ import {
 } from './entities/transport-task.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { TransportTaskService } from './transport-task.service';
+import { LaneSafetyService } from './lane-safety.service';
 import { TransportTaskStateMachine } from './domain/transport-task.state-machine';
 import {
   ZoneEntity,
@@ -38,6 +39,7 @@ export class CargoService {
     private readonly dataSource: DataSource,
     private readonly kernelApi: KernelApiService,
     private readonly transportTask: TransportTaskService,
+    private readonly laneSafety: LaneSafetyService,
   ) {}
 
   async create(dto: CreateCargoDto, userId: string): Promise<CargoEntity> {
@@ -76,19 +78,17 @@ export class CargoService {
       );
     }
 
-    // Pickup zone the source belongs to (if any) — drives the row-dependency
-    // rule at release time. Null when the source point isn't in a PICKUP zone.
     const sourceZoneId = await this.resolvePickupZoneId(pickupLocationName);
 
-    // Reserve a *seat* (capacity) in the drop-off zone now, but defer choosing
-    // the concrete slot to the TO2 barrier (TransportTaskSaga.commitDropoffSlot),
-    // when occupancy reflects the vehicle's actual arrival — required for correct
-    // fill order on one-way lanes. A reserved cargo has destinationZoneId set and
-    // destinationLocationName still null.
-    //
-    // The capacity check + insert run under the SAME per-zone advisory lock as
-    // the barrier commit, so concurrent requests can't both pass the check and
-    // over-admit past the zone's capacity.
+    await this.assertZoneHasRoom(this.cargoRepo, zone);
+
+    if (sourceZoneId) {
+      await this.laneSafety.clearLaneForNewCargo(
+        sourceZoneId,
+        pickupLocationName,
+      );
+    }
+
     const { saved, task } = await this.dataSource.transaction(
       async (manager) => {
         await manager.query(
@@ -96,17 +96,7 @@ export class CargoService {
           [zone.id],
         );
         const cargoRepo = manager.getRepository(CargoEntity);
-        const occupied = await cargoRepo.count({
-          where: {
-            destinationZoneId: zone.id,
-            status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]),
-          },
-        });
-        if (occupied >= zone.members.length) {
-          throw new BadRequestException(
-            'Khu trả hàng đã đầy, không còn vị trí trống.',
-          );
-        }
+        await this.assertZoneHasRoom(cargoRepo, zone);
 
         const saved = await cargoRepo.save(
           cargoRepo.create({
@@ -200,7 +190,23 @@ export class CargoService {
     return this.taskRepo.findOne({ where: { cargoId } });
   }
 
-  /** The active PICKUP zone whose members include this pickup location, if any. */
+  private async assertZoneHasRoom(
+    cargoRepo: Repository<CargoEntity>,
+    zone: ZoneEntity,
+  ): Promise<void> {
+    const occupied = await cargoRepo.count({
+      where: {
+        destinationZoneId: zone.id,
+        status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]),
+      },
+    });
+    if (occupied >= zone.members.length) {
+      throw new BadRequestException(
+        'Khu trả hàng đã đầy, không còn vị trí trống.',
+      );
+    }
+  }
+
   private async resolvePickupZoneId(
     pickupLocationName: string,
   ): Promise<string | null> {

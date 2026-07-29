@@ -15,6 +15,7 @@ const candidate = (
   onOrder: false,
   hasActiveTask: false,
   belowCritical: false,
+  charging: false,
   currentPosition: 'P-lane',
   ...overrides,
 });
@@ -38,6 +39,7 @@ describe('parking.policy', () => {
       ['already on an order', { onOrder: true }],
       ['carrying an active task', { hasActiveTask: true }],
       ['below the critical threshold', { belowCritical: true }],
+      ['still charging', { charging: true }],
       ['not localized', { currentPosition: null }],
       ['already standing on a park point', { currentPosition: 'PARK-1' }],
     ])('rejects when %s', (_label, overrides) => {

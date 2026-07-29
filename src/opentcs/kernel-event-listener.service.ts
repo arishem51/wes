@@ -302,9 +302,6 @@ export class KernelEventListenerService
       previous?.integrationLevel !== incoming.integrationLevel;
 
     if (nowAvailable && stateChanged) {
-      this.logger.log(
-        `Vehicle "${incoming.name}" available (${previous?.procState ?? 'unknown'} → ${incoming.procState})`,
-      );
       this.eventEmitter.emit(
         FMS_EVENTS.VEHICLE_AVAILABLE,
         new FmsVehicleAvailableEvent(incoming.name),

@@ -8,9 +8,9 @@ import { TransportTaskEntity } from './entities/transport-task.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelVehicleState } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
+import { ParkClaimStore } from './park-claim.store';
 import { RoutingService } from './routing.service';
 import { activeCargoVehicleNames } from './task-queries';
-import { PointReservationStore } from './point-reservation.store';
 import { shortestDistancesFrom } from './domain/routing';
 import { ParkingPoint, pickParkingPoint } from './domain/parking.policy';
 import {
@@ -55,7 +55,7 @@ export class ChargeEngineService {
     private readonly kernelApi: KernelApiService,
     private readonly vehicleStore: VehicleStateStore,
     private readonly routing: RoutingService,
-    private readonly reservations: PointReservationStore,
+    private readonly parkClaims: ParkClaimStore,
   ) {
     const parsed = Number(process.env.CHARGE_FULL_PCT);
     this.fullChargePct =
@@ -73,7 +73,6 @@ export class ChargeEngineService {
       for (const point of loc.points) chargePoints.add(point);
     }
 
-    this.reservations.reconcile();
     await this.reconcileChargeTargets(chargePoints);
 
     const agvs = await this.agvRepo.find();
@@ -164,7 +163,6 @@ export class ChargeEngineService {
       const cand = this.toCandidate(agv, this.vehicleStore.get(agv.name), busy);
       if (!needsCharging(cand, chargePoints)) continue;
       if (this.hasInFlightCharge(agv.name, chargePoints)) continue;
-      if (this.reservations.has(agv.name)) continue;
       if (cand.currentPosition == null) continue;
       readyToCharge.push({ name: agv.name, position: cand.currentPosition });
     }
@@ -173,8 +171,16 @@ export class ChargeEngineService {
     const freeSlots = this.freeSlotsByLocation(locations, chargePoints);
     const graph = await this.routing.getRoadGraph();
     const parkExcluded = this.occupiedPoints(agvs, nonChargeParks);
-    for (const point of this.reservations.reservedPoints()) {
+    for (const point of this.parkClaims.claimedPoints()) {
       parkExcluded.add(point);
+    }
+
+    const canPark = this.parkClaims.isReady();
+    const parkClaimedVehicles = this.parkClaims.claimedVehicles();
+    if (!canPark) {
+      this.logger.warn(
+        'Park claims not rehydrated from the kernel — charging still dispatches, the no-slot park fallback is skipped',
+      );
     }
 
     for (const { name, position } of readyToCharge) {
@@ -189,7 +195,9 @@ export class ChargeEngineService {
         continue;
       }
 
+      if (!canPark) continue;
       if (parkPointNames.has(position)) continue;
+      if (parkClaimedVehicles.has(name)) continue;
       const point = pickParkingPoint(nonChargeParks, distances, parkExcluded);
       if (!point) {
         this.logger.debug(
@@ -218,9 +226,12 @@ export class ChargeEngineService {
         [{ locationName: pointName, operation: 'MOVE' }],
         vehicleName,
         { [ORDER_PROP.LEG]: PARK_LEG },
+        { dispensable: true },
       );
-      this.reservations.reserve(vehicleName, pointName, orderName);
-      this.logger.log(`No charge slot — parking ${vehicleName} → ${pointName}`);
+      this.parkClaims.claim(vehicleName, pointName, orderName);
+      this.logger.log(
+        `Charge fallback park: ${vehicleName} → ${pointName} (${orderName})`,
+      );
     } catch (err) {
       this.logger.warn(
         `Failed to park ${vehicleName}: ${(err as Error).message}`,

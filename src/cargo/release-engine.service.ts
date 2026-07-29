@@ -8,17 +8,6 @@ import {
 import { TransportTaskService } from './transport-task.service';
 import { PickupDependencyService } from './pickup-dependency.service';
 
-/**
- * Decides which transport tasks may proceed toward assignment, enforcing the
- * pickup row-dependency rule (WF-02 / ARCHITECTURE §6.3): a cargo behind an
- * un-picked cargo in the same lane must wait.
- *
- * The gate is applied before a vehicle is committed. A task already PICKING_UP
- * is left to finish: withdrawing its order halts the vehicle wherever it stands,
- * and inside a one-way lane it can neither reverse nor be rerouted, so it blocks
- * every vehicle queued behind it. Serialising a lane is the kernel's job, via
- * the goal locking in FmsSingleVehicleBlockModule.
- */
 @Injectable()
 export class ReleaseEngineService {
   private readonly logger = new Logger(ReleaseEngineService.name);
@@ -68,8 +57,6 @@ export class ReleaseEngineService {
         this.logger.log(`Task ${task.id} → BLOCKED (${reason})`);
         break;
       case TaskStatus.BLOCKED:
-        // Already blocked; refresh the reason only if it changed (avoids a
-        // redundant write — and a needless event — on every dispatch trigger).
         if ((task.metadata?.blockedReason ?? null) !== (reason ?? null)) {
           task.metadata = {
             ...task.metadata,
@@ -84,8 +71,6 @@ export class ReleaseEngineService {
   }
 
   private async unblock(task: TransportTaskEntity): Promise<void> {
-    // Only tasks still waiting to be released are promoted; in-flight ones
-    // (READY_TO_ASSIGN already picked up by assignment, PICKING_UP) are left.
     if (
       task.status !== TaskStatus.CREATED &&
       task.status !== TaskStatus.BLOCKED

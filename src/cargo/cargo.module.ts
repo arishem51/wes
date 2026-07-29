@@ -15,13 +15,14 @@ import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
 import { ChargeEngineService } from './charge-engine.service';
 import { ParkingEngineService } from './parking-engine.service';
-import { PointReservationStore } from './point-reservation.store';
+import { ParkClaimStore } from './park-claim.store';
 import { LegReconcileService } from './leg-reconcile.service';
 import { TransportTaskSaga } from './transport-task.saga';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
 import { ZoneGeometryService } from './zone-geometry.service';
 import { PickupDependencyService } from './pickup-dependency.service';
+import { LaneSafetyService } from './lane-safety.service';
 import { RoutingService } from './routing.service';
 import { ApproachPointService } from './approach-point.service';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
@@ -44,14 +45,15 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     DeliverySlotEngine,
     ZoneGeometryService,
     PickupDependencyService,
+    LaneSafetyService,
     RoutingService,
     DispatchPolicyService,
     ApproachPointService,
+    ParkClaimStore,
     ReleaseEngineService,
     AssignmentEngineService,
     ChargeEngineService,
     ParkingEngineService,
-    PointReservationStore,
     LegReconcileService,
     DispatchSchedulerService,
     TransportTaskSaga,

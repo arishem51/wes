@@ -57,14 +57,13 @@ function isFmsDispatchable(state: KernelVehicleState | undefined): boolean {
   );
 }
 
-function preemptibleParkOrderName(
-  state: KernelVehicleState | undefined,
-): string | null {
-  return state?.procState === 'PROCESSING_ORDER' &&
+function isEnRouteToPark(state: KernelVehicleState | undefined): boolean {
+  if (!state) return false;
+  return (
+    state.procState === 'PROCESSING_ORDER' &&
     state.integrationLevel === 'TO_BE_UTILIZED' &&
-    state.transportOrder?.startsWith(PARK_ORDER_PREFIX)
-    ? state.transportOrder
-    : null;
+    (state.transportOrder?.startsWith(PARK_ORDER_PREFIX) ?? false)
+  );
 }
 
 @Injectable()
@@ -320,7 +319,6 @@ export class AssignmentEngineService {
           context.cargo,
           vehicle.name,
           distance,
-          vehicle.parkOrderName,
           {
             matcher: this.matcher,
             batchSize: assignments.length,
@@ -368,16 +366,12 @@ export class AssignmentEngineService {
     return uniqueAgvs.map((agv) => {
       const fms = this.vehicleStore.get(agv.name);
       const hasActiveTask = busy.has(agv.name);
-      const parkOrderName = hasActiveTask
-        ? null
-        : preemptibleParkOrderName(fms);
       return {
         name: agv.name,
         dispatchEnabled: agv.isDispatchEnabled,
         ignored: agv.isIgnored,
         available: isFmsDispatchable(fms),
-        preemptibleParking: parkOrderName !== null,
-        parkOrderName,
+        preemptibleParking: isEnRouteToPark(fms),
         energyLevel: fms?.energyLevel ?? 0,
         criticalThreshold: agv.criticalBatteryThreshold,
         currentPosition: fms?.currentPosition ?? null,
@@ -405,26 +399,11 @@ export class AssignmentEngineService {
     cargo: CargoEntity | null,
     vehicleName: string,
     distanceToSource: number | null,
-    parkOrderName: string | null,
     measurement: DispatchMeasurement,
   ): Promise<boolean> {
     if (!cargo?.sourcePickupLocationName) {
       this.logger.warn(`Task ${task.id} missing pickup location — skipping`);
       return false;
-    }
-
-    if (parkOrderName) {
-      try {
-        await this.kernelApi.withdrawTransportOrder(parkOrderName);
-        this.logger.log(
-          `Preempting park order ${parkOrderName} on ${vehicleName} for task ${task.id}`,
-        );
-      } catch (err) {
-        this.logger.warn(
-          `Failed to withdraw park order ${parkOrderName} on ${vehicleName}: ${(err as Error).message}`,
-        );
-        return false;
-      }
     }
 
     const to1Name = buildOrderName(

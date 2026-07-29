@@ -7,7 +7,6 @@ export interface VehicleCandidate {
   readonly ignored: boolean;
   readonly available: boolean;
   readonly preemptibleParking: boolean;
-  readonly parkOrderName: string | null;
   readonly energyLevel: number;
   readonly criticalThreshold: number;
   readonly currentPosition: string | null;

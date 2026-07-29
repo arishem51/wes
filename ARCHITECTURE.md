@@ -189,7 +189,7 @@ DispatchSchedulerService   ← @OnEvent(['transport-task.created',
                                         'transport-task.status-changed',
                                         'fms.vehicle.available'])
                              debounced (1.5s) flush:
-                             leg-reconcile → release → assign → park
+                             park-claims → leg-reconcile → release → assign → park
 ```
 
 No service calls `DispatchSchedulerService.schedule()` directly. The flush is
@@ -390,89 +390,157 @@ The anti-congestion gate — the reason this product exists.
   `READY_TO_ASSIGN`; fail → `BLOCKED` with a reason on `metadata`.
 - BLOCKED tasks are re-evaluated on `@OnEvent('transport-task.completed')` (the
   blocker in front was delivered), moving them to `READY_TO_ASSIGN` when freed.
-- The gate is **release-time only**. A task already `PICKING_UP` is never
-  preempted, even when a later cargo makes it fail the rule: withdrawing an
-  in-flight order halts the vehicle wherever it stands, and inside a one-way lane
-  (`maxReverseVelocity=0`) it can neither reverse nor be rerouted — openTCS logs
-  `can't be rerouted when its transport order was withdrawn` — so it blocks every
-  vehicle queued behind it until the fleet drains. Serialising a lane belongs to
-  the kernel (`FmsSingleVehicleBlockModule` goal locking), not to this gate.
+- `ReleaseEngineService` never touches a `PICKING_UP` task: halting a vehicle
+  already sent into a lane is decided once, at cargo-create time, by
+  `LaneSafetyService`. `PICKING_UP` still counts as *at source* in
+  `PickupDependencyService`, so a cargo being picked keeps blocking the tasks
+  behind it.
 
-### 6.4 Idle parking, preemption & lost-event reconcile (WES-owned)
-openTCS's own `parkIdleVehicles` is left **off** — WES owns parking so it can
-preempt a park order the instant cargo arrives.
+**Lane safety at cargo create** — `CargoService.create()` → `LaneSafetyService.
+clearLaneForNewCargo()`. Cargo is not a kernel resource, so nothing below WES
+stops a new box in a shallow slot from trapping a vehicle already ordered to a
+deeper slot of the same lane. For every `PICKING_UP` task whose cargo is deeper
+in that lane, the guard reads the vehicle's **`allocatedResources`** (points
+only — a `A --- B` path resource is ignored) against the lane's point set:
 
-**Park on idle** — `ParkingEngineService`, at the tail of the flush
-(leg-reconcile → release → assign → **park**). A vehicle idle with no cargo work
-is sent to the nearest free `PARK_POSITION` via a `MOVE` order named `PARK-<uuid>`
-(`PARK_ORDER_PREFIX`, tagged `wes:leg=PARK`; the listener's leg gate ignores it so
-park orders never reach the saga). Rules are pure in
-`cargo/domain/parking.policy.ts` (`needsParking`, `pickParkingPoint`).
-Suppressed while any `READY_TO_ASSIGN` task waits (don't park then preempt).
+- intersects → `BadRequestException`, nothing is withdrawn and no cargo is
+  created. `withdrawTransportOrder(name, immediate=false)` does not clear the
+  command queue, so a vehicle already granted resources inside the lane cannot
+  be guaranteed to stop before it.
+- disjoint → withdraw `to1Name`, then `changeStatus(BLOCKED)` (trigger
+  `CARGO_CREATE`, `context.preempted`), clearing `to1Name`,
+  `assignedVehicleName`, `assignedAt`, `startedAt`.
+
+`allocatedResources` is read from `VehicleStateStore` while SSE is connected and
+straight from `GET /v1/vehicles` when it is not (the 5s heartbeat is too stale
+for this margin). The lane→points index is cached per zone.
+
+**Ordering is the safety property, not the transaction.** A withdraw cannot be
+rolled back and a DB transaction cannot un-send it, so everything that can fail
+cheaply runs first: resolve the pickup location → capacity pre-check on the
+drop-off zone (unlocked read) → lane guard → withdraw + block, one task at a
+time (withdraw first, so a failed withdraw leaves the task `PICKING_UP` and
+retryable) → only then the advisory-locked transaction that re-checks capacity
+and inserts cargo + task. No HTTP call runs inside that transaction — it would
+hold the per-zone advisory lock across a 10s kernel timeout. Accepted race: the
+seat can be taken between the pre-check and the locked re-check, leaving a
+preempted task `BLOCKED` with no blocker; the next flush's `unblock()` returns it
+to `READY_TO_ASSIGN`.
+
+### 6.4 Idle parking (WES-owned)
+openTCS's own `parkIdleVehicles` is left **off** — WES owns which vehicle parks
+where, so parking can respect claims, charge points and the cargo queue. WES is
+therefore the sole author of park orders, which is what makes the ledger below safe.
+
+**When** — `ParkingEngineService`, at the tail of every flush
+(park-claims → leg-reconcile → release → assign → charge → **park**). Rules are pure
+in `cargo/domain/parking.policy.ts` (`needsParking`, `pickParkingPoint`).
+
+**Fleet gate** — suppressed while any task is `CREATED`, `READY_TO_ASSIGN` or
+`BLOCKED`. All three are work assign is about to want: a task is written `CREATED`
+and only classified on the *next* flush by `ReleaseEngineService`, and a `BLOCKED`
+one becomes assignable the moment its lane clears. `PICKING_UP`/`DELIVERING` do
+**not** suppress — they already hold a vehicle, and counting them would stop the
+whole fleet parking for the length of a batch and leave idle vehicles in the aisles.
+
+**Vehicle gate** — dispatch-enabled, not ignored, kernel reports
+`IDLE`/`AWAITING_ORDER` + `TO_BE_UTILIZED`, carries no transport order, holds no
+`PICKING_UP`/`DELIVERING` task, above the critical battery threshold, localised, and
+**not already standing on a park point**. There is no idle delay: assign ran earlier
+in this same flush and declined the vehicle, so waiting cannot win it work, while an
+idle vehicle left on the mainline holds resources others need.
 
 **Order names carry their target** — `buildOrderName` / `destinationFromOrderName`
 (`cargo/domain/transport-order-name.ts`) format *every* WES-issued order as
-`<TYPE>-<vehicle>-<destination>-<uuid>`, where TYPE is one of PARK, CHARGE,
-PICKUP, APPROACH, DROPOFF. The destination therefore travels inside the name the
-kernel stores and echoes back on the vehicle stream, so WES needs no local
-order→destination table and nothing to rebuild after a restart. Parsing is
-unambiguous because the reader already knows the vehicle: strip
-`<TYPE>-<vehicle>-` from the front and the fixed-width uuid from the back. (The one
-collision left is a fleet where one vehicle name is another plus a hyphenated
-suffix — `V1` and `V1-spare`. Fixed-width names avoid it.)
+`<TYPE>-<vehicle>-<destination>-<uuid>` (TYPE ∈ PARK, CHARGE, PICKUP, APPROACH,
+DROPOFF), so the destination travels inside the name the kernel stores and echoes
+back on the vehicle stream — no local order→destination table, nothing to rebuild.
+The segment is whatever was sent to the kernel: a point for PARK and APPROACH, a
+Location for PICKUP, DROPOFF and CHARGE, because openTCS binds the load/unload/charge
+operation to a Location.
 
-The destination segment is **whatever was sent to the kernel**: a point for PARK
-and APPROACH, a location for PICKUP, DROPOFF and CHARGE — those three must target
-a Location because openTCS binds the load/unload/charge operation to one. Deriving
-a point for them would cost a `findPointForLocation` round-trip per order and is
-ambiguous when a location links several points.
+**A park point is unavailable** when any of the following holds. Together they cover
+the three consecutive stages of one journey, and each stage hands off to the next:
 
-**A park point is unavailable** when, reading the vehicle snapshot alone
-(`unavailableParkPoints`): a vehicle stands on it, or a vehicle is processing a
-park order whose name decodes to it. Both facts come from the *same* snapshot
-object, so the handoff from "en route" to "arrived" cannot fall through a gap the
-way two independent streams could. **No kernel call is made per flush** — the
-unbounded `/transportOrders` list is never pulled (its history grows without
-bound and the API offers no state filter, only `intendedVehicle`).
+| stage | source |
+|---|---|
+| order created, kernel has not attached it yet | `ParkClaimStore.claimedPoints()` |
+| vehicle is driving there | `unavailableParkPoints` — decoded from the attached order's name |
+| vehicle stands on it | `unavailableParkPoints` — vehicle snapshot position |
 
-`PointReservationStore` (`cargo/point-reservation.store.ts`) now covers only the
-window between issuing an order and the kernel handing it to the vehicle, during
-which `transportOrder` is still null and the name is invisible. It is shared by
-both engines — the charge engine's no-slot fallback and its release-from-charger
-move also target park points and use the same names. `reconcile()` drops an entry
-the moment the snapshot shows the vehicle on any order; from then on the name
-carries the reservation. It also stops the same vehicle being issued a second park
-order before the first is assigned. **TODO:** an order that dies before assignment
-leaves its entry stuck and that vehicle never parks again — needs a timeout.
+…plus every point already handed out earlier in the same pass. Charge points are
+excluded from the pool entirely, so parking never lands on a charger.
 
-Charge points are excluded from the park pool so parking never lands on a charger.
-The `idleSince` clock and the ledger are in-RAM — on restart they simply re-arm.
+**The order.** `PARK-<vehicle>-<point>-<uuid>`, one destination
+`{locationName: <point>, operation: MOVE}`, tagged `wes:leg=PARK` (the listener's leg
+gate ignores it, so park orders never reach the saga), `intendedVehicle` pinned, and
+**`dispensable: true`** — cargo, charge and approach orders stay non-dispensable. A
+claim is written only after the POST succeeds.
 
-`PARK_IDLE_DELAY_MS` (default **0**) holds a vehicle back before parking. 0 means
-it parks on the first flush that sees it idle, which is the intended behaviour:
-assign has already run this cycle and declined the vehicle, so waiting cannot win
-it work, while an idle vehicle left on the mainline holds resources other vehicles
-need. Nothing is lost by leaving early — a vehicle en route to park stays fully
-dispatchable via **Preempt** below. Raise it only to damp park/preempt churn; note
-the delay is quantised by the flush cadence (heartbeat + debounce, ~5s), so any
-value inside one interval costs a whole extra cycle.
+**The claim ledger.** `ParkClaimStore` (`cargo/park-claim.store.ts`) is an in-memory
+`vehicle → {point, orderName}`. Both the parking and charge engines write a claim
+when they create a park order, and read `claimedPoints()` / `claimedVehicles()`
+instead of listing the kernel's order pool — `claimedVehicles()` is what stops WES
+stacking duplicate park orders onto one vehicle.
 
-**Preempt** — a vehicle en route to a park order is an eligible candidate
-(`preemptibleParking`), recognized by the `PARK-` name prefix WES owns (never
-inferred from "processing + no task", which could misclassify a cargo order whose
-task is momentarily untracked). When picked, `assign()` withdraws the park order
-before creating TO1; the vehicle then shows the cargo order in its snapshot, which
-both clears any `PointReservationStore` entry and stops the withdrawn park order's
-name from reserving its point.
+**The release rule.** `DispatchSchedulerService` calls `parkClaims.reconcile()` once
+per flush, ahead of the engines. Each entry is evaluated in this order; only the last
+branch costs HTTP:
 
-**Lost-event reconcile** — the in-process bus can drop a frame (restart,
-hot-reload, network blip), so **correctness never depends on an event**. Two
+1. the vehicle stands on the claimed point → release (its position protects it now);
+2. the vehicle is processing the claimed order → release (`parkPointFromOrderName`
+   in `unavailableParkPoints` protects it now);
+3. otherwise `getTransportOrderStateStrict(orderName)` — HTTP 404 or
+   `FINISHED`/`FAILED`/`UNROUTABLE` → release; any other state → keep; **kernel
+   unreachable → keep**.
+
+`WITHDRAWN` is *not* terminal in openTCS 7.3.0 (it becomes `FAILED` later), so a
+withdrawn order still holds its claim. 404 counts as released because a kernel
+restart empties the order pool. `getTransportOrderStateStrict` exists precisely to
+separate "the kernel says it is gone" from "the kernel did not answer" — the plain
+`getTransportOrderState` collapses both to `null` and must not be used here.
+
+**Rebuilt from the kernel, never assumed empty.** `ParkClaimStore` implements
+`OnApplicationBootstrap`: one fleet-wide `getLiveParkOrders()` rebuilds every claim.
+Until it succeeds `isReady()` stays false and **no engine may create a park order**;
+`reconcile()` retries every flush. Only one claim per vehicle is tracked (a
+pre-restart fleet holding two live park orders for one vehicle keeps the newest and
+logs). `getLiveParkOrders()` survives for this rehydrate only — never per flush.
+
+**Disposal belongs to openTCS.** WES never withdraws a park order. A vehicle en
+route to park stays an eligible dispatch candidate (`preemptibleParking`, recognised
+by the `PARK-` name prefix WES owns — never inferred from "processing + no task",
+which could misclassify a cargo order whose task is momentarily untracked), `assign()`
+pins the cargo order to it via `intendedVehicle`, and `dispensable: true` makes the
+kernel drop the park order in favour of that work. Claims retire only through
+`reconcile()`; assignment adds no release of its own.
+
+**Invariants — breaking any one re-opens a measured bug:**
+
+1. **`dispensable: true` on park orders.** Without it nothing disposes of a stale one.
+2. **`preemptibleParking`.** A `PROCESSING_ORDER` vehicle is `available === false`, so
+   without this predicate a parking vehicle is invisible to dispatch — and because
+   `intendedVehicle` is a hard pin, the kernel's swap then never fires at all.
+3. **Release branch 2 and the order-name branch of `unavailableParkPoints` are two
+   halves of one handoff.** Delete either and the point is unprotected for part of
+   the journey.
+4. **Never release a claim because the vehicle carries *some* order.** That inference
+   is what made the deleted `PointReservationStore` (2026-07-28) churn; the name must
+   not come back.
+5. **An empty ledger is not "nothing is claimed".** Fail closed, everywhere.
+
+Measurements, the kernel experiments behind these rules, and the rejected
+alternatives are recorded in `report/park-claims-findings.md`.
+
+### 6.5 Lost-event reconcile
+The in-process bus can drop a frame (restart, hot-reload, network blip), so
+**correctness never depends on an event**. Two
 level-triggered backstops re-pull the kernel's authoritative state on a fixed
 heartbeat (`DISPATCH_HEARTBEAT_MS`, default 5s); SSE stays the low-latency path:
 - **Vehicle stream** — `KernelEventListenerService` re-pulls `GET /v1/vehicles`
   into the store and emits `fms.vehicle.available`, so a lost "→ IDLE" frame can't
   strand a finished vehicle.
-- **Order stream** — `LegReconcileService` (first step of the flush) recomputes
+- **Order stream** — `LegReconcileService` (runs right after `parkClaims.reconcile()`) recomputes
   each live task's expected leg order from its own status/metadata and, only when
   the vehicle has moved off it, fetches that single order by name: FINISHED →
   re-emit `fms.transport-order.finished`; FAILED/UNROUTABLE → fail the task. It

@@ -16,7 +16,6 @@ const candidate = (
   ignored: false,
   available: true,
   preemptibleParking: false,
-  parkOrderName: null,
   energyLevel: 80,
   criticalThreshold: 20,
   currentPosition: '1000',
@@ -54,7 +53,6 @@ describe('dispatch.policy', () => {
           candidate({
             available: false,
             preemptibleParking: true,
-            parkOrderName: 'PARK-abc',
           }),
         ),
       ).toBe(true);
@@ -70,7 +68,6 @@ describe('dispatch.policy', () => {
           candidate({
             available: false,
             preemptibleParking: true,
-            parkOrderName: 'PARK-abc',
             criticalThreshold: 20,
             ...overrides,
           }),
