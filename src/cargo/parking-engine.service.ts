@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ORDER_PROP } from './domain/events';
 import {
   TransportTaskEntity,
@@ -11,11 +11,10 @@ import { AgvEntity } from '../agvs/entities/agv.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import { ParkClaimStore } from './park-claim.store';
 import { RoutingService } from './routing.service';
 import { shortestDistancesFrom } from './domain/routing';
-import { nonNegativeOr } from './domain/dispatch-cost';
 import { activeCargoVehicleNames } from './task-queries';
-import { PointReservationStore } from './point-reservation.store';
 import {
   ORDER_TYPE,
   buildOrderName,
@@ -28,8 +27,12 @@ import {
   pickParkingPoint,
 } from './domain/parking.policy';
 
-const DEFAULT_PARK_IDLE_DELAY_MS = 0;
 const PARK_LEG = 'PARK';
+const PENDING_WORK_STATUSES = [
+  TaskStatus.CREATED,
+  TaskStatus.READY_TO_ASSIGN,
+  TaskStatus.BLOCKED,
+];
 
 function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;
@@ -42,8 +45,6 @@ function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
 @Injectable()
 export class ParkingEngineService {
   private readonly logger = new Logger(ParkingEngineService.name);
-  private readonly idleSince = new Map<string, number>();
-  private readonly parkIdleDelayMs: number;
 
   constructor(
     @InjectRepository(TransportTaskEntity)
@@ -53,61 +54,56 @@ export class ParkingEngineService {
     private readonly kernelApi: KernelApiService,
     private readonly vehicleStore: VehicleStateStore,
     private readonly routing: RoutingService,
-    private readonly reservations: PointReservationStore,
-  ) {
-    this.parkIdleDelayMs = nonNegativeOr(
-      Number(process.env.PARK_IDLE_DELAY_MS),
-      DEFAULT_PARK_IDLE_DELAY_MS,
-    );
-    this.logger.log(
-      this.parkIdleDelayMs === 0
-        ? 'Park idle delay: 0ms — idle vehicles park on the first flush that sees them'
-        : `Park idle delay: ${this.parkIdleDelayMs}ms`,
-    );
-  }
+    private readonly parkClaims: ParkClaimStore,
+  ) {}
 
   async run(): Promise<void> {
     const parkingPoints = await this.parkPool();
     if (parkingPoints.length === 0) return;
     const parkPointNames = new Set(parkingPoints.map((p) => p.name));
 
-    this.reservations.reconcile();
-
     const hasPendingWork = await this.hasPendingWork();
     const busy = await activeCargoVehicleNames(this.taskRepo);
     const agvs = await this.agvRepo.find();
-    const now = Date.now();
 
     const readyToPark: Array<{ name: string; position: string }> = [];
-    const stillCandidate = new Set<string>();
 
     for (const agv of agvs) {
-      if (this.reservations.has(agv.name)) continue;
       const fms = this.vehicleStore.get(agv.name);
       const candidate = this.toCandidate(agv, fms, busy);
       if (!needsParking(candidate, parkPointNames, hasPendingWork)) continue;
-
-      stillCandidate.add(agv.name);
-      const since = this.idleSince.get(agv.name) ?? now;
-      this.idleSince.set(agv.name, since);
-      if (now - since >= this.parkIdleDelayMs && candidate.currentPosition) {
-        readyToPark.push({
-          name: agv.name,
-          position: candidate.currentPosition,
-        });
-      }
-    }
-
-    for (const name of [...this.idleSince.keys()]) {
-      if (!stillCandidate.has(name)) this.idleSince.delete(name);
+      if (!candidate.currentPosition) continue;
+      readyToPark.push({ name: agv.name, position: candidate.currentPosition });
     }
 
     if (readyToPark.length === 0) return;
 
+    if (!this.parkClaims.isReady()) {
+      this.logger.warn(
+        'Park claims not rehydrated from the kernel — skipping this park pass',
+      );
+      return;
+    }
+
+    const claimedVehicles = this.parkClaims.claimedVehicles();
+    const unclaimed: typeof readyToPark = [];
+    for (const vehicle of readyToPark) {
+      if (claimedVehicles.has(vehicle.name)) {
+        this.logger.log(
+          `${vehicle.name} already has a live park order — keeping its target`,
+        );
+        continue;
+      }
+      unclaimed.push(vehicle);
+    }
+
     const graph = await this.routing.getRoadGraph();
     const excluded = this.unavailableParkPoints(parkPointNames);
+    const claimedPoints = this.parkClaims.claimedPoints();
+    for (const point of claimedPoints) excluded.add(point);
+    this.logParkDecisionInput(unclaimed, claimedVehicles, claimedPoints);
 
-    for (const { name, position } of readyToPark) {
+    for (const { name, position } of unclaimed) {
       const distances = graph
         ? shortestDistancesFrom(graph, position)
         : new Map<string, number>();
@@ -121,6 +117,18 @@ export class ParkingEngineService {
       excluded.add(point.name);
       await this.createParkOrder(name, point.name);
     }
+  }
+
+  private logParkDecisionInput(
+    unclaimed: readonly { name: string }[],
+    claimedVehicles: ReadonlySet<string>,
+    claimedPoints: ReadonlySet<string>,
+  ): void {
+    this.logger.debug(
+      `Park pass: ready=[${unclaimed.map((v) => v.name).join(' ')}]` +
+        ` claimedVehicles=[${[...claimedVehicles].join(' ')}]` +
+        ` claimedPoints=[${[...claimedPoints].join(' ')}]`,
+    );
   }
 
   private async parkPool(): Promise<ParkingPoint[]> {
@@ -153,7 +161,7 @@ export class ParkingEngineService {
 
   private async hasPendingWork(): Promise<boolean> {
     const count = await this.taskRepo.count({
-      where: { status: TaskStatus.READY_TO_ASSIGN },
+      where: { status: In(PENDING_WORK_STATUSES) },
     });
     return count > 0;
   }
@@ -169,9 +177,6 @@ export class ParkingEngineService {
       const target = parkPointFromOrderName(state.transportOrder, state.name);
       if (target && parkPointNames.has(target)) excluded.add(target);
     }
-    for (const point of this.reservations.reservedPoints()) {
-      excluded.add(point);
-    }
     return excluded;
   }
 
@@ -185,18 +190,17 @@ export class ParkingEngineService {
       pointName,
       randomUUID(),
     );
-    this.reservations.reserve(vehicleName, pointName, orderName);
     try {
       await this.kernelApi.createTransportOrder(
         orderName,
         [{ locationName: pointName, operation: 'MOVE' }],
         vehicleName,
         { [ORDER_PROP.LEG]: PARK_LEG },
+        { dispensable: true },
       );
-      this.idleSince.delete(vehicleName);
+      this.parkClaims.claim(vehicleName, pointName, orderName);
       this.logger.log(`Parking ${vehicleName} → ${pointName} (${orderName})`);
     } catch (err) {
-      this.reservations.clear(vehicleName);
       this.logger.warn(
         `Failed to park ${vehicleName}: ${(err as Error).message}`,
       );

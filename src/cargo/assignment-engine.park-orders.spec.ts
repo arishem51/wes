@@ -1,13 +1,13 @@
 import { AssignmentEngineService } from './assignment-engine.service';
+import { ParkClaimStore } from './park-claim.store';
 import { TaskStatus } from './entities/transport-task.entity';
 
 const stub = <T>(value: unknown): T => value as T;
 
-/**
- * Focused test for the preempt path: when the picked vehicle is en route to a
- * park order, `assign()` must withdraw that order BEFORE creating the pickup TO.
- */
-describe('AssignmentEngineService preempt', () => {
+const QUEUED_PARK_ORDER = 'PARK-V1-1002-queued';
+const ATTACHED_PARK_ORDER = 'PARK-abc';
+
+describe('AssignmentEngineService park orders', () => {
   function build() {
     const task = {
       id: 't1',
@@ -24,13 +24,12 @@ describe('AssignmentEngineService preempt', () => {
     const parkingVehicle = {
       procState: 'PROCESSING_ORDER',
       integrationLevel: 'TO_BE_UTILIZED',
-      transportOrder: 'PARK-abc', // en route to park → preemptible
+      transportOrder: ATTACHED_PARK_ORDER,
       currentPosition: 'P1',
       energyLevel: 80,
     };
 
     const taskRepo = {
-      // run() asks for READY tasks; busyVehicleNames() asks for In([PICKING_UP,DELIVERING]).
       find: jest
         .fn()
         .mockImplementation((opts: { where?: { status?: unknown } }) =>
@@ -53,8 +52,11 @@ describe('AssignmentEngineService preempt', () => {
     const kernelApi = {
       withdrawTransportOrder: jest.fn().mockResolvedValue(undefined),
       createTransportOrder: jest.fn().mockResolvedValue(undefined),
+      getLiveParkOrders: jest.fn().mockResolvedValue([]),
+      loadOperation: 'PICK_UP',
     };
     const vehicleStore = { get: jest.fn().mockReturnValue(parkingVehicle) };
+    const parkClaims = new ParkClaimStore(stub(vehicleStore), stub(kernelApi));
     const transportTask = {
       changeStatus: jest.fn().mockResolvedValue(undefined),
     };
@@ -81,24 +83,32 @@ describe('AssignmentEngineService preempt', () => {
       stub(approachPoint),
       stub(dispatchPolicy),
     );
-    return { svc, kernelApi, transportTask, vehicleStore };
+    return { svc, kernelApi, transportTask, vehicleStore, parkClaims };
   }
 
-  it('withdraws the park order before creating the pickup order', async () => {
+  function makeIdle(vehicleStore: { get: jest.Mock }): void {
+    vehicleStore.get.mockReturnValue({
+      procState: 'IDLE',
+      integrationLevel: 'TO_BE_UTILIZED',
+      transportOrder: null,
+      currentPosition: 'P1',
+      energyLevel: 80,
+    });
+  }
+
+  it('assigns a vehicle en route to park without withdrawing its park order', async () => {
     const { svc, kernelApi, transportTask } = build();
 
     await svc.run();
 
-    expect(kernelApi.withdrawTransportOrder).toHaveBeenCalledWith('PARK-abc');
+    expect(kernelApi.withdrawTransportOrder).not.toHaveBeenCalled();
     expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(1);
-    // Ordering: withdraw strictly before create.
-    const withdrawOrder =
-      kernelApi.withdrawTransportOrder.mock.invocationCallOrder[0];
-    const createOrder =
-      kernelApi.createTransportOrder.mock.invocationCallOrder[0];
-    expect(withdrawOrder).toBeLessThan(createOrder);
-
-    // And the task advances to PICKING_UP on that vehicle.
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
+      expect.stringMatching(/^PICKUP-V1-LOC-1-/),
+      [{ locationName: 'LOC-1', operation: 'PICK_UP' }],
+      'V1',
+      expect.objectContaining({ 'wes:leg': 'PICKUP' }),
+    );
     expect(transportTask.changeStatus).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't1' }),
       TaskStatus.PICKING_UP,
@@ -108,18 +118,47 @@ describe('AssignmentEngineService preempt', () => {
 
   it('does not withdraw anything for a plain idle (non-parking) vehicle', async () => {
     const { svc, kernelApi, vehicleStore } = build();
-    // Make the vehicle a normal idle candidate instead of parking.
-    vehicleStore.get.mockReturnValue({
-      procState: 'IDLE',
-      integrationLevel: 'TO_BE_UTILIZED',
-      transportOrder: null,
-      currentPosition: 'P1',
-      energyLevel: 80,
-    });
+    makeIdle(vehicleStore);
 
     await svc.run();
 
     expect(kernelApi.withdrawTransportOrder).not.toHaveBeenCalled();
     expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a queued park order the vehicle snapshot cannot see to the kernel', async () => {
+    const { svc, kernelApi, vehicleStore, parkClaims } = build();
+    makeIdle(vehicleStore);
+    parkClaims.claim('V1', '1002', QUEUED_PARK_ORDER);
+
+    await svc.run();
+
+    expect(kernelApi.withdrawTransportOrder).not.toHaveBeenCalled();
+    expect(kernelApi.getLiveParkOrders).not.toHaveBeenCalled();
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the park claim so the point stays reserved until the kernel retires the order', async () => {
+    const { svc, parkClaims } = build();
+    parkClaims.claim('V1', '1002', ATTACHED_PARK_ORDER);
+
+    await svc.run();
+
+    expect(parkClaims.get('V1')).toEqual({
+      point: '1002',
+      orderName: ATTACHED_PARK_ORDER,
+    });
+  });
+
+  it('leaves another vehicle claim alone while assigning', async () => {
+    const { svc, parkClaims } = build();
+    parkClaims.claim('V2', '1003', 'PARK-V2-1003-queued');
+
+    await svc.run();
+
+    expect(parkClaims.get('V2')).toEqual({
+      point: '1003',
+      orderName: 'PARK-V2-1003-queued',
+    });
   });
 });

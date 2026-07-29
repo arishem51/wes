@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
+import { parkPointFromOrderName } from '../cargo/domain/transport-order-name';
 import { PlantModelDto } from './map-loader/opentcs-xml.parser';
 
 export interface KernelVehiclePrecisePosition {
@@ -30,9 +31,7 @@ export interface KernelVehicleState {
   precisePosition?: KernelVehiclePrecisePosition | null;
   orientationAngle?: number | null;
   allocatedResources?: string[][];
-  /** Name of the transport order the vehicle is processing, when known. */
   transportOrder?: string | null;
-  /** Kernel-side observation time (ISO) when the SSE payload carries one. */
   observedAt?: string;
 }
 
@@ -72,6 +71,26 @@ export interface KernelTransportOrderSummary {
   name: string;
   state: string;
   destinations: string[];
+}
+
+export interface KernelParkOrder {
+  name: string;
+  vehicle: string;
+  destination: string;
+}
+
+export interface CreateTransportOrderOptions {
+  dispensable?: boolean;
+}
+
+const FINAL_ORDER_STATES: ReadonlySet<string> = new Set([
+  'FINISHED',
+  'FAILED',
+  'UNROUTABLE',
+]);
+
+function isFinalOrderState(state: unknown): boolean {
+  return typeof state === 'string' && FINAL_ORDER_STATES.has(state);
 }
 
 export interface KernelRoute {
@@ -297,6 +316,30 @@ function toTransportOrderDebug(
   };
 }
 
+function firstDestinationName(value: Record<string, unknown>): string | null {
+  if (!Array.isArray(value.destinations)) return null;
+  const first: unknown = value.destinations[0];
+  return isRecord(first) && typeof first.locationName === 'string'
+    ? first.locationName
+    : null;
+}
+
+function toLiveParkOrder(value: unknown): KernelParkOrder | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.name !== 'string') return null;
+  if (typeof value.intendedVehicle !== 'string') return null;
+  if (isFinalOrderState(value.state)) return null;
+
+  const parkPoint = parkPointFromOrderName(value.name, value.intendedVehicle);
+  if (!parkPoint) return null;
+
+  return {
+    name: value.name,
+    vehicle: value.intendedVehicle,
+    destination: firstDestinationName(value) ?? parkPoint,
+  };
+}
+
 export type VehicleType = 'loopback' | 'vda5050';
 
 const VEHICLE_OPERATIONS: Record<
@@ -400,6 +443,17 @@ export class KernelApiService {
 
   async getLocationModel(): Promise<KernelPlantModel | null> {
     return toKernelPlantModel(await this.getPlantModel());
+  }
+
+  async getPointNamesByLocation(): Promise<Map<string, string[]>> {
+    const model = await this.getLocationModel();
+    if (!model) return new Map();
+    return new Map(
+      model.locations.map((location) => [
+        location.name,
+        locationPointNames(location.links),
+      ]),
+    );
   }
 
   async getParkingPoints(): Promise<KernelParkingPoint[]> {
@@ -519,8 +573,13 @@ export class KernelApiService {
     destinations: Array<{ locationName: string; operation: string }>,
     intendedVehicle: string,
     properties?: Record<string, string>,
+    options: CreateTransportOrderOptions = {},
   ): Promise<KernelTransportOrderSummary> {
-    const body: Record<string, unknown> = { destinations, intendedVehicle };
+    const body: Record<string, unknown> = {
+      destinations,
+      intendedVehicle,
+      dispensable: options.dispensable === true,
+    };
     if (properties) {
       body.properties = Object.entries(properties).map(([key, value]) => ({
         key,
@@ -570,18 +629,30 @@ export class KernelApiService {
     }
   }
 
-  /**
-   * Withdraw a transport order. `immediate=false` (default) is the graceful
-   * abort: openTCS lets the vehicle finish moving to its next point before
-   * aborting, avoiding the collisions/deadlocks the spec warns `immediate=true`
-   * can cause when the vehicle is not halted on a point.
-   */
   async withdrawTransportOrder(name: string, immediate = false): Promise<void> {
     await axios.post(
       `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}/withdrawal?immediate=${immediate}`,
       null,
-      { timeout: 5_000 },
+      { timeout: 10_000 },
     );
+  }
+
+  async getLiveParkOrders(
+    intendedVehicle?: string,
+  ): Promise<KernelParkOrder[]> {
+    const res = await axios.get(`${this.baseUrl}/v1/transportOrders`, {
+      params: intendedVehicle ? { intendedVehicle } : undefined,
+      timeout: 10_000,
+    });
+    if (!Array.isArray(res.data)) {
+      throw new Error(
+        `Unexpected /v1/transportOrders payload (${intendedVehicle ?? 'fleet-wide'})`,
+      );
+    }
+    return res.data.flatMap((item) => {
+      const order = toLiveParkOrder(item);
+      return order ? [order] : [];
+    });
   }
 
   async getTransportOrderState(name: string): Promise<string | null> {
@@ -593,6 +664,23 @@ export class KernelApiService {
       return (res.data as { state?: string })?.state ?? null;
     } catch {
       return null;
+    }
+  }
+
+  async getTransportOrderStateStrict(name: string): Promise<string | null> {
+    try {
+      const res = await axios.get(
+        `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}`,
+        { timeout: 5_000 },
+      );
+      const state = (res.data as { state?: unknown })?.state;
+      if (typeof state !== 'string') {
+        throw new Error(`Transport order "${name}" carried no state`);
+      }
+      return state;
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) return null;
+      throw err;
     }
   }
 

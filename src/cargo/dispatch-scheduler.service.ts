@@ -5,6 +5,7 @@ import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
 import { ChargeEngineService } from './charge-engine.service';
 import { ParkingEngineService } from './parking-engine.service';
+import { ParkClaimStore } from './park-claim.store';
 import { FMS_EVENTS, TRANSPORT_TASK_EVENTS } from './domain/events';
 
 const DEBOUNCE_MS = 1_500;
@@ -22,6 +23,7 @@ export class DispatchSchedulerService implements OnApplicationBootstrap {
     private readonly assignmentEngine: AssignmentEngineService,
     private readonly chargeEngine: ChargeEngineService,
     private readonly parkingEngine: ParkingEngineService,
+    private readonly parkClaims: ParkClaimStore,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -53,6 +55,7 @@ export class DispatchSchedulerService implements OnApplicationBootstrap {
     }
     this.isFlushing = true;
     try {
+      await this.parkClaims.reconcile();
       await this.legReconcile.run();
       await this.releaseEngine.run();
       await this.assignmentEngine.run();

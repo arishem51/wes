@@ -9,6 +9,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
 }
 
 const engine = (run: jest.Mock) => ({ run }) as never;
+const claims = (reconcile: jest.Mock) => ({ reconcile }) as never;
 const flushOf = (svc: DispatchSchedulerService) =>
   (svc as unknown as { flush(): Promise<void> }).flush();
 
@@ -20,12 +21,14 @@ describe('DispatchSchedulerService single-flight', () => {
     const assign = jest.fn().mockResolvedValue(undefined);
     const charge = jest.fn().mockResolvedValue(undefined);
     const park = jest.fn().mockResolvedValue(undefined);
+    const reconcile = jest.fn().mockResolvedValue(undefined);
     const svc = new DispatchSchedulerService(
       engine(leg),
       engine(release),
       engine(assign),
       engine(charge),
       engine(park),
+      claims(reconcile),
     );
 
     const p1 = flushOf(svc); // enters, awaits leg-reconcile (pending)
@@ -40,11 +43,15 @@ describe('DispatchSchedulerService single-flight', () => {
     await p1;
 
     // The whole pipeline ran exactly once, in order.
+    expect(reconcile).toHaveBeenCalledTimes(1);
     expect(leg).toHaveBeenCalledTimes(1);
     expect(release).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledTimes(1);
     expect(charge).toHaveBeenCalledTimes(1);
     expect(park).toHaveBeenCalledTimes(1);
+    expect(reconcile.mock.invocationCallOrder[0]).toBeLessThan(
+      assign.mock.invocationCallOrder[0],
+    );
   });
 
   it('re-schedules once when a trigger arrives mid-flush (no work dropped)', async () => {
@@ -57,6 +64,7 @@ describe('DispatchSchedulerService single-flight', () => {
       engine(ok()),
       engine(ok()),
       engine(ok()),
+      claims(ok()),
     );
     // Stub schedule so the rerun doesn't leave a real timer pending.
     const schedule = jest

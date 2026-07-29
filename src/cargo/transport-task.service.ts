@@ -16,26 +16,19 @@ import {
   TransportTaskFailedEvent,
 } from './domain/events';
 
-/** Evaluation metadata attached to a status change; goes to task_status_transitions only. */
 export interface StatusChangeLog {
-  /** Which engine caused the change. */
   trigger?:
     | 'API'
+    | 'CARGO_CREATE'
     | 'RELEASE_ENGINE'
     | 'ASSIGNMENT_ENGINE'
     | 'SAGA'
     | 'LEG_RECONCILE';
   reason?: string | null;
-  /** Overrides the metadata snapshot (e.g. preempt clears the vehicle before the change). */
   vehicleName?: string | null;
   context?: Record<string, unknown>;
 }
 
-/**
- * Owns the persistence + event side of the transport task lifecycle.
- * Every status change goes through `changeStatus`, so transitions are
- * validated, persisted, and announced in exactly one place.
- */
 @Injectable()
 export class TransportTaskService {
   private readonly logger = new Logger(TransportTaskService.name);
@@ -52,7 +45,6 @@ export class TransportTaskService {
     this.logger.debug(
       `publishCreated: emitting ${TRANSPORT_TASK_EVENTS.CREATED} for task ${task.id}`,
     );
-    // Birth row: fromStatus = null. Fire-and-forget — recordTransition never throws.
     void this.recordTransition(task, null, task.status, { trigger: 'API' });
     this.eventEmitter.emit(
       TRANSPORT_TASK_EVENTS.CREATED,
@@ -89,11 +81,6 @@ export class TransportTaskService {
 
     return saved;
   }
-
-  /**
-   * Insert-only evaluation log (task_status_transitions). Must never break the
-   * dispatch path: failures are logged and swallowed.
-   */
   private async recordTransition(
     task: TransportTaskEntity,
     from: TaskStatus | null,
@@ -101,8 +88,6 @@ export class TransportTaskService {
     log?: StatusChangeLog,
   ): Promise<void> {
     try {
-      // create+save instead of insert(): TypeORM's insert typing rejects the
-      // jsonb Record<string, unknown> column.
       await this.transitionRepo.save(
         this.transitionRepo.create({
           taskId: task.id,
