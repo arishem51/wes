@@ -4,8 +4,10 @@ import type { ZoneEntity } from '../zones/entities/zone.entity';
 const oneWay = (srcPointName: string, destPointName: string) => ({
   srcPointName,
   destPointName,
+  length: 1,
   maxVelocity: 1,
   maxReverseVelocity: 0,
+  locked: false,
 });
 
 const plantModel = {
@@ -35,7 +37,7 @@ const zone = {
 
 function setup(routes: Array<{ destinationPoint: string; costs: number }>) {
   const kernelApi = {
-    getPlantModel: jest.fn().mockResolvedValue(plantModel),
+    getPlantModelView: jest.fn().mockResolvedValue(plantModel),
     computeRoutes: jest
       .fn()
       .mockResolvedValue(routes.map((r) => ({ ...r, steps: [] }))),
@@ -102,7 +104,7 @@ describe('ApproachPointService', () => {
     const { service, kernelApi } = setup([
       { destinationPoint: '3066', costs: 10 },
     ]);
-    kernelApi.getPlantModel.mockResolvedValue({
+    kernelApi.getPlantModelView.mockResolvedValue({
       ...plantModel,
       paths: [oneWay('3065', '3066')],
     });

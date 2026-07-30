@@ -1,13 +1,36 @@
 import { ParkClaimStore } from './park-claim.store';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
+import type { KernelApiService } from '../opentcs/kernel-api.service';
 import type {
-  KernelApiService,
-  KernelParkOrder,
+  KernelTransportOrder,
   KernelVehicleState,
-} from '../opentcs/kernel-api.service';
+} from '../opentcs/domain/kernel-model';
 
 const PARK_ORDER = 'PARK-V1-PARK-1-0d4dd3a5-bfe5-4d90-8893-31ed8d12cae5';
 const FOREIGN_ORDER = 'Move-01KY7T2QW4ZP8H3N6VC1RB9DKS';
+
+const parkOrderName = (vehicle: string, point: string) =>
+  `PARK-${vehicle}-${point}-0d4dd3a5-bfe5-4d90-8893-31ed8d12cae5`;
+
+const order = (
+  name: string,
+  intendedVehicle: string | null,
+  state: string,
+  destinations: string[],
+): KernelTransportOrder => ({
+  name,
+  state,
+  intendedVehicle,
+  processingVehicle: null,
+  destinations,
+});
+
+const parkOrder = (
+  vehicle: string,
+  point: string,
+  state = 'DISPATCHABLE',
+): KernelTransportOrder =>
+  order(parkOrderName(vehicle, point), vehicle, state, [point]);
 
 const vehicle = (
   position: string,
@@ -23,15 +46,11 @@ const vehicle = (
   transportOrder,
 });
 
-const liveParkOrder: KernelParkOrder = {
-  name: PARK_ORDER,
-  vehicle: 'V1',
-  destination: 'PARK-1',
-};
+const liveParkOrder = parkOrder('V1', 'PARK-1');
 
 function setup() {
   const kernelApi = {
-    getLiveParkOrders: jest.fn().mockResolvedValue([]),
+    getTransportOrders: jest.fn().mockResolvedValue([]),
     getTransportOrderStateStrict: jest
       .fn()
       .mockResolvedValue('BEING_PROCESSED'),
@@ -54,7 +73,7 @@ async function readyStoreWithClaim() {
 describe('ParkClaimStore', () => {
   it('rebuilds the ledger from the kernel on bootstrap', async () => {
     const { store, kernelApi } = setup();
-    kernelApi.getLiveParkOrders.mockResolvedValue([liveParkOrder]);
+    kernelApi.getTransportOrders.mockResolvedValue([liveParkOrder]);
 
     await store.onApplicationBootstrap();
 
@@ -65,6 +84,65 @@ describe('ParkClaimStore', () => {
     });
     expect(store.claimedVehicles()).toEqual(new Set(['V1']));
     expect(store.claimedPoints()).toEqual(new Set(['PARK-1']));
+  });
+
+  it('keeps only the live park orders out of everything the kernel lists', async () => {
+    const { store, kernelApi } = setup();
+    kernelApi.getTransportOrders.mockResolvedValue([
+      parkOrder('V1', '1002', 'RAW'),
+      parkOrder('V2', '1006', 'DISPATCHABLE'),
+      parkOrder('V3', '1003', 'FINISHED'),
+      parkOrder('V3', '1004', 'FAILED'),
+      parkOrder('V3', '1005', 'UNROUTABLE'),
+      order('PICKUP-V4-LOC-1-uuid', 'V4', 'RAW', ['LOC-1']),
+      order(parkOrderName('V5', '1007'), null, 'RAW', ['1007']),
+    ]);
+
+    await store.onApplicationBootstrap();
+
+    expect(store.claimedVehicles()).toEqual(new Set(['V1', 'V2']));
+    expect(store.claimedPoints()).toEqual(new Set(['1002', '1006']));
+  });
+
+  it('treats WITHDRAWN as still live', async () => {
+    const { store, kernelApi } = setup();
+    kernelApi.getTransportOrders.mockResolvedValue([
+      parkOrder('V1', '1002', 'WITHDRAWN'),
+    ]);
+
+    await store.onApplicationBootstrap();
+
+    expect(store.claimedPoints()).toEqual(new Set(['1002']));
+  });
+
+  it('falls back to the park point encoded in the name when the order carries no destination', async () => {
+    const { store, kernelApi } = setup();
+    kernelApi.getTransportOrders.mockResolvedValue([
+      order(parkOrderName('V1', '1002'), 'V1', 'DISPATCHABLE', []),
+    ]);
+
+    await store.onApplicationBootstrap();
+
+    expect(store.get('V1')).toEqual({
+      point: '1002',
+      orderName: parkOrderName('V1', '1002'),
+    });
+  });
+
+  it('tracks the last park order when one vehicle holds several', async () => {
+    const { store, kernelApi } = setup();
+    kernelApi.getTransportOrders.mockResolvedValue([
+      parkOrder('V1', '1002'),
+      parkOrder('V1', '1006'),
+    ]);
+
+    await store.onApplicationBootstrap();
+
+    expect(store.get('V1')).toEqual({
+      point: '1006',
+      orderName: parkOrderName('V1', '1006'),
+    });
+    expect(store.claimedPoints()).toEqual(new Set(['1006']));
   });
 
   it('releases a claim once the vehicle stands on the claimed point', async () => {
@@ -161,7 +239,7 @@ describe('ParkClaimStore', () => {
 
   it('stays unready when the bootstrap rehydrate fails', async () => {
     const { store, kernelApi } = setup();
-    kernelApi.getLiveParkOrders.mockRejectedValue(new Error('kernel down'));
+    kernelApi.getTransportOrders.mockRejectedValue(new Error('kernel down'));
 
     await store.onApplicationBootstrap();
 
@@ -171,13 +249,13 @@ describe('ParkClaimStore', () => {
 
   it('retries the rehydrate on every reconcile until it succeeds', async () => {
     const { store, kernelApi } = setup();
-    kernelApi.getLiveParkOrders.mockRejectedValue(new Error('kernel down'));
+    kernelApi.getTransportOrders.mockRejectedValue(new Error('kernel down'));
     await store.onApplicationBootstrap();
 
     await store.reconcile();
     expect(store.isReady()).toBe(false);
 
-    kernelApi.getLiveParkOrders.mockResolvedValue([liveParkOrder]);
+    kernelApi.getTransportOrders.mockResolvedValue([liveParkOrder]);
     await store.reconcile();
 
     expect(store.isReady()).toBe(true);

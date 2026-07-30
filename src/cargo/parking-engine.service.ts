@@ -10,7 +10,7 @@ import {
 import { AgvEntity } from '../agvs/entities/agv.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { ParkClaimStore } from './park-claim.store';
 import { RoutingService } from './routing.service';
 import { shortestDistancesFrom } from './domain/routing';
@@ -28,11 +28,7 @@ import {
 } from './domain/parking.policy';
 
 const PARK_LEG = 'PARK';
-const PENDING_WORK_STATUSES = [
-  TaskStatus.CREATED,
-  TaskStatus.READY_TO_ASSIGN,
-  TaskStatus.BLOCKED,
-];
+const PENDING_WORK_STATUSES = [TaskStatus.READY_TO_ASSIGN];
 
 function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;

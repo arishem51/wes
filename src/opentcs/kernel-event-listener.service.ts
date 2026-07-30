@@ -14,13 +14,13 @@ import {
   ORDER_PROP,
   TaskLeg,
 } from '../cargo/domain/events';
+import { KernelApiService } from './kernel-api.service';
 import {
-  KernelApiService,
   orientationAngleFromSsePose,
   precisePositionFromSsePose,
   toAllocatedResources,
-} from './kernel-api.service';
-import type { KernelVehicleState } from './kernel-api.service';
+} from './domain/kernel-mappers';
+import type { KernelVehicleState } from './domain/kernel-model';
 import { VehicleStateStore } from './vehicle-state.store';
 import { FleetTelemetryService } from './fleet-telemetry.service';
 

@@ -3,7 +3,7 @@ import { KernelApiService } from './kernel-api.service';
 describe('KernelApiService.getParkingPoints', () => {
   it('returns only PARK_POSITION points with parsed priority (array & object props)', async () => {
     const svc = new KernelApiService();
-    jest.spyOn(svc, 'getPlantModel').mockResolvedValue({
+    jest.spyOn(svc, 'getRawPlantModel').mockResolvedValue({
       points: [
         { name: '0047', type: 'PARK_POSITION', properties: [] },
         {
@@ -30,7 +30,7 @@ describe('KernelApiService.getParkingPoints', () => {
 
   it('returns [] when the plant model is unavailable', async () => {
     const svc = new KernelApiService();
-    jest.spyOn(svc, 'getPlantModel').mockResolvedValue(null);
+    jest.spyOn(svc, 'getRawPlantModel').mockResolvedValue(null);
     expect(await svc.getParkingPoints()).toEqual([]);
   });
 });

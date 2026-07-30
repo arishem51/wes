@@ -6,7 +6,7 @@ import { ORDER_PROP } from './domain/events';
 import { AgvEntity } from '../agvs/entities/agv.entity';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { ParkClaimStore } from './park-claim.store';
 import { RoutingService } from './routing.service';

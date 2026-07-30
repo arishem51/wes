@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import {
-  resolveLocationPoints,
-  type PlantLocation,
-} from '../zones/domain/member-points';
+import type {
+  KernelPath,
+  KernelPlantModel,
+} from '../opentcs/domain/kernel-model';
+import { resolveLocationPoints } from '../zones/domain/member-points';
 import {
   RoadEdge,
   RoadGraph,
@@ -11,40 +12,28 @@ import {
   reverseRoadGraph,
 } from './domain/routing';
 
-type RawPath = Record<string, unknown>;
-
-function isLocked(path: RawPath): boolean {
-  return path.locked === true;
-}
-
-function toRoadEdge(path: RawPath): RoadEdge | null {
-  const from = path.srcPointName;
-  const to = path.destPointName;
-  const maxVelocity = path.maxVelocity;
-  const maxReverseVelocity = path.maxReverseVelocity;
-  if (typeof from !== 'string' || typeof to !== 'string') return null;
-  if (
-    typeof maxVelocity !== 'number' ||
-    typeof maxReverseVelocity !== 'number'
-  ) {
-    return null;
-  }
-  const length = typeof path.length === 'number' ? path.length : 0;
-  return { from, to, length, maxVelocity, maxReverseVelocity };
+function toRoadEdge(path: KernelPath): RoadEdge {
+  return {
+    from: path.srcPointName,
+    to: path.destPointName,
+    length: path.length,
+    maxVelocity: path.maxVelocity,
+    maxReverseVelocity: path.maxReverseVelocity,
+  };
 }
 
 @Injectable()
 export class RoutingService {
   private readonly logger = new Logger(RoutingService.name);
 
-  private cachedModel: unknown = null;
+  private cachedModel: KernelPlantModel | null = null;
   private cachedGraph: RoadGraph | null = null;
   private cachedReverseGraph: RoadGraph | null = null;
 
   constructor(private readonly kernelApi: KernelApiService) {}
 
   async getRoadGraph(): Promise<RoadGraph | null> {
-    const plantModel = await this.kernelApi.getPlantModel();
+    const plantModel = await this.kernelApi.getPlantModelView();
     if (!plantModel) {
       this.logger.warn('getRoadGraph: plant model unavailable');
       return null;
@@ -53,18 +42,13 @@ export class RoutingService {
     if (modelUnchangedSinceLastBuild) return this.cachedGraph;
 
     this.cachedModel = plantModel;
-    this.cachedGraph = this.build(plantModel as Record<string, unknown>);
+    this.cachedGraph = this.build(plantModel);
     this.cachedReverseGraph = this.cachedGraph
       ? reverseRoadGraph(this.cachedGraph)
       : null;
     return this.cachedGraph;
   }
 
-  /**
-   * Same graph with every edge flipped. Dijkstra FROM a pickup point on this
-   * graph gives each point's true driving distance TO that pickup on the
-   * directed map — what nearest-vehicle costing needs.
-   */
   async getReverseRoadGraph(): Promise<RoadGraph | null> {
     await this.getRoadGraph();
     return this.cachedReverseGraph;
@@ -74,36 +58,19 @@ export class RoutingService {
     locationNames: readonly string[],
   ): Promise<Map<string, string>> {
     if (locationNames.length === 0) return new Map();
-    const plantModel = (await this.kernelApi.getPlantModel()) as Record<
-      string,
-      unknown
-    > | null;
+    const plantModel = await this.kernelApi.getPlantModelView();
     if (!plantModel) {
       this.logger.warn('pointsOfLocations: plant model unavailable');
       return new Map();
     }
-    const locations = Array.isArray(plantModel.locations)
-      ? (plantModel.locations as PlantLocation[])
-      : [];
-    return resolveLocationPoints(locations, locationNames);
+    return resolveLocationPoints(plantModel.locations, locationNames);
   }
 
-  private build(plantModel: Record<string, unknown>): RoadGraph | null {
-    const rawPaths = Array.isArray(plantModel.paths)
-      ? (plantModel.paths as RawPath[])
-      : [];
+  private build(plantModel: KernelPlantModel): RoadGraph | null {
+    const edges = plantModel.paths
+      .filter((path) => !path.locked)
+      .map(toRoadEdge);
 
-    const openPaths = rawPaths.filter((path) => !isLocked(path));
-    const edges = openPaths
-      .map(toRoadEdge)
-      .filter((edge): edge is RoadEdge => edge !== null);
-
-    const unusablePaths = openPaths.length - edges.length;
-    if (unusablePaths > 0) {
-      this.logger.warn(
-        `getRoadGraph: ${unusablePaths} path(s) excluded — missing endpoints or maxVelocity/maxReverseVelocity`,
-      );
-    }
     if (edges.length === 0) {
       this.logger.warn('getRoadGraph: plant model has no usable paths');
       return null;

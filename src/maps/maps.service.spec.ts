@@ -29,7 +29,7 @@ describe('MapsService', () => {
   let mapRepo: RepoMock;
   let cargoRepo: RepoMock;
   let kernelApi: {
-    getPlantModel: jest.Mock;
+    getRawPlantModel: jest.Mock;
     isReachable: jest.Mock;
     getKernelState: jest.Mock;
     putRawPlantModel: jest.Mock;
@@ -39,7 +39,7 @@ describe('MapsService', () => {
     mapRepo = makeRepo();
     cargoRepo = makeRepo();
     kernelApi = {
-      getPlantModel: jest.fn(),
+      getRawPlantModel: jest.fn(),
       isReachable: jest.fn(),
       getKernelState: jest.fn(),
       putRawPlantModel: jest.fn(),
@@ -59,14 +59,14 @@ describe('MapsService', () => {
 
   describe('getCurrent', () => {
     it('returns null when kernel has no runtime plant model', async () => {
-      kernelApi.getPlantModel.mockResolvedValue(null);
+      kernelApi.getRawPlantModel.mockResolvedValue(null);
 
       await expect(service.getCurrent()).resolves.toBeNull();
       expect(mapRepo.findOne).not.toHaveBeenCalled();
     });
 
     it('returns runtime counts from kernel and enriches with latest upload metadata by map name', async () => {
-      kernelApi.getPlantModel.mockResolvedValue({
+      kernelApi.getRawPlantModel.mockResolvedValue({
         name: 'v7',
         points: [{ name: 'P1' }, { name: 'P2' }],
         paths: [{ name: 'path-1' }],

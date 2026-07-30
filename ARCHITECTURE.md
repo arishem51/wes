@@ -280,20 +280,45 @@ export class TransportTaskStateMachine {
 
 ## 5. Anti-Corruption Layer (openTCS)
 
-**Module:** `src/opentcs/` — files: `kernel-api.service.ts` (REST),
-`kernel-event-listener.service.ts` (SSE → `fms.*` events), `kernel-sync.service.ts`
-(startup sync), `vehicle-state.store.ts` (in-memory live vehicle telemetry),
-`map-loader/` (XML plant-model parsing/loading).
+**Module:** `src/opentcs/` — files: `kernel-api.service.ts` (REST calls only),
+`domain/kernel-model.ts` (the `Kernel*` types), `domain/kernel-mappers.ts` (pure
+payload → `Kernel*` mapping), `domain/vehicle-operations.ts` (`VEHICLE_TYPE` →
+load/unload/charge operation names), `kernel-event-listener.service.ts` (SSE →
+`fms.*` events), `kernel-sync.service.ts` (startup sync), `vehicle-state.store.ts`
+(in-memory live vehicle telemetry), `map-loader/` (XML plant-model parsing/loading).
 
 ### 5.1 What belongs here
-- All `axios`/HTTP calls to the openTCS REST API.
-- All openTCS-specific types (`KernelVehicleState`, etc.).
+- All `axios`/HTTP calls to the openTCS REST API — and nothing else in
+  `kernel-api.service.ts`: types live in `domain/kernel-model.ts`, and every
+  `unknown → Kernel*` conversion in `domain/kernel-mappers.ts`, which is pure TS
+  and unit-tested without axios (`domain/kernel-mappers.spec.ts`).
+- All openTCS-specific types (`KernelVehicleState`, etc.). Consumers import them
+  from `opentcs/domain/kernel-model`; only `KernelApiService` itself is injected.
 - SSE connection management and translation of SSE frames into `fms.*` events.
 - The live vehicle-state cache (`VehicleStateStore`).
 
 ### 5.2 What does NOT belong here
 - Business logic (which AGV to pick, which location to go to).
 - Transport-task state management or cargo writes.
+- WES naming conventions. `PARK-<vehicle>-<point>-<uuid>` is a WES convention:
+  the ACL reports transport orders as the kernel gives them and `ParkClaimStore`
+  decides which are park claims (§6.4).
+
+### 5.2b Plant model: one typed door, one raw door
+Two accessors, and which one you may call depends on where you are:
+
+| Accessor | Returns | Who may call it |
+|---|---|---|
+| `getPlantModelView()` | `KernelPlantModel` — mapped, validated `points` / `paths` / `locations` / `locationTypes` | **anyone**, including business modules |
+| `getRawPlantModel()` | the untouched kernel payload | only `opentcs/` (the read-modify-`PUT` round trip) and the `maps` passthrough endpoint that hands the model to the FE |
+
+A business module that reaches for `getRawPlantModel()` and casts it to
+`Record<string, unknown>` is re-opening the leak §10 forbids: add the missing
+field to `KernelPlantModel` and its mapper instead. Both accessors share one cache,
+invalidated by `putPlantModel`/`putRawPlantModel`; the view is identity-stable
+between invalidations, which is what lets `RoutingService` cache its road graph.
+Entries the kernel reports in an unusable shape (a path with no endpoints, a point
+with no name) are dropped by the mapper and counted in one warning per model load.
 
 ### 5.3 Exports
 `OpenTcsModule` exports exactly **`KernelApiService`** and **`VehicleStateStore`**.
@@ -501,11 +526,15 @@ separate "the kernel says it is gone" from "the kernel did not answer" — the p
 `getTransportOrderState` collapses both to `null` and must not be used here.
 
 **Rebuilt from the kernel, never assumed empty.** `ParkClaimStore` implements
-`OnApplicationBootstrap`: one fleet-wide `getLiveParkOrders()` rebuilds every claim.
-Until it succeeds `isReady()` stays false and **no engine may create a park order**;
-`reconcile()` retries every flush. Only one claim per vehicle is tracked (a
+`OnApplicationBootstrap`: one fleet-wide `getTransportOrders()` rebuilds every claim.
+Which of those orders is a park claim is decided **in `ParkClaimStore`, not in the
+ACL** — the `PARK-<vehicle>-<point>-<uuid>` naming convention is WES's, so the ACL
+returns every order and the store filters (non-terminal state + `parkPointFromOrderName`,
+falling back to the point encoded in the name when the order carries no destination).
+Until the rebuild succeeds `isReady()` stays false and **no engine may create a park
+order**; `reconcile()` retries every flush. Only one claim per vehicle is tracked (a
 pre-restart fleet holding two live park orders for one vehicle keeps the newest and
-logs). `getLiveParkOrders()` survives for this rehydrate only — never per flush.
+logs). `getTransportOrders()` survives for this rehydrate only — never per flush.
 
 **Disposal belongs to openTCS.** WES never withdraws a park order. A vehicle en
 route to park stays an eligible dispatch candidate (`preemptibleParking`, recognised

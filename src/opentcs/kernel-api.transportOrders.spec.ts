@@ -8,21 +8,6 @@ const CREATED = {
 const parkOrderName = (vehicle: string, point: string) =>
   `PARK-${vehicle}-${point}-0d4dd3a5-bfe5-4d90-8893-31ed8d12cae5`;
 
-const order = (
-  name: string,
-  intendedVehicle: string,
-  state: string,
-  locationName: string,
-) => ({
-  name,
-  intendedVehicle,
-  state,
-  destinations: [{ locationName, operation: 'MOVE' }],
-});
-
-const parkOrder = (vehicle: string, point: string, state: string) =>
-  order(parkOrderName(vehicle, point), vehicle, state, point);
-
 function spyOnPost(): jest.Mock {
   const post = jest.spyOn(axios, 'post') as unknown as jest.Mock;
   post.mockResolvedValue(CREATED);
@@ -69,13 +54,13 @@ describe('KernelApiService.createTransportOrder dispensable', () => {
   });
 });
 
-describe('KernelApiService.getLiveParkOrders', () => {
+describe('KernelApiService.getTransportOrders', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('reads the whole fleet when no vehicle is given', async () => {
     const get = spyOnGet([]);
 
-    await new KernelApiService().getLiveParkOrders();
+    await new KernelApiService().getTransportOrders();
 
     expect(get).toHaveBeenCalledWith(
       expect.stringContaining('/v1/transportOrders'),
@@ -86,7 +71,7 @@ describe('KernelApiService.getLiveParkOrders', () => {
   it('narrows the query to one vehicle when asked', async () => {
     const get = spyOnGet([]);
 
-    await new KernelApiService().getLiveParkOrders('Vehicle-0003');
+    await new KernelApiService().getTransportOrders('Vehicle-0003');
 
     expect(get).toHaveBeenCalledWith(
       expect.stringContaining('/v1/transportOrders'),
@@ -96,58 +81,72 @@ describe('KernelApiService.getLiveParkOrders', () => {
     );
   });
 
-  it('keeps only non-final park orders and tags each with its vehicle', async () => {
-    spyOnGet([
-      parkOrder('V1', '1002', 'RAW'),
-      parkOrder('V2', '1006', 'DISPATCHABLE'),
-      parkOrder('V1', '1003', 'FINISHED'),
-      parkOrder('V1', '1004', 'FAILED'),
-      parkOrder('V1', '1005', 'UNROUTABLE'),
-      order('PICKUP-V1-LOC-1-uuid', 'V1', 'RAW', 'LOC-1'),
-    ]);
-
-    expect(await new KernelApiService().getLiveParkOrders()).toEqual([
-      { name: parkOrderName('V1', '1002'), vehicle: 'V1', destination: '1002' },
-      { name: parkOrderName('V2', '1006'), vehicle: 'V2', destination: '1006' },
-    ]);
-  });
-
-  it('treats WITHDRAWN as still live', async () => {
-    spyOnGet([parkOrder('V1', '1002', 'WITHDRAWN')]);
-
-    expect(await new KernelApiService().getLiveParkOrders()).toEqual([
-      { name: parkOrderName('V1', '1002'), vehicle: 'V1', destination: '1002' },
-    ]);
-  });
-
-  it('falls back to the park point encoded in the name when destinations are unusable', async () => {
+  it('reports every order the kernel lists, whatever its leg or state', async () => {
     spyOnGet([
       {
         name: parkOrderName('V1', '1002'),
-        intendedVehicle: 'V1',
         state: 'DISPATCHABLE',
-        destinations: [],
+        intendedVehicle: 'V1',
+        processingVehicle: null,
+        destinations: [{ locationName: '1002', operation: 'MOVE' }],
+      },
+      {
+        name: 'PICKUP-V1-LOC-1-uuid',
+        state: 'FINISHED',
+        intendedVehicle: 'V1',
+        processingVehicle: 'V1',
+        destinations: [{ locationName: 'LOC-1', operation: 'PICK_UP' }],
       },
     ]);
 
-    expect(await new KernelApiService().getLiveParkOrders()).toEqual([
-      { name: parkOrderName('V1', '1002'), vehicle: 'V1', destination: '1002' },
+    expect(await new KernelApiService().getTransportOrders()).toEqual([
+      {
+        name: parkOrderName('V1', '1002'),
+        state: 'DISPATCHABLE',
+        intendedVehicle: 'V1',
+        processingVehicle: null,
+        destinations: ['1002'],
+      },
+      {
+        name: 'PICKUP-V1-LOC-1-uuid',
+        state: 'FINISHED',
+        intendedVehicle: 'V1',
+        processingVehicle: 'V1',
+        destinations: ['LOC-1'],
+      },
     ]);
   });
 
-  it('throws instead of reporting "no claims" when the kernel call fails', async () => {
+  it('fills in what the payload leaves out and drops nameless entries', async () => {
+    spyOnGet([
+      { name: 'ORDER-1' },
+      { state: 'RAW', destinations: [{ locationName: 'LOC-1' }] },
+    ]);
+
+    expect(await new KernelApiService().getTransportOrders()).toEqual([
+      {
+        name: 'ORDER-1',
+        state: 'UNKNOWN',
+        intendedVehicle: null,
+        processingVehicle: null,
+        destinations: [],
+      },
+    ]);
+  });
+
+  it('throws instead of reporting an empty fleet when the kernel call fails', async () => {
     const get = jest.spyOn(axios, 'get') as unknown as jest.Mock;
     get.mockRejectedValue(new Error('kernel down'));
 
-    await expect(new KernelApiService().getLiveParkOrders()).rejects.toThrow(
+    await expect(new KernelApiService().getTransportOrders()).rejects.toThrow(
       'kernel down',
     );
   });
 
-  it('throws instead of reporting "no claims" on an unexpected payload', async () => {
+  it('throws instead of reporting an empty fleet on an unexpected payload', async () => {
     spyOnGet({ orders: [] });
 
-    await expect(new KernelApiService().getLiveParkOrders()).rejects.toThrow(
+    await expect(new KernelApiService().getTransportOrders()).rejects.toThrow(
       /Unexpected/,
     );
   });

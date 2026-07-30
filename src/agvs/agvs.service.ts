@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
 import { AgvEntity } from './entities/agv.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type {
   AgvDto,

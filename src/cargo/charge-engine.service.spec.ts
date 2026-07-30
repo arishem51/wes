@@ -4,7 +4,7 @@ import { ParkClaimStore } from './park-claim.store';
 import { buildRoadGraph } from './domain/routing';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { RoutingService } from './routing.service';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import type { AgvEntity } from '../agvs/entities/agv.entity';
@@ -63,7 +63,7 @@ async function setup(
       { name: 'PARK-1', priority: null },
       { name: 'PARK-2', priority: null },
     ]),
-    getLiveParkOrders: options.kernelUnreachable
+    getTransportOrders: options.kernelUnreachable
       ? jest.fn().mockRejectedValue(new Error('kernel down'))
       : jest.fn().mockResolvedValue([]),
     getTransportOrderState: jest.fn().mockResolvedValue('BEING_PROCESSED'),

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Subject, Observable } from 'rxjs';
-import type { KernelVehicleState } from './kernel-api.service';
+import type { KernelVehicleState } from './domain/kernel-model';
 
 @Injectable()
 export class VehicleStateStore {

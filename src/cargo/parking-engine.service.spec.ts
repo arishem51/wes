@@ -4,7 +4,7 @@ import { ParkClaimStore } from './park-claim.store';
 import { buildRoadGraph } from './domain/routing';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { RoutingService } from './routing.service';
 import {
   TaskStatus,
@@ -64,7 +64,7 @@ async function setup(
       { name: 'PARK-2', priority: null },
     ]),
     getChargeLocations: jest.fn().mockResolvedValue([]),
-    getLiveParkOrders: options.kernelUnreachable
+    getTransportOrders: options.kernelUnreachable
       ? jest.fn().mockRejectedValue(new Error('kernel down'))
       : jest.fn().mockResolvedValue([]),
     getTransportOrderState: jest.fn().mockResolvedValue('BEING_PROCESSED'),
@@ -84,7 +84,7 @@ async function setup(
     kernelApi as unknown as KernelApiService,
   );
   await parkClaims.onApplicationBootstrap();
-  kernelApi.getLiveParkOrders.mockClear();
+  kernelApi.getTransportOrders.mockClear();
 
   const svc = new ParkingEngineService(
     taskRepo as unknown as Repository<TransportTaskEntity>,
@@ -121,7 +121,7 @@ describe('ParkingEngineService', () => {
       { 'wes:leg': 'PARK' },
       { dispensable: true },
     );
-    expect(kernelApi.getLiveParkOrders).not.toHaveBeenCalled();
+    expect(kernelApi.getTransportOrders).not.toHaveBeenCalled();
     expect(parkClaims.get('V1')).toEqual({
       point: 'PARK-1',
       orderName: kernelApi.createTransportOrder.mock.calls[0][0],
@@ -141,7 +141,7 @@ describe('ParkingEngineService', () => {
     expect(parkClaims.claimedPoints()).toEqual(new Set());
   });
 
-  it('does not park while cargo work is created, ready or blocked', async () => {
+  it('does not park while cargo work is ready to assign', async () => {
     const { svc, taskRepo, kernelApi } = await setup(
       [idleAt('V1', 'P1')],
       [agv('V1')],
@@ -151,13 +151,7 @@ describe('ParkingEngineService', () => {
     await svc.run();
 
     expect(taskRepo.count).toHaveBeenCalledWith({
-      where: {
-        status: In([
-          TaskStatus.CREATED,
-          TaskStatus.READY_TO_ASSIGN,
-          TaskStatus.BLOCKED,
-        ]),
-      },
+      where: { status: In([TaskStatus.READY_TO_ASSIGN]) },
     });
     expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
   });
@@ -289,6 +283,6 @@ describe('ParkingEngineService', () => {
 
     expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(2);
     expect(parkDestination(kernelApi.createTransportOrder, 1)).toBe('PARK-2');
-    expect(kernelApi.getLiveParkOrders).not.toHaveBeenCalled();
+    expect(kernelApi.getTransportOrders).not.toHaveBeenCalled();
   });
 });

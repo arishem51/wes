@@ -66,7 +66,7 @@ describe('ZoneService.sync', () => {
   let zoneRepo: RepoMock;
   let memberRepo: RepoMock;
   let kernelApi: {
-    getPlantModel: jest.Mock;
+    getRawPlantModel: jest.Mock;
     invalidatePlantModelCache: jest.Mock;
     putRawPlantModel: jest.Mock;
   };
@@ -75,7 +75,7 @@ describe('ZoneService.sync', () => {
     zoneRepo = makeRepo();
     memberRepo = makeRepo();
     kernelApi = {
-      getPlantModel: jest.fn(),
+      getRawPlantModel: jest.fn(),
       invalidatePlantModelCache: jest.fn(),
       // Default: kernel accepts the write (MODELLING). OPERATING cases override
       // this with a rejection.
@@ -121,7 +121,7 @@ describe('ZoneService.sync', () => {
       members: [makeMember('location_P1', 0), makeMember('location_P2', 1)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
-    kernelApi.getPlantModel.mockResolvedValue(
+    kernelApi.getRawPlantModel.mockResolvedValue(
       makePlantModel({
         pointNames: ['P1', 'P2'],
         locations: [
@@ -150,7 +150,7 @@ describe('ZoneService.sync', () => {
     });
     zoneRepo.find.mockResolvedValue([zone]);
     // Points still exist but every location is gone (map reloaded without them).
-    kernelApi.getPlantModel.mockResolvedValue(
+    kernelApi.getRawPlantModel.mockResolvedValue(
       makePlantModel({ pointNames: ['P1', 'P2'], locations: [] }),
     );
 
@@ -173,7 +173,7 @@ describe('ZoneService.sync', () => {
       members: [makeMember('location_P1', 0)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
-    kernelApi.getPlantModel.mockResolvedValue(
+    kernelApi.getRawPlantModel.mockResolvedValue(
       makePlantModel({ pointNames: ['P1'], locations: [] }),
     );
 
@@ -197,7 +197,7 @@ describe('ZoneService.sync', () => {
       'location_P1',
     ]);
     zoneRepo.find.mockResolvedValue([active, stale]);
-    kernelApi.getPlantModel.mockResolvedValue(
+    kernelApi.getRawPlantModel.mockResolvedValue(
       makePlantModel({ pointNames: ['P1'], locations: [] }),
     );
 
@@ -222,7 +222,7 @@ describe('ZoneService.sync', () => {
       'location_P1',
     ]);
     zoneRepo.find.mockResolvedValue([a, b]);
-    kernelApi.getPlantModel.mockResolvedValue(
+    kernelApi.getRawPlantModel.mockResolvedValue(
       makePlantModel({ pointNames: ['P1'], locations: [] }),
     );
 
@@ -245,7 +245,7 @@ describe('ZoneService.sync', () => {
       members: [makeMember('location_P1', 0), makeMember('location_P2', 1)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
-    kernelApi.getPlantModel.mockResolvedValue(
+    kernelApi.getRawPlantModel.mockResolvedValue(
       makePlantModel({ pointNames: ['P1', 'P2'], locations: [] }),
     );
     kernelApi.putRawPlantModel.mockRejectedValue(new Error('OPERATING'));
@@ -266,7 +266,7 @@ describe('ZoneService.sync', () => {
       members: [makeMember('location_P1', 0)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
-    kernelApi.getPlantModel.mockResolvedValue(
+    kernelApi.getRawPlantModel.mockResolvedValue(
       makePlantModel({ pointNames: [], locations: [] }),
     );
 
@@ -280,7 +280,7 @@ describe('ZoneService.sync', () => {
   });
 
   it('returns kernelUnreachable=true and skips sync when plant model is unavailable', async () => {
-    kernelApi.getPlantModel.mockResolvedValue(null);
+    kernelApi.getRawPlantModel.mockResolvedValue(null);
 
     const result = await service.sync();
 

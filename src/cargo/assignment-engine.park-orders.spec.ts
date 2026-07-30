@@ -52,7 +52,7 @@ describe('AssignmentEngineService park orders', () => {
     const kernelApi = {
       withdrawTransportOrder: jest.fn().mockResolvedValue(undefined),
       createTransportOrder: jest.fn().mockResolvedValue(undefined),
-      getLiveParkOrders: jest.fn().mockResolvedValue([]),
+      getTransportOrders: jest.fn().mockResolvedValue([]),
       loadOperation: 'PICK_UP',
     };
     const vehicleStore = { get: jest.fn().mockReturnValue(parkingVehicle) };
@@ -134,7 +134,7 @@ describe('AssignmentEngineService park orders', () => {
     await svc.run();
 
     expect(kernelApi.withdrawTransportOrder).not.toHaveBeenCalled();
-    expect(kernelApi.getLiveParkOrders).not.toHaveBeenCalled();
+    expect(kernelApi.getTransportOrders).not.toHaveBeenCalled();
     expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(1);
   });
 

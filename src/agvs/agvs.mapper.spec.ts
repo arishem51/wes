@@ -1,5 +1,5 @@
 import { AgvEntity } from './entities/agv.entity';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import {
   acceptanceStatusOf,
   resolveKernelStatus,
