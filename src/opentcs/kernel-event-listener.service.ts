@@ -19,6 +19,7 @@ import {
   orientationAngleFromSsePose,
   precisePositionFromSsePose,
   toAllocatedResources,
+  toVehicleProperties,
 } from './domain/kernel-mappers';
 import type { KernelVehicleState } from './domain/kernel-model';
 import { VehicleStateStore } from './vehicle-state.store';
@@ -289,6 +290,9 @@ export class KernelEventListenerService
       ...(raw.transportOrder !== undefined && {
         transportOrder:
           typeof raw.transportOrder === 'string' ? raw.transportOrder : null,
+      }),
+      ...(raw.properties !== undefined && {
+        properties: toVehicleProperties(raw.properties),
       }),
       observedAt,
     };

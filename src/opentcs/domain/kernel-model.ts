@@ -26,6 +26,7 @@ export interface KernelVehicleState {
   orientationAngle?: number | null;
   allocatedResources?: string[][];
   transportOrder?: string | null;
+  properties?: Record<string, string>;
   observedAt?: string;
 }
 

@@ -258,7 +258,17 @@ export function toKernelVehicleState(
     allocatedResources: toAllocatedResources(value.allocatedResources),
     transportOrder:
       typeof value.transportOrder === 'string' ? value.transportOrder : null,
+    properties: toVehicleProperties(value.properties),
   };
+}
+
+export function toVehicleProperties(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === 'string') result[key] = entry;
+  }
+  return result;
 }
 
 function destinationLocationNames(value: unknown): string[] {
