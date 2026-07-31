@@ -11,8 +11,10 @@ import {
   FMS_EVENTS,
   FmsTransportOrderFinishedEvent,
   FmsVehicleAvailableEvent,
+  FmsVehicleErrorChangedEvent,
   ORDER_PROP,
   TaskLeg,
+  VehicleErrorChangeKind,
 } from '../cargo/domain/events';
 import { KernelApiService } from './kernel-api.service';
 import {
@@ -21,6 +23,11 @@ import {
   toAllocatedResources,
   toVehicleProperties,
 } from './domain/kernel-mappers';
+import {
+  hasVehicleErrors,
+  toVehicleErrors,
+  vehicleErrorsEqual,
+} from './domain/vehicle-errors';
 import type { KernelVehicleState } from './domain/kernel-model';
 import { VehicleStateStore } from './vehicle-state.store';
 import { FleetTelemetryService } from './fleet-telemetry.service';
@@ -89,8 +96,45 @@ export class KernelEventListenerService
       const next: KernelVehicleState = { ...v };
       if (existing?.observedAt) next.observedAt = existing.observedAt;
       this.vehicleStateStore.set(v.name, next);
+      this.emitErrorChange(existing, next);
     }
     this.eventEmitter.emit(FMS_EVENTS.VEHICLE_AVAILABLE, null);
+  }
+
+  private emitErrorChange(
+    previous: KernelVehicleState | undefined,
+    incoming: KernelVehicleState,
+  ): void {
+    if (vehicleErrorsEqual(previous?.errors, incoming.errors)) return;
+
+    const errors = incoming.errors ?? { fatal: [], warning: [] };
+    const kind = this.errorChangeKind(previous, incoming);
+
+    this.logger.warn(
+      `${incoming.name} errors ${kind}: fatal=[${errors.fatal.join(', ')}] warning=[${errors.warning.join(', ')}]`,
+    );
+
+    this.eventEmitter.emit(
+      FMS_EVENTS.VEHICLE_ERROR_CHANGED,
+      new FmsVehicleErrorChangedEvent(
+        incoming.name,
+        kind,
+        errors.fatal,
+        errors.warning,
+        incoming.state,
+        incoming.currentPosition,
+        incoming.transportOrder ?? null,
+        incoming.observedAt ?? null,
+      ),
+    );
+  }
+
+  private errorChangeKind(
+    previous: KernelVehicleState | undefined,
+    incoming: KernelVehicleState,
+  ): VehicleErrorChangeKind {
+    if (!hasVehicleErrors(incoming.errors)) return 'CLEARED';
+    return hasVehicleErrors(previous?.errors) ? 'CHANGED' : 'RAISED';
   }
 
   private connect(): void {
@@ -184,7 +228,9 @@ export class KernelEventListenerService
     this.kernelApi.invalidatePlantModelCache();
     const vehicles = await this.kernelApi.getVehicleStates();
     for (const v of vehicles) {
+      const existing = this.vehicleStateStore.get(v.name);
       this.vehicleStateStore.set(v.name, v);
+      this.emitErrorChange(existing, v);
     }
     this.logger.log(`Store seeded with ${vehicles.length} vehicle(s)`);
     this.eventEmitter.emit(FMS_EVENTS.VEHICLE_AVAILABLE, null);
@@ -254,6 +300,10 @@ export class KernelEventListenerService
       new Date().toISOString();
 
     const existing = this.vehicleStateStore.get(raw.name);
+    const properties =
+      raw.properties !== undefined
+        ? toVehicleProperties(raw.properties)
+        : undefined;
     const incoming: KernelVehicleState = {
       ...(existing ?? {
         name: raw.name,
@@ -291,14 +341,16 @@ export class KernelEventListenerService
         transportOrder:
           typeof raw.transportOrder === 'string' ? raw.transportOrder : null,
       }),
-      ...(raw.properties !== undefined && {
-        properties: toVehicleProperties(raw.properties),
+      ...(properties !== undefined && {
+        properties,
+        errors: toVehicleErrors(properties),
       }),
       observedAt,
     };
 
     const previous = existing;
     this.vehicleStateStore.set(raw.name, incoming);
+    this.emitErrorChange(previous, incoming);
 
     const nowAvailable = this.isDispatchAvailable(incoming);
     const stateChanged =

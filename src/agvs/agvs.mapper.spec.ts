@@ -94,5 +94,11 @@ describe('agvs.mapper', () => {
       const dto = toAgvDto(entity(), 'unknown');
       expect('updatedAt' in dto).toBe(false);
     });
+
+    it('carries no live telemetry — the registry path stays config-only', () => {
+      const dto = toAgvDto(entity(), 'connected');
+      expect('errors' in dto).toBe(false);
+      expect('vehicleState' in dto).toBe(false);
+    });
   });
 });

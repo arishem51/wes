@@ -67,9 +67,7 @@ export class AgvsService {
 
   private toDto(agv: AgvEntity): AgvDto {
     const kernelReachable = this.vehicleStateStore.isConnected();
-    const vehicle = this.vehicleStateStore
-      .getAll()
-      .find((v) => v.name === agv.name);
+    const vehicle = this.vehicleStateStore.get(agv.name);
     return toAgvDto(agv, resolveKernelStatus(kernelReachable, vehicle));
   }
 

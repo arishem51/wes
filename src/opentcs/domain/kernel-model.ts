@@ -1,3 +1,5 @@
+import type { KernelVehicleErrors } from './vehicle-errors';
+
 export interface KernelVehiclePrecisePosition {
   x: number;
   y: number;
@@ -27,6 +29,7 @@ export interface KernelVehicleState {
   allocatedResources?: string[][];
   transportOrder?: string | null;
   properties?: Record<string, string>;
+  errors?: KernelVehicleErrors;
   observedAt?: string;
 }
 

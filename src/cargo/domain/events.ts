@@ -11,6 +11,7 @@ export const TRANSPORT_TASK_EVENTS = {
 export const FMS_EVENTS = {
   TRANSPORT_ORDER_FINISHED: 'fms.transport-order.finished',
   VEHICLE_AVAILABLE: 'fms.vehicle.available',
+  VEHICLE_ERROR_CHANGED: 'fms.vehicle.error-changed',
 } as const;
 
 export type TaskLeg = 'PICKUP' | 'APPROACH' | 'DROPOFF';
@@ -64,4 +65,19 @@ export class FmsTransportOrderFinishedEvent {
 
 export class FmsVehicleAvailableEvent {
   constructor(readonly vehicleName: string) {}
+}
+
+export type VehicleErrorChangeKind = 'RAISED' | 'CHANGED' | 'CLEARED';
+
+export class FmsVehicleErrorChangedEvent {
+  constructor(
+    readonly vehicleName: string,
+    readonly kind: VehicleErrorChangeKind,
+    readonly fatal: string[],
+    readonly warning: string[],
+    readonly vehicleState: string,
+    readonly pointName: string | null,
+    readonly transportOrderName: string | null,
+    readonly observedAt: string | null,
+  ) {}
 }

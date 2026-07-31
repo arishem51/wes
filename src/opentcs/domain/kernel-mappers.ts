@@ -10,6 +10,7 @@ import type {
   KernelVehiclePrecisePosition,
   KernelVehicleState,
 } from './kernel-model';
+import { toVehicleErrors } from './vehicle-errors';
 
 const PARKING_PRIORITY_KEY = 'tcs:parkingPositionPriority';
 
@@ -224,6 +225,8 @@ export function toKernelVehicleState(
     return null;
   }
 
+  const properties = toVehicleProperties(value.properties);
+
   return {
     name: value.name,
     state:
@@ -258,7 +261,8 @@ export function toKernelVehicleState(
     allocatedResources: toAllocatedResources(value.allocatedResources),
     transportOrder:
       typeof value.transportOrder === 'string' ? value.transportOrder : null,
-    properties: toVehicleProperties(value.properties),
+    properties,
+    errors: toVehicleErrors(properties),
   };
 }
 

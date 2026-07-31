@@ -146,13 +146,16 @@ export const TRANSPORT_TASK_EVENTS = {
 export const FMS_EVENTS = {
   TRANSPORT_ORDER_FINISHED: 'fms.transport-order.finished',
   VEHICLE_AVAILABLE: 'fms.vehicle.available',
+  VEHICLE_ERROR_CHANGED: 'fms.vehicle.error-changed',
 } as const;
 ```
 
 Payload classes carry only IDs/primitives, never an entity:
 `TransportTaskCreatedEvent`, `TransportTaskStatusChangedEvent` (taskId, from, to,
 cargoId), `TransportTaskCompletedEvent`, `TransportTaskFailedEvent`,
-`FmsTransportOrderFinishedEvent` (orderName), `FmsVehicleAvailableEvent`.
+`FmsTransportOrderFinishedEvent` (orderName), `FmsVehicleAvailableEvent`,
+`FmsVehicleErrorChangedEvent` (vehicleName, kind, fatal[], warning[], plus the
+vehicle-state/point/order snapshot taken when the change was observed).
 
 ### 3.4 Emitting
 - Transport-task events are emitted **only** by `TransportTaskService`, **after**
@@ -174,6 +177,10 @@ cargoId), `TransportTaskCompletedEvent`, `TransportTaskFailedEvent`,
 ```
 KernelEventListenerService → emits 'fms.transport-order.finished'
                              emits 'fms.vehicle.available'
+                             emits 'fms.vehicle.error-changed'
+
+VehicleErrorService        ← @OnEvent('fms.vehicle.error-changed')
+                             inserts one row into vehicle_error_events (§6.6)
 
 TransportTaskSaga          ← @OnEvent('fms.transport-order.finished')
                              advances TO1 → TO2 → TO3,
@@ -575,6 +582,57 @@ heartbeat (`DISPATCH_HEARTBEAT_MS`, default 5s); SSE stays the low-latency path:
   re-emit `fms.transport-order.finished`; FAILED/UNROUTABLE → fail the task. It
   never pulls the unbounded `/transportOrders` list (history grows without bound);
   the vehicle snapshot's `transportOrder` field is the cheap change detector.
+
+### 6.6 Vehicle error detection (SRS §1.4.3 item 10)
+The VDA5050 driver publishes the vehicle's live error types as two vehicle
+properties — `vda5050:errors.fatal` and `vda5050:errors.warning`, each a
+comma-joined, de-duplicated, sorted list of `errorType` strings. Any FATAL entry
+also drives the kernel's own `Vehicle.State` to `ERROR`.
+
+**Parsing belongs to the ACL.** `opentcs/domain/vehicle-errors.ts` (pure, with
+`vehicle-errors.spec.ts`) turns those two properties into
+`KernelVehicleErrors { fatal, warning }`, which `toKernelVehicleState` puts on
+`KernelVehicleState.errors`. Business modules read `.errors` and must never know
+the `vda5050:` property keys exist (§5.2).
+
+**Detection is edge-triggered with the same level-triggered backstop as §6.5.**
+`KernelEventListenerService` compares the previous and incoming error sets and
+emits `fms.vehicle.error-changed` on every difference — from the SSE frame, from
+the heartbeat re-pull, and from the store seed on connect. The seed emission is
+what records a vehicle that was already faulted while WES was down; a reconnect
+does not duplicate it, because the store already holds the same error set.
+
+**One row per change, never an update.** `VehicleErrorService` (`agvs/`) inserts
+into `vehicle_error_events` with `kind` ∈ `RAISED` / `CHANGED` / `CLEARED`. The
+table is insert-only like `vehicle_state_transitions` (§8 applies): a later
+recovery attempt appends a *new* row (`RECOVERY_ATTEMPTED` / `RECOVERY_REFUSED`)
+rather than mutating the one that recorded the fault. There is no read endpoint
+yet — the rows are evidence for the recovery work, queried directly during sim
+runs.
+
+**The operating screen is the primary surface.** Operators work on the warehouse
+map, so that is where a fault has to be visible without hunting: `VehicleAlertBar`
+floats over the canvas listing every faulted vehicle (fatal first) and selecting
+one focuses it, `useVehicleShapes` draws a dashed ring around it, and
+`VehicleControlPanel` lists the decoded error types. The ring matters because a
+WARNING-only fault (`noRouteError`) leaves `Vehicle.State` untouched and would
+otherwise be invisible on the map. All three read `KernelVehicle.errors`, which
+already flows through `GET /maps/kernel/vehicles` and the SSE passthrough because
+both hand out `KernelVehicleState` objects unchanged — no extra endpoint.
+
+`AgvDto` deliberately carries **none** of this. `/agvs` is the registry path —
+config plus the derived `kernelStatus`, no live telemetry — and faults belong on
+the operating screen, so duplicating them onto an admin CRUD page would only
+re-open that boundary.
+
+Vietnamese error labels live in `wes-client/src/lib/vehicleErrors.ts` (pure
+utility, per `wes-client/CLAUDE.md`).
+
+**Not yet covered — deliberately.** openTCS freezes a vehicle that reports a
+position outside its route (`kernelapp.requireManualReroutingAfterUnexpectedPosition`,
+default `true`) without raising any vehicle error, and that frozen flag is not
+exposed over REST. Such a vehicle is invisible to everything above; catching it
+needs a periodic sweep for a `BEING_PROCESSED` order that stops progressing.
 
 ---
 
