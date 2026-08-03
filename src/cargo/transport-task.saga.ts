@@ -17,6 +17,7 @@ import { ApproachPointService } from './approach-point.service';
 import { RetreatPointService } from './retreat-point.service';
 import {
   FMS_EVENTS,
+  FmsDropOffUnloadedEvent,
   FmsTransportOrderFinishedEvent,
   ORDER_PROP,
   TaskLeg,
@@ -65,6 +66,18 @@ export class TransportTaskSaga {
     } finally {
       this.processing.delete(event.taskId);
     }
+  }
+
+  @OnEvent(FMS_EVENTS.DROPOFF_UNLOADED)
+  async onDropOffUnloaded(event: FmsDropOffUnloadedEvent): Promise<void> {
+    const task = await this.findTask(event.taskId, TaskStatus.DELIVERING);
+    if (!task || task.metadata?.unloadedAt) return;
+
+    task.metadata = { ...task.metadata, unloadedAt: new Date().toISOString() };
+    await this.taskRepo.save(task);
+    this.logger.log(
+      `Task ${task.id}: cargo unloaded at drop-off slot, retreat leg running`,
+    );
   }
 
   private async onPickupFinished(taskId: string): Promise<void> {

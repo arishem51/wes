@@ -282,7 +282,9 @@ export class CargoService {
     task: TransportTaskEntity | null,
     destinationPointName: string | null,
   ): CargoVisualDto {
-    if (task?.status === TaskStatus.DELIVERING) {
+    const unloaded = Boolean(task?.metadata?.unloadedAt);
+
+    if (task?.status === TaskStatus.DELIVERING && !unloaded) {
       return {
         state: 'ON_AGV',
         pointName: null,
@@ -291,6 +293,7 @@ export class CargoService {
     }
 
     if (
+      unloaded ||
       task?.status === TaskStatus.DELIVERY_COMPLETED ||
       cargo.status === CargoStatus.DELIVERED
     ) {

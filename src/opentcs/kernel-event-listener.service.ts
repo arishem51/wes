@@ -9,6 +9,7 @@ import * as http from 'http';
 import * as https from 'https';
 import {
   FMS_EVENTS,
+  FmsDropOffUnloadedEvent,
   FmsTransportOrderFinishedEvent,
   FmsVehicleAvailableEvent,
   FmsVehicleErrorChangedEvent,
@@ -255,11 +256,10 @@ export class KernelEventListenerService
   private handleTO(payload: KernelSsePayload): void {
     const current = payload.currentObjectState;
     const name = current?.name;
-    const state = current?.state;
+    if (!name) return;
 
-    if (!name || state !== 'FINISHED') return;
-
-    this.logger.log(`Transport order "${name}" FINISHED`);
+    const orderFinished = current.state === 'FINISHED';
+    if (orderFinished) this.logger.log(`Transport order "${name}" FINISHED`);
 
     // Route by the WES leg + task id carried on the order's properties, not by
     // the order name (names are opaque unique tokens). Orders WES did not create
@@ -269,9 +269,43 @@ export class KernelEventListenerService
     const leg = props[ORDER_PROP.LEG];
     if (!taskId || !this.isTaskLeg(leg)) return;
 
-    this.eventEmitter.emit(
-      FMS_EVENTS.TRANSPORT_ORDER_FINISHED,
-      new FmsTransportOrderFinishedEvent(name, taskId, leg),
+    if (orderFinished) {
+      this.eventEmitter.emit(
+        FMS_EVENTS.TRANSPORT_ORDER_FINISHED,
+        new FmsTransportOrderFinishedEvent(name, taskId, leg),
+      );
+      return;
+    }
+
+    if (leg === 'DROPOFF' && this.dropOffJustUnloaded(payload)) {
+      this.logger.log(
+        `Transport order "${name}" unloaded — retreat leg starting`,
+      );
+      this.eventEmitter.emit(
+        FMS_EVENTS.DROPOFF_UNLOADED,
+        new FmsDropOffUnloadedEvent(name, taskId),
+      );
+    }
+  }
+
+  private dropOffJustUnloaded(payload: KernelSsePayload): boolean {
+    const hasRetreatLegs = (states: string[]): boolean => states.length > 1;
+    const current = this.driveOrderStates(payload.currentObjectState);
+    const previous = this.driveOrderStates(payload.previousObjectState);
+    return (
+      hasRetreatLegs(current) &&
+      current[0] === 'FINISHED' &&
+      previous[0] !== 'FINISHED'
+    );
+  }
+
+  private driveOrderStates(state: TCSObjectState | undefined): string[] {
+    const raw = state?.driveOrders;
+    if (!Array.isArray(raw)) return [];
+    return raw.map((order) =>
+      order && typeof order === 'object'
+        ? (this.unwrapEnum((order as Record<string, unknown>).state) ?? '')
+        : '',
     );
   }
 

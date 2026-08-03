@@ -10,6 +10,7 @@ export const TRANSPORT_TASK_EVENTS = {
 
 export const FMS_EVENTS = {
   TRANSPORT_ORDER_FINISHED: 'fms.transport-order.finished',
+  DROPOFF_UNLOADED: 'fms.transport-order.dropoff-unloaded',
   VEHICLE_AVAILABLE: 'fms.vehicle.available',
   VEHICLE_ERROR_CHANGED: 'fms.vehicle.error-changed',
 } as const;
@@ -60,6 +61,13 @@ export class FmsTransportOrderFinishedEvent {
     readonly orderName: string,
     readonly taskId: string,
     readonly leg: TaskLeg,
+  ) {}
+}
+
+export class FmsDropOffUnloadedEvent {
+  constructor(
+    readonly orderName: string,
+    readonly taskId: string,
   ) {}
 }
 

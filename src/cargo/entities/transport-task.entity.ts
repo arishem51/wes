@@ -24,6 +24,7 @@ export interface TaskMetadata {
   to3Name?: string;
   approachPointName?: string;
   retreatPointName?: string;
+  unloadedAt?: string;
   blockedReason?: string;
 }
 
