@@ -365,20 +365,6 @@ export class KernelApiService {
     }
   }
 
-  async setVehiclePosition(
-    vehicleName: string,
-    pointName: string,
-  ): Promise<void> {
-    await axios.post(
-      `${this.baseUrl}/v1/vehicles/${encodeURIComponent(vehicleName)}/commAdapter/message`,
-      {
-        type: 'tcs:virtualVehicle:setPosition',
-        parameters: [{ key: 'position', value: pointName }],
-      },
-      { timeout: 5_000 },
-    );
-  }
-
   async setVehicleProperty(
     vehicleName: string,
     key: string,
