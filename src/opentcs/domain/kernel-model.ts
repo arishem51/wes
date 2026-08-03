@@ -120,6 +120,11 @@ export interface CreateTransportOrderOptions {
   dispensable?: boolean;
 }
 
+export interface TransportOrderDestination {
+  locationName: string;
+  operation: string;
+}
+
 export interface TransportOrderDestinationResponse {
   locationName: string;
   operation: string;

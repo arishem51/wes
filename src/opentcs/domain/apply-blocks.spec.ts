@@ -12,6 +12,7 @@ function modelWithDeadEndLane(): PlantModelDto {
       maxVelocity: 1,
       maxReverseVelocity: 1,
       locked: false,
+      properties: [],
     },
     {
       name: `${b} --- ${a}`,
@@ -21,6 +22,7 @@ function modelWithDeadEndLane(): PlantModelDto {
       maxVelocity: 1,
       maxReverseVelocity: 1,
       locked: false,
+      properties: [],
     },
   ];
   return {

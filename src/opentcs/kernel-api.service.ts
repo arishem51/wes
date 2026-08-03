@@ -11,6 +11,7 @@ import type {
   KernelTransportOrder,
   KernelTransportOrderSummary,
   KernelVehicleState,
+  TransportOrderDestination,
   TransportOrderResponse,
 } from './domain/kernel-model';
 import {
@@ -239,7 +240,7 @@ export class KernelApiService {
 
   async createTransportOrder(
     name: string,
-    destinations: Array<{ locationName: string; operation: string }>,
+    destinations: TransportOrderDestination[],
     intendedVehicle: string,
     properties?: Record<string, string>,
     options: CreateTransportOrderOptions = {},

@@ -18,6 +18,7 @@ export interface PointDto {
   position: { x: number; y: number; z: number };
   type: string;
   vehicleOrientationAngle?: number;
+  properties: PropertyDto[];
 }
 
 export interface PathDto {
@@ -28,6 +29,7 @@ export interface PathDto {
   maxVelocity: number;
   maxReverseVelocity: number;
   locked: boolean;
+  properties: PropertyDto[];
 }
 
 export interface PropertyDto {
@@ -49,6 +51,7 @@ export interface VehicleDto {
 export interface LocationTypeDto {
   name: string;
   allowedOperations: string[];
+  properties: PropertyDto[];
 }
 
 export interface LocationDto {
@@ -56,6 +59,7 @@ export interface LocationDto {
   typeName: string;
   position: { x: number; y: number; z: number };
   links: { pointName: string }[];
+  properties: PropertyDto[];
 }
 
 export interface BlockDto {
@@ -95,6 +99,7 @@ interface RawPoint {
   '@_positionZ': string;
   '@_vehicleOrientationAngle': string;
   '@_type': string;
+  property?: RawProperty[];
 }
 
 interface RawPath {
@@ -105,6 +110,7 @@ interface RawPath {
   '@_maxVelocity': string;
   '@_maxReverseVelocity': string;
   '@_locked': string;
+  property?: RawProperty[];
 }
 
 interface RawProperty {
@@ -130,6 +136,7 @@ interface RawAllowedOperation {
 interface RawLocationType {
   '@_name': string;
   allowedOperation?: RawAllowedOperation[];
+  property?: RawProperty[];
 }
 
 interface RawLink {
@@ -143,6 +150,7 @@ interface RawLocation {
   '@_positionY': string;
   '@_positionZ': string;
   link?: RawLink[];
+  property?: RawProperty[];
 }
 
 interface RawMember {
@@ -210,6 +218,10 @@ const ARRAY_TAGS = new Set([
   'property',
 ]);
 
+function toProperties(raw: RawProperty[] | undefined): PropertyDto[] {
+  return (raw ?? []).map((p) => ({ name: p['@_name'], value: p['@_value'] }));
+}
+
 export function parseOpenTcsXml(xmlContent: string): PlantModelDto {
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -229,6 +241,7 @@ export function parseOpenTcsXml(xmlContent: string): PlantModelDto {
         z: parseInt(p['@_positionZ']),
       },
       type: p['@_type'],
+      properties: toProperties(p.property),
     };
     if (!isNaN(angle)) {
       point.vehicleOrientationAngle = angle;
@@ -244,6 +257,7 @@ export function parseOpenTcsXml(xmlContent: string): PlantModelDto {
     maxVelocity: parseInt(p['@_maxVelocity']),
     maxReverseVelocity: parseInt(p['@_maxReverseVelocity']),
     locked: p['@_locked'] === 'true',
+    properties: toProperties(p.property),
   }));
 
   const vehicles: VehicleDto[] = (model.vehicle ?? []).map((v) => ({
@@ -256,16 +270,14 @@ export function parseOpenTcsXml(xmlContent: string): PlantModelDto {
     energyLevelSufficientlyRecharged: parseInt(
       v['@_energyLevelSufficientlyRecharged'],
     ),
-    properties: (v.property ?? []).map((p) => ({
-      name: p['@_name'],
-      value: p['@_value'],
-    })),
+    properties: toProperties(v.property),
   }));
 
   const locationTypes: LocationTypeDto[] = (model.locationType ?? []).map(
     (lt) => ({
       name: lt['@_name'],
       allowedOperations: (lt.allowedOperation ?? []).map((op) => op['@_name']),
+      properties: toProperties(lt.property),
     }),
   );
 
@@ -278,6 +290,7 @@ export function parseOpenTcsXml(xmlContent: string): PlantModelDto {
       z: parseInt(l['@_positionZ']),
     },
     links: (l.link ?? []).map((link) => ({ pointName: link['@_point'] })),
+    properties: toProperties(l.property),
   }));
 
   const blocks: BlockDto[] = (model.block ?? []).map((b) => ({

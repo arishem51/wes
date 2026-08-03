@@ -243,6 +243,26 @@ approach (a `MOVE` to a specific feeder-head point, with no load operation),
 which leg finished; the names are stored in
 `task.metadata.{to1Name,to2Name,to3Name}`.
 
+**TO3 carries two drive orders, not one.** After the unload operation the vehicle
+must back out of the drop-off cell, so TO3's destination list is
+`[{slot, unloadOperation}, {retreatPoint, MOVE}]` — openTCS chains the drive
+orders itself, which is what makes the retreat kernel-routed, scheduler-allocated
+and visible to MAPF instead of an out-of-band move. The MAPF goal stays the
+drop-off cell while the load is carried (the goal is the *current* drive order)
+and advances to the retreat point only once the drop-off drive order finishes, so
+the ordering is enforced by the kernel. `DELIVERY_COMPLETED` and cargo `DELIVERED`
+therefore fire after the retreat, not at `liftDown`. The leg stays `DROPOFF`: no
+new leg, order type or task status.
+
+`RetreatPointService` resolves the point N cells (default 2) straight behind the
+slot from the live plant model; the rule itself is pure in
+`cargo/domain/retreat-point.ts` — same x, smallest positive Δy, traversable path
+at every hop, never turning and never skipping a missing hop. An unresolvable
+retreat logs a warning and TO3 goes out with the drop-off destination alone: a
+topology gap must not block a delivery. It is resolved **outside**
+`commitDropoffSlot`, because that method holds the per-zone advisory lock and no
+HTTP call may run inside it (§6.3).
+
 **Drop-off slot is late-bound.** Creating a request only *reserves a seat* in the
 destination zone (`cargo.destination_zone_id`, capacity-checked against the zone's
 member count); `cargo.destination_location_name` stays null. The concrete slot is
