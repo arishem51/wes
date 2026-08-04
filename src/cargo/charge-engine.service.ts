@@ -12,7 +12,11 @@ import { ParkClaimStore } from './park-claim.store';
 import { RoutingService } from './routing.service';
 import { activeCargoVehicleNames } from './task-queries';
 import { shortestDistancesFrom } from './domain/routing';
-import { ParkingPoint, pickParkingPoint } from './domain/parking.policy';
+import {
+  ParkingPoint,
+  pickParkingPoint,
+  unavailableParkPoints,
+} from './domain/parking.policy';
 import {
   ChargeLocation,
   ChargeVehicleCandidate,
@@ -137,19 +141,6 @@ export class ChargeEngineService {
     }
   }
 
-  private occupiedPoints(
-    agvs: AgvEntity[],
-    points: readonly { name: string }[],
-  ): Set<string> {
-    const names = new Set(points.map((p) => p.name));
-    const occupied = new Set<string>();
-    for (const agv of agvs) {
-      const pos = this.vehicleStore.get(agv.name)?.currentPosition;
-      if (pos && names.has(pos)) occupied.add(pos);
-    }
-    return occupied;
-  }
-
   private async dispatchToCharge(
     agvs: AgvEntity[],
     locations: readonly ChargeLocation[],
@@ -170,7 +161,10 @@ export class ChargeEngineService {
 
     const freeSlots = this.freeSlotsByLocation(locations, chargePoints);
     const graph = await this.routing.getRoadGraph();
-    const parkExcluded = this.occupiedPoints(agvs, nonChargeParks);
+    const parkExcluded = unavailableParkPoints(
+      this.vehicleStore.getAll(),
+      new Set(nonChargeParks.map((p) => p.name)),
+    );
     for (const point of this.parkClaims.claimedPoints()) {
       parkExcluded.add(point);
     }

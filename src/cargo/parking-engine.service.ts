@@ -15,16 +15,13 @@ import { ParkClaimStore } from './park-claim.store';
 import { RoutingService } from './routing.service';
 import { shortestDistancesFrom } from './domain/routing';
 import { activeCargoVehicleNames } from './task-queries';
-import {
-  ORDER_TYPE,
-  buildOrderName,
-  parkPointFromOrderName,
-} from './domain/transport-order-name';
+import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 import {
   ParkingPoint,
   ParkVehicleCandidate,
   needsParking,
   pickParkingPoint,
+  unavailableParkPoints,
 } from './domain/parking.policy';
 
 const PARK_LEG = 'PARK';
@@ -94,7 +91,10 @@ export class ParkingEngineService {
     }
 
     const graph = await this.routing.getRoadGraph();
-    const excluded = this.unavailableParkPoints(parkPointNames);
+    const excluded = unavailableParkPoints(
+      this.vehicleStore.getAll(),
+      parkPointNames,
+    );
     const claimedPoints = this.parkClaims.claimedPoints();
     for (const point of claimedPoints) excluded.add(point);
     this.logParkDecisionInput(unclaimed, claimedVehicles, claimedPoints);
@@ -161,20 +161,6 @@ export class ParkingEngineService {
       where: { status: In(PENDING_WORK_STATUSES) },
     });
     return count > 0;
-  }
-
-  private unavailableParkPoints(
-    parkPointNames: ReadonlySet<string>,
-  ): Set<string> {
-    const excluded = new Set<string>();
-    for (const state of this.vehicleStore.getAll()) {
-      const position = state.currentPosition;
-      if (position && parkPointNames.has(position)) excluded.add(position);
-
-      const target = parkPointFromOrderName(state.transportOrder, state.name);
-      if (target && parkPointNames.has(target)) excluded.add(target);
-    }
-    return excluded;
   }
 
   private async createParkOrder(

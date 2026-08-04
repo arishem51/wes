@@ -164,6 +164,24 @@ describe('ChargeEngineService', () => {
     expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
   });
 
+  it('keeps the fallback off a park point another vehicle is already driving to', async () => {
+    const enRoute: KernelVehicleState = {
+      ...charging('V2', 'P1'),
+      state: 'IDLE',
+      procState: 'PROCESSING_ORDER',
+      transportOrder: 'PARK-V2-PARK-1-0d4dd3a5-bfe5-4d90-8893-31ed8d12cae5',
+    };
+    const { svc, kernelApi } = await setup([
+      flat('V1', 'P1'),
+      charging('V9', 'C1'),
+      enRoute,
+    ]);
+
+    await svc.run();
+
+    expect(orderDestination(kernelApi.createTransportOrder)).toBe('PARK-2');
+  });
+
   it('keeps the fallback off a park point another vehicle has claimed', async () => {
     const { svc, kernelApi, parkClaims } = await setup([
       flat('V1', 'P1'),

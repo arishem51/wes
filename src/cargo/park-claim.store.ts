@@ -88,7 +88,7 @@ export class ParkClaimStore implements OnApplicationBootstrap {
   ): Promise<boolean> {
     const state = this.vehicleStore.get(vehicle);
     if (state?.currentPosition === claim.point) return true;
-    if (state?.transportOrder === claim.orderName) return true;
+    if (state?.transportOrder === claim.orderName) return false;
 
     try {
       const orderState = await this.kernelApi.getTransportOrderStateStrict(

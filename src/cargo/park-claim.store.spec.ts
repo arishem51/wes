@@ -155,13 +155,16 @@ describe('ParkClaimStore', () => {
     expect(kernelApi.getTransportOrderStateStrict).not.toHaveBeenCalled();
   });
 
-  it('releases a claim once the vehicle is processing the claimed order', async () => {
+  it('holds the claim while the vehicle is still driving the claimed order', async () => {
     const { store, kernelApi, vehicleStore } = await readyStoreWithClaim();
     vehicleStore.set('V1', vehicle('P9', PARK_ORDER));
 
     await store.reconcile();
 
-    expect(store.claimedVehicles()).toEqual(new Set());
+    expect(store.get('V1')).toEqual({
+      point: 'PARK-1',
+      orderName: PARK_ORDER,
+    });
     expect(kernelApi.getTransportOrderStateStrict).not.toHaveBeenCalled();
   });
 
