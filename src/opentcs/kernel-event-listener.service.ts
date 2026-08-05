@@ -59,6 +59,8 @@ export class KernelEventListenerService
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private currentRequest: http.ClientRequest | null = null;
+  private connectionGeneration = 0;
+  private readonly lastOrderSignature = new Map<string, string>();
 
   constructor(
     private readonly eventEmitter: EventEmitter2,
@@ -141,6 +143,13 @@ export class KernelEventListenerService
   private connect(): void {
     if (this.destroyed) return;
 
+    const generation = ++this.connectionGeneration;
+    const isCurrentConnection = (): boolean =>
+      !this.destroyed && generation === this.connectionGeneration;
+    const supersededRequest = this.currentRequest;
+    this.currentRequest = null;
+    supersededRequest?.destroy();
+
     const url = new URL('/v1/sse', this.baseUrl);
     url.searchParams.set('/events/transportOrders', 'true');
     url.searchParams.set('/events/vehicles', 'true');
@@ -159,6 +168,10 @@ export class KernelEventListenerService
         },
       },
       (res) => {
+        if (!isCurrentConnection()) {
+          res.destroy();
+          return;
+        }
         this.logger.log(`SSE connected — status ${res.statusCode}`);
         this.vehicleStateStore.setConnected(true);
         void this.telemetry.openSession();
@@ -168,6 +181,7 @@ export class KernelEventListenerService
         let buffer = '';
 
         res.on('data', (chunk: string) => {
+          if (!isCurrentConnection()) return;
           buffer += chunk;
           const parts = buffer.split('\n\n');
           buffer = parts.pop() ?? '';
@@ -195,6 +209,7 @@ export class KernelEventListenerService
         });
 
         res.on('end', () => {
+          if (!isCurrentConnection()) return;
           this.logger.warn('SSE stream ended — reconnecting');
           this.vehicleStateStore.setConnected(false);
           void this.telemetry.closeSession('stream ended');
@@ -202,6 +217,7 @@ export class KernelEventListenerService
         });
 
         res.on('error', () => {
+          if (!isCurrentConnection()) return;
           this.vehicleStateStore.setConnected(false);
           void this.telemetry.closeSession('stream error');
           this.scheduleReconnect(RETRY_DELAY_MS);
@@ -215,6 +231,7 @@ export class KernelEventListenerService
     });
 
     req.on('error', (err: Error) => {
+      if (!isCurrentConnection()) return;
       this.logger.warn(`SSE request error: ${err.message} — reconnecting`);
       this.vehicleStateStore.setConnected(false);
       void this.telemetry.closeSession(`request error: ${err.message}`);
@@ -238,7 +255,7 @@ export class KernelEventListenerService
   }
 
   private scheduleReconnect(delayMs: number): void {
-    if (this.destroyed) return;
+    if (this.destroyed || this.reconnectTimer) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
@@ -258,12 +275,16 @@ export class KernelEventListenerService
     const name = current?.name;
     if (!name) return;
 
-    const orderFinished = current.state === 'FINISHED';
+    const seen = this.lastOrderSignature.get(name);
+    const orderState = this.unwrapEnum(current.state) ?? '';
+    const driveOrders = this.driveOrderStates(current);
+    const signature = `${orderState}|${driveOrders.join(',')}`;
+    if (seen === signature) return;
+    this.lastOrderSignature.set(name, signature);
+
+    const orderFinished = orderState === 'FINISHED';
     if (orderFinished) this.logger.log(`Transport order "${name}" FINISHED`);
 
-    // Route by the WES leg + task id carried on the order's properties, not by
-    // the order name (names are opaque unique tokens). Orders WES did not create
-    // (e.g. kernel-issued Move-* / charging orders) lack these props — ignore them.
     const props = this.orderProps(current.properties);
     const taskId = props[ORDER_PROP.TASK_ID];
     const leg = props[ORDER_PROP.LEG];
@@ -277,7 +298,7 @@ export class KernelEventListenerService
       return;
     }
 
-    if (leg === 'DROPOFF' && this.dropOffJustUnloaded(payload)) {
+    if (leg === 'DROPOFF' && this.dropOffJustUnloaded(driveOrders, seen)) {
       this.logger.log(
         `Transport order "${name}" unloaded — retreat leg starting`,
       );
@@ -288,14 +309,15 @@ export class KernelEventListenerService
     }
   }
 
-  private dropOffJustUnloaded(payload: KernelSsePayload): boolean {
-    const hasRetreatLegs = (states: string[]): boolean => states.length > 1;
-    const current = this.driveOrderStates(payload.currentObjectState);
-    const previous = this.driveOrderStates(payload.previousObjectState);
+  private dropOffJustUnloaded(
+    driveOrders: string[],
+    seenSignature: string | undefined,
+  ): boolean {
+    const hasRetreatLegs = driveOrders.length > 1;
+    const firstLegFinished = driveOrders[0] === 'FINISHED';
+    const seenDriveOrders = seenSignature?.split('|')[1]?.split(',') ?? [];
     return (
-      hasRetreatLegs(current) &&
-      current[0] === 'FINISHED' &&
-      previous[0] !== 'FINISHED'
+      hasRetreatLegs && firstLegFinished && seenDriveOrders[0] !== 'FINISHED'
     );
   }
 
