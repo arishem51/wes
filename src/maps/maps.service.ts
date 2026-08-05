@@ -7,14 +7,12 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AxiosError } from 'axios';
-import {
-  KernelApiService,
+import { KernelApiService } from '../opentcs/kernel-api.service';
+import type {
   KernelLocation,
   KernelLocationType,
-} from '../opentcs/kernel-api.service';
+} from '../opentcs/domain/kernel-model';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
-// Auto-generation of single-vehicle lane blocks disabled — see below.
-// import { applySingleVehicleBlocks } from '../opentcs/domain/apply-blocks';
 import { savePlantModel } from '../opentcs/save-plant-model';
 import { MapRecordEntity } from './entities/map-record.entity';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
@@ -81,7 +79,7 @@ export class MapsService {
   }
 
   async getPlantModel(): Promise<unknown> {
-    const plantModel = await this.kernelApi.getPlantModel();
+    const plantModel = await this.kernelApi.getRawPlantModel();
     return this.toPlantModelSummary(plantModel) ? plantModel : null;
   }
 
@@ -102,7 +100,7 @@ export class MapsService {
     dropoffLocations: string[];
   }> {
     const [model, deliveredCargos] = await Promise.all([
-      this.kernelApi.getLocationModel(),
+      this.kernelApi.getPlantModelView(),
       this.cargoRepo.find({
         where: { status: CargoStatus.DELIVERED },
         select: { destinationLocationName: true },
@@ -178,7 +176,7 @@ export class MapsService {
 
   async getCurrent(): Promise<CurrentMapDto | null> {
     const plantModel = this.toPlantModelSummary(
-      await this.kernelApi.getPlantModel(),
+      await this.kernelApi.getRawPlantModel(),
     );
     if (!plantModel) {
       return null;

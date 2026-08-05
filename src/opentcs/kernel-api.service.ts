@@ -1,371 +1,28 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
-import { parkPointFromOrderName } from '../cargo/domain/transport-order-name';
 import { PlantModelDto } from './map-loader/opentcs-xml.parser';
-
-export interface KernelVehiclePrecisePosition {
-  x: number;
-  y: number;
-  z: number;
-}
-
-export interface KernelVehicleState {
-  name: string;
-  state:
-    | 'UNKNOWN'
-    | 'UNAVAILABLE'
-    | 'ERROR'
-    | 'IDLE'
-    | 'EXECUTING'
-    | 'CHARGING';
-  procState: 'UNAVAILABLE' | 'IDLE' | 'AWAITING_ORDER' | 'PROCESSING_ORDER';
-  integrationLevel:
-    | 'TO_BE_IGNORED'
-    | 'TO_BE_NOTICED'
-    | 'TO_BE_RESPECTED'
-    | 'TO_BE_UTILIZED';
-  energyLevel: number;
-  paused: boolean;
-  currentPosition: string | null;
-  precisePosition?: KernelVehiclePrecisePosition | null;
-  orientationAngle?: number | null;
-  allocatedResources?: string[][];
-  transportOrder?: string | null;
-  observedAt?: string;
-}
-
-export interface KernelLocationType {
-  name: string;
-  allowedOperations: string[];
-}
-
-export interface KernelLocationLink {
-  pointName?: string;
-  point?: string;
-}
-
-export interface KernelLocation {
-  name: string;
-  typeName?: string;
-  type?: string;
-  links?: KernelLocationLink[] | Record<string, unknown>;
-}
-
-export interface KernelPlantModel {
-  locationTypes: KernelLocationType[];
-  locations: KernelLocation[];
-}
-
-export interface KernelParkingPoint {
-  name: string;
-  priority: number | null;
-}
-
-export interface KernelChargeLocation {
-  name: string;
-  points: string[];
-}
-
-export interface KernelTransportOrderSummary {
-  name: string;
-  state: string;
-  destinations: string[];
-}
-
-export interface KernelParkOrder {
-  name: string;
-  vehicle: string;
-  destination: string;
-}
-
-export interface CreateTransportOrderOptions {
-  dispensable?: boolean;
-}
-
-const FINAL_ORDER_STATES: ReadonlySet<string> = new Set([
-  'FINISHED',
-  'FAILED',
-  'UNROUTABLE',
-]);
-
-function isFinalOrderState(state: unknown): boolean {
-  return typeof state === 'string' && FINAL_ORDER_STATES.has(state);
-}
-
-export interface KernelRoute {
-  destinationPoint: string;
-  costs: number;
-  steps: unknown[] | null;
-}
-
-interface DestinationStateDto {
-  locationName: string;
-  operation: string;
-}
-
-interface TransportOrderStateDto {
-  name: string;
-  state: string;
-  intendedVehicle: string | null;
-  processingVehicle: string | null;
-  destinations: DestinationStateDto[];
-}
-
-interface KernelTransportOrderDebug {
-  name?: string;
-  state?: string;
-  intendedVehicle?: string;
-  processingVehicle?: string;
-  destinations?: unknown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
-}
-
-function toOrientationAngle(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function toPrecisePosition(
-  value: unknown,
-): KernelVehiclePrecisePosition | null {
-  if (!isRecord(value)) return null;
-  const { x, y, z } = value;
-  if (typeof x !== 'number' || typeof y !== 'number' || typeof z !== 'number') {
-    return null;
-  }
-  return { x, y, z };
-}
-
-export function toAllocatedResources(value: unknown): string[][] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((group): group is unknown[] => Array.isArray(group))
-    .map((group) =>
-      group.filter((item): item is string => typeof item === 'string'),
-    );
-}
-
-export function orientationAngleFromSsePose(pose: unknown): number | null {
-  return isRecord(pose) ? toOrientationAngle(pose.orientationAngle) : null;
-}
-
-export function precisePositionFromSsePose(
-  pose: unknown,
-): KernelVehiclePrecisePosition | null {
-  return isRecord(pose) ? toPrecisePosition(pose.position) : null;
-}
-
-const PARKING_PRIORITY_KEY = 'tcs:parkingPositionPriority';
-
-/**
- * Read `tcs:parkingPositionPriority` from a point's properties. openTCS serves
- * properties as an array of {key,value} over REST (the plant-model channel), but
- * an object map over SSE — accept either. Returns null when unset or unparseable.
- */
-function parkingPriority(props: unknown): number | null {
-  let raw: unknown;
-  if (Array.isArray(props)) {
-    const found = props.find(
-      (p): p is { key: string; value: unknown } =>
-        isRecord(p) && p.key === PARKING_PRIORITY_KEY,
-    );
-    raw = found?.value;
-  } else if (isRecord(props)) {
-    raw = props[PARKING_PRIORITY_KEY];
-  }
-  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
-  if (typeof raw === 'string' && raw.trim() !== '') {
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function toStringArray(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string')
-    : [];
-}
-
-function toKernelLocationType(value: unknown): KernelLocationType | null {
-  if (!isRecord(value) || typeof value.name !== 'string') {
-    return null;
-  }
-
-  return {
-    name: value.name,
-    allowedOperations: toStringArray(value.allowedOperations),
-  };
-}
-
-function toKernelLocationLink(value: unknown): KernelLocationLink | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const pointName =
-    typeof value.pointName === 'string' ? value.pointName : undefined;
-  const point = typeof value.point === 'string' ? value.point : undefined;
-  return pointName || point ? { pointName, point } : null;
-}
-
-function toKernelLocation(value: unknown): KernelLocation | null {
-  if (!isRecord(value) || typeof value.name !== 'string') {
-    return null;
-  }
-
-  const links = Array.isArray(value.links)
-    ? value.links
-        .map((link) => toKernelLocationLink(link))
-        .filter((link): link is KernelLocationLink => link !== null)
-    : isRecord(value.links)
-      ? value.links
-      : undefined;
-
-  return {
-    name: value.name,
-    typeName: typeof value.typeName === 'string' ? value.typeName : undefined,
-    type: typeof value.type === 'string' ? value.type : undefined,
-    links,
-  };
-}
-
-function toKernelPlantModel(value: unknown): KernelPlantModel | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  return {
-    locationTypes: Array.isArray(value.locationTypes)
-      ? value.locationTypes
-          .map((item) => toKernelLocationType(item))
-          .filter((item): item is KernelLocationType => item !== null)
-      : [],
-    locations: Array.isArray(value.locations)
-      ? value.locations
-          .map((item) => toKernelLocation(item))
-          .filter((item): item is KernelLocation => item !== null)
-      : [],
-  };
-}
-
-function toKernelVehicleState(value: unknown): KernelVehicleState | null {
-  if (!isRecord(value) || typeof value.name !== 'string') {
-    return null;
-  }
-
-  return {
-    name: value.name,
-    state:
-      value.state === 'UNKNOWN' ||
-      value.state === 'UNAVAILABLE' ||
-      value.state === 'ERROR' ||
-      value.state === 'IDLE' ||
-      value.state === 'EXECUTING' ||
-      value.state === 'CHARGING'
-        ? value.state
-        : 'UNKNOWN',
-    procState:
-      value.procState === 'UNAVAILABLE' ||
-      value.procState === 'IDLE' ||
-      value.procState === 'AWAITING_ORDER' ||
-      value.procState === 'PROCESSING_ORDER'
-        ? value.procState
-        : 'UNAVAILABLE',
-    integrationLevel:
-      value.integrationLevel === 'TO_BE_IGNORED' ||
-      value.integrationLevel === 'TO_BE_NOTICED' ||
-      value.integrationLevel === 'TO_BE_RESPECTED' ||
-      value.integrationLevel === 'TO_BE_UTILIZED'
-        ? value.integrationLevel
-        : 'TO_BE_IGNORED',
-    energyLevel: typeof value.energyLevel === 'number' ? value.energyLevel : 0,
-    paused: typeof value.paused === 'boolean' ? value.paused : false,
-    currentPosition:
-      typeof value.currentPosition === 'string' ? value.currentPosition : null,
-    precisePosition: toPrecisePosition(value.precisePosition),
-    orientationAngle: toOrientationAngle(value.orientationAngle),
-    allocatedResources: toAllocatedResources(value.allocatedResources),
-    transportOrder:
-      typeof value.transportOrder === 'string' ? value.transportOrder : null,
-  };
-}
-
-function toTransportOrderDebug(
-  value: unknown,
-): KernelTransportOrderDebug | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  return {
-    name: typeof value.name === 'string' ? value.name : undefined,
-    state: typeof value.state === 'string' ? value.state : undefined,
-    intendedVehicle:
-      typeof value.intendedVehicle === 'string'
-        ? value.intendedVehicle
-        : undefined,
-    processingVehicle:
-      typeof value.processingVehicle === 'string'
-        ? value.processingVehicle
-        : undefined,
-    destinations: value.destinations,
-  };
-}
-
-function firstDestinationName(value: Record<string, unknown>): string | null {
-  if (!Array.isArray(value.destinations)) return null;
-  const first: unknown = value.destinations[0];
-  return isRecord(first) && typeof first.locationName === 'string'
-    ? first.locationName
-    : null;
-}
-
-function toLiveParkOrder(value: unknown): KernelParkOrder | null {
-  if (!isRecord(value)) return null;
-  if (typeof value.name !== 'string') return null;
-  if (typeof value.intendedVehicle !== 'string') return null;
-  if (isFinalOrderState(value.state)) return null;
-
-  const parkPoint = parkPointFromOrderName(value.name, value.intendedVehicle);
-  if (!parkPoint) return null;
-
-  return {
-    name: value.name,
-    vehicle: value.intendedVehicle,
-    destination: firstDestinationName(value) ?? parkPoint,
-  };
-}
-
-export type VehicleType = 'loopback' | 'vda5050';
-
-const VEHICLE_OPERATIONS: Record<
-  VehicleType,
-  { load: string; unload: string; charge: string }
-> = {
-  loopback: { load: 'PICK_UP', unload: 'DROP_OFF', charge: 'CHARGE' },
-  vda5050: { load: 'liftUp', unload: 'liftDown', charge: 'startCharging' },
-};
-
-function locationPointNames(links: KernelLocation['links']): string[] {
-  if (Array.isArray(links)) {
-    return links
-      .map((link) => link.pointName ?? link.point)
-      .filter((point): point is string => typeof point === 'string');
-  }
-  if (isRecord(links)) return Object.keys(links);
-  return [];
-}
-
-function parseVehicleType(value: string): VehicleType {
-  if (value in VEHICLE_OPERATIONS) return value as VehicleType;
-  throw new Error(
-    `VEHICLE_TYPE không hợp lệ: "${value}". Chỉ chấp nhận: ${Object.keys(VEHICLE_OPERATIONS).join(' | ')}.`,
-  );
-}
+import type {
+  CreateTransportOrderOptions,
+  KernelChargeLocation,
+  KernelParkingPoint,
+  KernelPlantModel,
+  KernelRoute,
+  KernelTransportOrder,
+  KernelTransportOrderSummary,
+  KernelVehicleState,
+  TransportOrderDestination,
+  TransportOrderResponse,
+} from './domain/kernel-model';
+import {
+  locationPointNames,
+  toKernelPlantModel,
+  toKernelTransportOrders,
+  toKernelVehicleStates,
+  toTransportOrderDebugList,
+  unusablePlantModelEntries,
+} from './domain/kernel-mappers';
+import { vehicleOperationsFor } from './domain/vehicle-operations';
 
 @Injectable()
 export class KernelApiService {
@@ -375,14 +32,17 @@ export class KernelApiService {
   readonly unloadOperation: string;
   readonly chargeOperation: string;
 
+  private cachedPlantModel: unknown = null;
+  private cachedPlantModelView: KernelPlantModel | null = null;
+
   constructor() {
     this.baseUrl = process.env.OPENTCS_KERNEL_URL ?? 'http://localhost:55200';
-    const vehicleType = parseVehicleType(
+    const operations = vehicleOperationsFor(
       process.env.VEHICLE_TYPE ?? 'loopback',
     );
-    this.loadOperation = VEHICLE_OPERATIONS[vehicleType].load;
-    this.unloadOperation = VEHICLE_OPERATIONS[vehicleType].unload;
-    this.chargeOperation = VEHICLE_OPERATIONS[vehicleType].charge;
+    this.loadOperation = operations.load;
+    this.unloadOperation = operations.unload;
+    this.chargeOperation = operations.charge;
   }
 
   async isReachable(): Promise<boolean> {
@@ -422,13 +82,12 @@ export class KernelApiService {
     }
   }
 
-  private cachedPlantModel: unknown = null;
-
   invalidatePlantModelCache(): void {
     this.cachedPlantModel = null;
+    this.cachedPlantModelView = null;
   }
 
-  async getPlantModel(): Promise<unknown> {
+  async getRawPlantModel(): Promise<unknown> {
     if (this.cachedPlantModel) return this.cachedPlantModel;
     try {
       const res = await axios.get(`${this.baseUrl}/v1/plantModel`, {
@@ -441,12 +100,26 @@ export class KernelApiService {
     }
   }
 
-  async getLocationModel(): Promise<KernelPlantModel | null> {
-    return toKernelPlantModel(await this.getPlantModel());
+  async getPlantModelView(): Promise<KernelPlantModel | null> {
+    if (this.cachedPlantModelView) return this.cachedPlantModelView;
+
+    const raw = await this.getRawPlantModel();
+    const view = toKernelPlantModel(raw);
+    if (!view) return null;
+
+    const unusable = unusablePlantModelEntries(raw, view);
+    if (unusable.length > 0) {
+      this.logger.warn(
+        `Plant model: ignored ${unusable.join(', ')} the kernel reported in an unusable shape`,
+      );
+    }
+
+    this.cachedPlantModelView = view;
+    return view;
   }
 
   async getPointNamesByLocation(): Promise<Map<string, string[]>> {
-    const model = await this.getLocationModel();
+    const model = await this.getPlantModelView();
     if (!model) return new Map();
     return new Map(
       model.locations.map((location) => [
@@ -457,25 +130,16 @@ export class KernelApiService {
   }
 
   async getParkingPoints(): Promise<KernelParkingPoint[]> {
-    const model = await this.getPlantModel();
-    if (!isRecord(model) || !Array.isArray(model.points)) return [];
+    const model = await this.getPlantModelView();
+    if (!model) return [];
 
-    const out: KernelParkingPoint[] = [];
-    for (const raw of model.points) {
-      if (
-        !isRecord(raw) ||
-        raw.type !== 'PARK_POSITION' ||
-        typeof raw.name !== 'string'
-      ) {
-        continue;
-      }
-      out.push({ name: raw.name, priority: parkingPriority(raw.properties) });
-    }
-    return out;
+    return model.points
+      .filter((point) => point.type === 'PARK_POSITION')
+      .map((point) => ({ name: point.name, priority: point.parkingPriority }));
   }
 
   async getChargeLocations(): Promise<KernelChargeLocation[]> {
-    const model = await this.getLocationModel();
+    const model = await this.getPlantModelView();
     if (!model) return [];
 
     const chargeTypeNames = new Set<string>(
@@ -494,6 +158,34 @@ export class KernelApiService {
     return out;
   }
 
+  async findPickupLocationForPoint(pointName: string): Promise<string | null> {
+    const model = await this.getPlantModelView();
+    if (!model) return null;
+
+    const pickupTypeNames = new Set<string>(
+      model.locationTypes
+        .filter((locationType) =>
+          locationType.allowedOperations.includes(this.loadOperation),
+        )
+        .map((locationType) => locationType.name),
+    );
+
+    const pickup = model.locations.find(
+      (loc) =>
+        pickupTypeNames.has(loc.typeName ?? loc.type ?? '') &&
+        locationPointNames(loc.links).includes(pointName),
+    );
+    return pickup?.name ?? null;
+  }
+
+  async findPointForLocation(locationName: string): Promise<string | null> {
+    const model = await this.getPlantModelView();
+    if (!model) return null;
+
+    const location = model.locations.find((loc) => loc.name === locationName);
+    return location ? (locationPointNames(location.links)[0] ?? null) : null;
+  }
+
   async getVehicles(): Promise<Array<KernelVehicleState>> {
     const res = await axios.get<Array<KernelVehicleState>>(
       `${this.baseUrl}/v1/vehicles`,
@@ -507,11 +199,7 @@ export class KernelApiService {
       const res = await axios.get(`${this.baseUrl}/v1/vehicles`, {
         timeout: 5_000,
       });
-      return Array.isArray(res.data)
-        ? res.data
-            .map((item) => toKernelVehicleState(item))
-            .filter((item): item is KernelVehicleState => item !== null)
-        : [];
+      return toKernelVehicleStates(res.data);
     } catch {
       return [];
     }
@@ -526,36 +214,18 @@ export class KernelApiService {
     return {
       vehicles:
         vehicles.status === 'fulfilled'
-          ? Array.isArray(vehicles.value.data)
-            ? vehicles.value.data
-                .map((item) => toKernelVehicleState(item))
-                .filter((item): item is KernelVehicleState => item !== null)
-                .map((vehicle) => ({
-                  name: vehicle.name,
-                  state: vehicle.state,
-                  procState: vehicle.procState,
-                  integrationLevel: vehicle.integrationLevel,
-                  currentPosition: vehicle.currentPosition,
-                  paused: vehicle.paused,
-                }))
-            : []
+          ? toKernelVehicleStates(vehicles.value.data).map((vehicle) => ({
+              name: vehicle.name,
+              state: vehicle.state,
+              procState: vehicle.procState,
+              integrationLevel: vehicle.integrationLevel,
+              currentPosition: vehicle.currentPosition,
+              paused: vehicle.paused,
+            }))
           : `ERROR: ${vehicles.reason}`,
       transportOrders:
         orders.status === 'fulfilled'
-          ? Array.isArray(orders.value.data)
-            ? orders.value.data
-                .map((item) => toTransportOrderDebug(item))
-                .filter(
-                  (item): item is KernelTransportOrderDebug => item !== null,
-                )
-                .map((order) => ({
-                  name: order.name,
-                  state: order.state,
-                  intendedVehicle: order.intendedVehicle,
-                  processingVehicle: order.processingVehicle,
-                  destinations: order.destinations,
-                }))
-            : []
+          ? toTransportOrderDebugList(orders.value.data)
           : `ERROR: ${orders.reason}`,
     };
   }
@@ -570,7 +240,7 @@ export class KernelApiService {
 
   async createTransportOrder(
     name: string,
-    destinations: Array<{ locationName: string; operation: string }>,
+    destinations: TransportOrderDestination[],
     intendedVehicle: string,
     properties?: Record<string, string>,
     options: CreateTransportOrderOptions = {},
@@ -586,7 +256,7 @@ export class KernelApiService {
         value,
       }));
     }
-    const res = await axios.post<TransportOrderStateDto>(
+    const res = await axios.post<TransportOrderResponse>(
       `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}`,
       body,
       { timeout: 10_000 },
@@ -637,9 +307,9 @@ export class KernelApiService {
     );
   }
 
-  async getLiveParkOrders(
+  async getTransportOrders(
     intendedVehicle?: string,
-  ): Promise<KernelParkOrder[]> {
+  ): Promise<KernelTransportOrder[]> {
     const res = await axios.get(`${this.baseUrl}/v1/transportOrders`, {
       params: intendedVehicle ? { intendedVehicle } : undefined,
       timeout: 10_000,
@@ -649,10 +319,7 @@ export class KernelApiService {
         `Unexpected /v1/transportOrders payload (${intendedVehicle ?? 'fleet-wide'})`,
       );
     }
-    return res.data.flatMap((item) => {
-      const order = toLiveParkOrder(item);
-      return order ? [order] : [];
-    });
+    return toKernelTransportOrders(res.data);
   }
 
   async getTransportOrderState(name: string): Promise<string | null> {
@@ -699,66 +366,6 @@ export class KernelApiService {
     } catch {
       return null;
     }
-  }
-
-  async findPickupLocationForPoint(pointName: string): Promise<string | null> {
-    const model = await this.getLocationModel();
-    if (!model) return null;
-
-    const pickupTypeNames = new Set<string>(
-      model.locationTypes
-        .filter((locationType) =>
-          locationType.allowedOperations.includes(this.loadOperation),
-        )
-        .map((locationType) => locationType.name),
-    );
-
-    for (const loc of model.locations) {
-      const typeName: string = loc.typeName ?? loc.type ?? '';
-      if (!pickupTypeNames.has(typeName)) continue;
-
-      let linked = false;
-      if (Array.isArray(loc.links)) {
-        linked = loc.links.some(
-          (link) => link.pointName === pointName || link.point === pointName,
-        );
-      } else if (loc.links) {
-        linked = pointName in loc.links;
-      }
-
-      if (linked) return loc.name;
-    }
-
-    return null;
-  }
-
-  async findPointForLocation(locationName: string): Promise<string | null> {
-    const model = await this.getLocationModel();
-    if (!model) return null;
-
-    const location = model.locations.find((loc) => loc.name === locationName);
-    if (!location?.links) return null;
-
-    if (Array.isArray(location.links)) {
-      const firstLink = location.links[0];
-      return firstLink?.pointName ?? firstLink?.point ?? null;
-    }
-
-    return Object.keys(location.links)[0] ?? null;
-  }
-
-  async setVehiclePosition(
-    vehicleName: string,
-    pointName: string,
-  ): Promise<void> {
-    await axios.post(
-      `${this.baseUrl}/v1/vehicles/${encodeURIComponent(vehicleName)}/commAdapter/message`,
-      {
-        type: 'tcs:virtualVehicle:setPosition',
-        parameters: [{ key: 'position', value: pointName }],
-      },
-      { timeout: 5_000 },
-    );
   }
 
   async setVehicleProperty(

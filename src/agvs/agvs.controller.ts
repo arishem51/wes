@@ -80,12 +80,6 @@ export class AgvsController {
     return this.service.restore(id);
   }
 
-  @Post(':id/position')
-  @HttpCode(204)
-  setPosition(@Param('id') id: string, @Body('pointName') pointName: string) {
-    return this.service.setPosition(id, pointName);
-  }
-
   @Delete(':id')
   @HttpCode(200)
   remove(@Param('id') id: string) {

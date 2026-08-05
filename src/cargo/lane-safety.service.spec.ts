@@ -9,7 +9,7 @@ import {
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import type { ZoneMemberEntity } from '../zones/entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { TransportTaskService } from './transport-task.service';
 import { ZoneGeometryService, MemberAxes } from './zone-geometry.service';

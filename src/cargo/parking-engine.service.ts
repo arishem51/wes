@@ -1,33 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ORDER_PROP } from './domain/events';
 import {
   TransportTaskEntity,
-
+  TaskStatus,
 } from './entities/transport-task.entity';
 import { AgvEntity } from '../agvs/entities/agv.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { ParkClaimStore } from './park-claim.store';
 import { RoutingService } from './routing.service';
 import { shortestDistancesFrom } from './domain/routing';
 import { activeCargoVehicleNames } from './task-queries';
-import {
-  ORDER_TYPE,
-  buildOrderName,
-  parkPointFromOrderName,
-} from './domain/transport-order-name';
+import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 import {
   ParkingPoint,
   ParkVehicleCandidate,
   needsParking,
   pickParkingPoint,
+  unavailableParkPoints,
 } from './domain/parking.policy';
 
 const PARK_LEG = 'PARK';
+const PENDING_WORK_STATUSES = [TaskStatus.READY_TO_ASSIGN];
 
 function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;
@@ -57,6 +55,7 @@ export class ParkingEngineService {
     if (parkingPoints.length === 0) return;
     const parkPointNames = new Set(parkingPoints.map((p) => p.name));
 
+    const hasPendingWork = await this.hasPendingWork();
     const busy = await activeCargoVehicleNames(this.taskRepo);
     const agvs = await this.agvRepo.find();
 
@@ -65,7 +64,7 @@ export class ParkingEngineService {
     for (const agv of agvs) {
       const fms = this.vehicleStore.get(agv.name);
       const candidate = this.toCandidate(agv, fms, busy);
-      if (!needsParking(candidate, parkPointNames)) continue;
+      if (!needsParking(candidate, parkPointNames, hasPendingWork)) continue;
       if (!candidate.currentPosition) continue;
       readyToPark.push({ name: agv.name, position: candidate.currentPosition });
     }
@@ -92,7 +91,10 @@ export class ParkingEngineService {
     }
 
     const graph = await this.routing.getRoadGraph();
-    const excluded = this.unavailableParkPoints(parkPointNames);
+    const excluded = unavailableParkPoints(
+      this.vehicleStore.getAll(),
+      parkPointNames,
+    );
     const claimedPoints = this.parkClaims.claimedPoints();
     for (const point of claimedPoints) excluded.add(point);
     this.logParkDecisionInput(unclaimed, claimedVehicles, claimedPoints);
@@ -154,18 +156,11 @@ export class ParkingEngineService {
     };
   }
 
-  private unavailableParkPoints(
-    parkPointNames: ReadonlySet<string>,
-  ): Set<string> {
-    const excluded = new Set<string>();
-    for (const state of this.vehicleStore.getAll()) {
-      const position = state.currentPosition;
-      if (position && parkPointNames.has(position)) excluded.add(position);
-
-      const target = parkPointFromOrderName(state.transportOrder, state.name);
-      if (target && parkPointNames.has(target)) excluded.add(target);
-    }
-    return excluded;
+  private async hasPendingWork(): Promise<boolean> {
+    const count = await this.taskRepo.count({
+      where: { status: In(PENDING_WORK_STATUSES) },
+    });
+    return count > 0;
   }
 
   private async createParkOrder(

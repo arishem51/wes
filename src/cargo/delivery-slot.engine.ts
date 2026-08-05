@@ -4,13 +4,8 @@ import { In, Repository } from 'typeorm';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
-import {
-  computeEgressPoints,
-  hopsToExit,
-  type PlantPath,
-} from '../zones/domain/zone-topology';
-
-const LOCATION_PREFIX = 'location_';
+import { resolveLocationPoints } from '../zones/domain/member-points';
+import { computeEgressPoints, hopsToExit } from '../zones/domain/zone-topology';
 
 interface PointCoords {
   x: number;
@@ -40,73 +35,27 @@ export class DeliverySlotEngine {
       return null;
     }
 
-    const plantModel = (await this.kernelApi.getPlantModel()) as Record<
-      string,
-      unknown
-    > | null;
+    const plantModel = await this.kernelApi.getPlantModelView();
     if (!plantModel) {
       this.logger.warn('findSlot: plant model unavailable');
       return null;
     }
 
-    const rawPoints = Array.isArray(plantModel.points)
-      ? (plantModel.points as Array<Record<string, unknown>>)
-      : [];
-    const rawPaths = Array.isArray(plantModel.paths)
-      ? (plantModel.paths as PlantPath[])
-      : [];
-    const rawLocations = Array.isArray(plantModel.locations)
-      ? (plantModel.locations as Array<Record<string, unknown>>)
-      : [];
-
-    const pointMap = new Map<string, PointCoords>();
-    for (const p of rawPoints) {
-      if (typeof p.name !== 'string') continue;
-      const pos = p.position as { x?: number; y?: number } | undefined;
-      if (!pos) continue;
-      pointMap.set(p.name, { x: pos.x ?? 0, y: pos.y ?? 0 });
-    }
-
-    // Build location → first linked point name from actual plant model links
-    const locationPointMap = new Map<string, string>();
-    for (const loc of rawLocations) {
-      if (typeof loc.name !== 'string') continue;
-      const links = loc.links;
-      if (Array.isArray(links) && links.length > 0) {
-        const first = links[0] as Record<string, unknown>;
-        const pn =
-          typeof first.pointName === 'string'
-            ? first.pointName
-            : typeof first.point === 'string'
-              ? first.point
-              : null;
-        if (pn) locationPointMap.set(loc.name, pn);
-      } else if (links && typeof links === 'object' && !Array.isArray(links)) {
-        const firstKey = Object.keys(links)[0];
-        if (firstKey) locationPointMap.set(loc.name, firstKey);
-      }
-    }
-
-    const memberPointNames = new Set<string>(
-      zone.members
-        .map(
-          (m) =>
-            locationPointMap.get(m.locationName) ??
-            this.locationToPointName(m.locationName),
-        )
-        .filter(Boolean),
+    const pointMap = new Map<string, PointCoords>(
+      plantModel.points.map((point) => [point.name, point.position]),
     );
+
+    const memberPoints = resolveLocationPoints(
+      plantModel.locations,
+      zone.members.map((member) => member.locationName),
+    );
+    const memberPointNames = new Set<string>(memberPoints.values());
 
     this.logger.debug(
-      `findSlot: zone="${zone.name}" members=${zone.members.length} points=${rawPoints.length} paths=${rawPaths.length} locations=${rawLocations.length} memberPointNames=[${[...memberPointNames].join(',')}]`,
+      `findSlot: zone="${zone.name}" members=${zone.members.length} points=${plantModel.points.length} paths=${plantModel.paths.length} locations=${plantModel.locations.length} memberPointNames=[${[...memberPointNames].join(',')}]`,
     );
 
-    // Exit reference = egress points (member → outside): where the flow leaves
-    // the zone toward the exit. We fill slots FARTHEST from the exit first, so a
-    // later drop never sits between an earlier one and the exit — physically the
-    // parked cargo would block the vehicle, even though openTCS routing ignores
-    // it.
-    const egress = computeEgressPoints(rawPaths, memberPointNames);
+    const egress = computeEgressPoints(plantModel.paths, memberPointNames);
 
     if (egress.length === 0) {
       this.logger.warn(
@@ -128,15 +77,13 @@ export class DeliverySlotEngine {
     // Flow-hops from each slot to the exit; larger = farther from exit (filled
     // first). Slots with no path to the exit are dropped — a vehicle would be
     // stranded there.
-    const hops = hopsToExit(rawPaths, memberPointNames, egress);
+    const hops = hopsToExit(plantModel.paths, memberPointNames, egress);
 
     const slots: MemberSlot[] = [];
     for (const member of zone.members) {
-      const pointName =
-        locationPointMap.get(member.locationName) ??
-        this.locationToPointName(member.locationName);
-      const coords = pointMap.get(pointName);
-      if (!coords) {
+      const pointName = memberPoints.get(member.locationName);
+      const coords = pointName ? pointMap.get(pointName) : undefined;
+      if (!pointName || !coords) {
         this.logger.warn(`No point for location "${member.locationName}"`);
         continue;
       }
@@ -215,11 +162,5 @@ export class DeliverySlotEngine {
 
   async hasAvailableSlot(zone: ZoneEntity): Promise<boolean> {
     return (await this.findSlot(zone)) !== null;
-  }
-
-  private locationToPointName(locationName: string): string {
-    return locationName.startsWith(LOCATION_PREFIX)
-      ? locationName.slice(LOCATION_PREFIX.length)
-      : locationName;
   }
 }

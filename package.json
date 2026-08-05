@@ -5,6 +5,7 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "packageManager": "pnpm@10.25.0",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -15,6 +16,7 @@
     "seed": "ts-node src/database/seed.ts",
     "scenario": "node scripts/run-scenario.js",
     "analyze": "node scripts/analyze.js",
+    "set-pin": "node scripts/set-pin.js",
     "migration:run": "node src/database/migration-cli.js migration:run -d src/database/data-source.ts",
     "migration:revert": "node src/database/migration-cli.js migration:revert -d src/database/data-source.ts",
     "migration:show": "node src/database/migration-cli.js migration:show -d src/database/data-source.ts",
@@ -70,6 +72,7 @@
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
     "jest": "^30.0.0",
+    "mqtt": "^5.15.2",
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",

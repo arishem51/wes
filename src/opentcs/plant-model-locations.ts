@@ -1,5 +1,6 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { KernelApiService } from './kernel-api.service';
+import type { KernelPath } from './domain/kernel-model';
 import { savePlantModel } from './save-plant-model';
 
 export type KernelLocationType = 'Pick up' | 'Drop off';
@@ -8,13 +9,6 @@ export interface MemberLocationSpec {
   locationName: string;
   pointName: string;
   type: KernelLocationType;
-}
-
-export interface KernelPath {
-  srcPointName?: string;
-  destPointName?: string;
-  maxVelocity: number;
-  maxReverseVelocity: number;
 }
 
 export interface PlantTopology {
@@ -108,7 +102,7 @@ function upsertInto(
 export async function readPlantTopology(
   kernelApi: KernelApiService,
 ): Promise<PlantTopology | null> {
-  const rawModel = await kernelApi.getPlantModel();
+  const rawModel = await kernelApi.getRawPlantModel();
   if (!rawModel || typeof rawModel !== 'object') return null;
 
   const model = rawModel as Record<string, unknown>;
@@ -147,7 +141,7 @@ export async function upsertMemberLocations(
   specs: MemberLocationSpec[],
 ): Promise<void> {
   if (specs.length === 0) return;
-  const model = requireModel(await kernelApi.getPlantModel());
+  const model = requireModel(await kernelApi.getRawPlantModel());
   const points = recordArray(model.points);
   const locations = [...recordArray(model.locations)];
 
@@ -165,7 +159,7 @@ export async function removeLocations(
 ): Promise<void> {
   const names = new Set(locationNames);
   if (names.size === 0) return;
-  const model = requireModel(await kernelApi.getPlantModel());
+  const model = requireModel(await kernelApi.getRawPlantModel());
   const locations = recordArray(model.locations).filter((location) => {
     const name = typeof location.name === 'string' ? location.name : undefined;
     return !name || !names.has(name);

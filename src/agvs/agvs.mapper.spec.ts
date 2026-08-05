@@ -1,5 +1,5 @@
 import { AgvEntity } from './entities/agv.entity';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import {
   acceptanceStatusOf,
   resolveKernelStatus,
@@ -93,6 +93,12 @@ describe('agvs.mapper', () => {
     it('does not leak entity-only fields such as updatedAt', () => {
       const dto = toAgvDto(entity(), 'unknown');
       expect('updatedAt' in dto).toBe(false);
+    });
+
+    it('carries no live telemetry — the registry path stays config-only', () => {
+      const dto = toAgvDto(entity(), 'connected');
+      expect('errors' in dto).toBe(false);
+      expect('vehicleState' in dto).toBe(false);
     });
   });
 });

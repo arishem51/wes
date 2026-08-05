@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, Repository } from 'typeorm';
 import { AgvEntity } from './entities/agv.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import type { KernelVehicleState } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type {
   AgvDto,
@@ -67,9 +67,7 @@ export class AgvsService {
 
   private toDto(agv: AgvEntity): AgvDto {
     const kernelReachable = this.vehicleStateStore.isConnected();
-    const vehicle = this.vehicleStateStore
-      .getAll()
-      .find((v) => v.name === agv.name);
+    const vehicle = this.vehicleStateStore.get(agv.name);
     return toAgvDto(agv, resolveKernelStatus(kernelReachable, vehicle));
   }
 
@@ -204,12 +202,6 @@ export class AgvsService {
     agv.isDispatchEnabled = true;
     const saved = await this.repo.save(agv);
     return this.toDto(saved);
-  }
-
-  async setPosition(id: string, pointName: string): Promise<void> {
-    const agv = await this.repo.findOne({ where: { id } });
-    if (!agv) throw new NotFoundException('AGV không tồn tại.');
-    await this.kernelApi.setVehiclePosition(agv.name, pointName);
   }
 
   async remove(id: string): Promise<void> {

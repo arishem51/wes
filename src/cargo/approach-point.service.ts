@@ -1,16 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  KernelApiService,
-  type KernelRoute,
-} from '../opentcs/kernel-api.service';
-import {
-  resolveLocationPoints,
-  type PlantLocation,
-} from '../zones/domain/member-points';
-import {
-  computeFeederPoints,
-  type PlantPath,
-} from '../zones/domain/zone-topology';
+import { KernelApiService } from '../opentcs/kernel-api.service';
+import type { KernelRoute } from '../opentcs/domain/kernel-model';
+import { resolveLocationPoints } from '../zones/domain/member-points';
+import { computeFeederPoints } from '../zones/domain/zone-topology';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
 
 @Injectable()
@@ -56,30 +48,20 @@ export class ApproachPointService {
   async feederPointsOf(zone: ZoneEntity): Promise<string[]> {
     if (!zone.members || zone.members.length === 0) return [];
 
-    const plantModel = (await this.kernelApi.getPlantModel()) as Record<
-      string,
-      unknown
-    > | null;
+    const plantModel = await this.kernelApi.getPlantModelView();
     if (!plantModel) {
       this.logger.warn(`Zone "${zone.name}": plant model unavailable`);
       return [];
     }
 
-    const paths = Array.isArray(plantModel.paths)
-      ? (plantModel.paths as PlantPath[])
-      : [];
-    const locations = Array.isArray(plantModel.locations)
-      ? (plantModel.locations as PlantLocation[])
-      : [];
-
     const memberPointNames = new Set(
       resolveLocationPoints(
-        locations,
+        plantModel.locations,
         zone.members.map((member) => member.locationName),
       ).values(),
     );
 
-    const feeders = computeFeederPoints(paths, memberPointNames);
+    const feeders = computeFeederPoints(plantModel.paths, memberPointNames);
     if (feeders.length > 0) return feeders;
 
     this.logger.warn(

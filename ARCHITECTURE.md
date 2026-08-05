@@ -146,13 +146,16 @@ export const TRANSPORT_TASK_EVENTS = {
 export const FMS_EVENTS = {
   TRANSPORT_ORDER_FINISHED: 'fms.transport-order.finished',
   VEHICLE_AVAILABLE: 'fms.vehicle.available',
+  VEHICLE_ERROR_CHANGED: 'fms.vehicle.error-changed',
 } as const;
 ```
 
 Payload classes carry only IDs/primitives, never an entity:
 `TransportTaskCreatedEvent`, `TransportTaskStatusChangedEvent` (taskId, from, to,
 cargoId), `TransportTaskCompletedEvent`, `TransportTaskFailedEvent`,
-`FmsTransportOrderFinishedEvent` (orderName), `FmsVehicleAvailableEvent`.
+`FmsTransportOrderFinishedEvent` (orderName), `FmsVehicleAvailableEvent`,
+`FmsVehicleErrorChangedEvent` (vehicleName, kind, fatal[], warning[], plus the
+vehicle-state/point/order snapshot taken when the change was observed).
 
 ### 3.4 Emitting
 - Transport-task events are emitted **only** by `TransportTaskService`, **after**
@@ -174,6 +177,10 @@ cargoId), `TransportTaskCompletedEvent`, `TransportTaskFailedEvent`,
 ```
 KernelEventListenerService → emits 'fms.transport-order.finished'
                              emits 'fms.vehicle.available'
+                             emits 'fms.vehicle.error-changed'
+
+VehicleErrorService        ← @OnEvent('fms.vehicle.error-changed')
+                             inserts one row into vehicle_error_events (§6.6)
 
 TransportTaskSaga          ← @OnEvent('fms.transport-order.finished')
                              advances TO1 → TO2 → TO3,
@@ -236,6 +243,26 @@ approach (a `MOVE` to a specific feeder-head point, with no load operation),
 which leg finished; the names are stored in
 `task.metadata.{to1Name,to2Name,to3Name}`.
 
+**TO3 carries two drive orders, not one.** After the unload operation the vehicle
+must back out of the drop-off cell, so TO3's destination list is
+`[{slot, unloadOperation}, {retreatPoint, MOVE}]` — openTCS chains the drive
+orders itself, which is what makes the retreat kernel-routed, scheduler-allocated
+and visible to MAPF instead of an out-of-band move. The MAPF goal stays the
+drop-off cell while the load is carried (the goal is the *current* drive order)
+and advances to the retreat point only once the drop-off drive order finishes, so
+the ordering is enforced by the kernel. `DELIVERY_COMPLETED` and cargo `DELIVERED`
+therefore fire after the retreat, not at `liftDown`. The leg stays `DROPOFF`: no
+new leg, order type or task status.
+
+`RetreatPointService` resolves the point N cells (default 2) straight behind the
+slot from the live plant model; the rule itself is pure in
+`cargo/domain/retreat-point.ts` — same x, smallest positive Δy, traversable path
+at every hop, never turning and never skipping a missing hop. An unresolvable
+retreat logs a warning and TO3 goes out with the drop-off destination alone: a
+topology gap must not block a delivery. It is resolved **outside**
+`commitDropoffSlot`, because that method holds the per-zone advisory lock and no
+HTTP call may run inside it (§6.3).
+
 **Drop-off slot is late-bound.** Creating a request only *reserves a seat* in the
 destination zone (`cargo.destination_zone_id`, capacity-checked against the zone's
 member count); `cargo.destination_location_name` stays null. The concrete slot is
@@ -280,20 +307,45 @@ export class TransportTaskStateMachine {
 
 ## 5. Anti-Corruption Layer (openTCS)
 
-**Module:** `src/opentcs/` — files: `kernel-api.service.ts` (REST),
-`kernel-event-listener.service.ts` (SSE → `fms.*` events), `kernel-sync.service.ts`
-(startup sync), `vehicle-state.store.ts` (in-memory live vehicle telemetry),
-`map-loader/` (XML plant-model parsing/loading).
+**Module:** `src/opentcs/` — files: `kernel-api.service.ts` (REST calls only),
+`domain/kernel-model.ts` (the `Kernel*` types), `domain/kernel-mappers.ts` (pure
+payload → `Kernel*` mapping), `domain/vehicle-operations.ts` (`VEHICLE_TYPE` →
+load/unload/charge operation names), `kernel-event-listener.service.ts` (SSE →
+`fms.*` events), `kernel-sync.service.ts` (startup sync), `vehicle-state.store.ts`
+(in-memory live vehicle telemetry), `map-loader/` (XML plant-model parsing/loading).
 
 ### 5.1 What belongs here
-- All `axios`/HTTP calls to the openTCS REST API.
-- All openTCS-specific types (`KernelVehicleState`, etc.).
+- All `axios`/HTTP calls to the openTCS REST API — and nothing else in
+  `kernel-api.service.ts`: types live in `domain/kernel-model.ts`, and every
+  `unknown → Kernel*` conversion in `domain/kernel-mappers.ts`, which is pure TS
+  and unit-tested without axios (`domain/kernel-mappers.spec.ts`).
+- All openTCS-specific types (`KernelVehicleState`, etc.). Consumers import them
+  from `opentcs/domain/kernel-model`; only `KernelApiService` itself is injected.
 - SSE connection management and translation of SSE frames into `fms.*` events.
 - The live vehicle-state cache (`VehicleStateStore`).
 
 ### 5.2 What does NOT belong here
 - Business logic (which AGV to pick, which location to go to).
 - Transport-task state management or cargo writes.
+- WES naming conventions. `PARK-<vehicle>-<point>-<uuid>` is a WES convention:
+  the ACL reports transport orders as the kernel gives them and `ParkClaimStore`
+  decides which are park claims (§6.4).
+
+### 5.2b Plant model: one typed door, one raw door
+Two accessors, and which one you may call depends on where you are:
+
+| Accessor | Returns | Who may call it |
+|---|---|---|
+| `getPlantModelView()` | `KernelPlantModel` — mapped, validated `points` / `paths` / `locations` / `locationTypes` | **anyone**, including business modules |
+| `getRawPlantModel()` | the untouched kernel payload | only `opentcs/` (the read-modify-`PUT` round trip) and the `maps` passthrough endpoint that hands the model to the FE |
+
+A business module that reaches for `getRawPlantModel()` and casts it to
+`Record<string, unknown>` is re-opening the leak §10 forbids: add the missing
+field to `KernelPlantModel` and its mapper instead. Both accessors share one cache,
+invalidated by `putPlantModel`/`putRawPlantModel`; the view is identity-stable
+between invalidations, which is what lets `RoutingService` cache its road graph.
+Entries the kernel reports in an unusable shape (a path with no endpoints, a point
+with no name) are dropped by the mapper and counted in one warning per model load.
 
 ### 5.3 Exports
 `OpenTcsModule` exports exactly **`KernelApiService`** and **`VehicleStateStore`**.
@@ -501,11 +553,15 @@ separate "the kernel says it is gone" from "the kernel did not answer" — the p
 `getTransportOrderState` collapses both to `null` and must not be used here.
 
 **Rebuilt from the kernel, never assumed empty.** `ParkClaimStore` implements
-`OnApplicationBootstrap`: one fleet-wide `getLiveParkOrders()` rebuilds every claim.
-Until it succeeds `isReady()` stays false and **no engine may create a park order**;
-`reconcile()` retries every flush. Only one claim per vehicle is tracked (a
+`OnApplicationBootstrap`: one fleet-wide `getTransportOrders()` rebuilds every claim.
+Which of those orders is a park claim is decided **in `ParkClaimStore`, not in the
+ACL** — the `PARK-<vehicle>-<point>-<uuid>` naming convention is WES's, so the ACL
+returns every order and the store filters (non-terminal state + `parkPointFromOrderName`,
+falling back to the point encoded in the name when the order carries no destination).
+Until the rebuild succeeds `isReady()` stays false and **no engine may create a park
+order**; `reconcile()` retries every flush. Only one claim per vehicle is tracked (a
 pre-restart fleet holding two live park orders for one vehicle keeps the newest and
-logs). `getLiveParkOrders()` survives for this rehydrate only — never per flush.
+logs). `getTransportOrders()` survives for this rehydrate only — never per flush.
 
 **Disposal belongs to openTCS.** WES never withdraws a park order. A vehicle en
 route to park stays an eligible dispatch candidate (`preemptibleParking`, recognised
@@ -546,6 +602,57 @@ heartbeat (`DISPATCH_HEARTBEAT_MS`, default 5s); SSE stays the low-latency path:
   re-emit `fms.transport-order.finished`; FAILED/UNROUTABLE → fail the task. It
   never pulls the unbounded `/transportOrders` list (history grows without bound);
   the vehicle snapshot's `transportOrder` field is the cheap change detector.
+
+### 6.6 Vehicle error detection (SRS §1.4.3 item 10)
+The VDA5050 driver publishes the vehicle's live error types as two vehicle
+properties — `vda5050:errors.fatal` and `vda5050:errors.warning`, each a
+comma-joined, de-duplicated, sorted list of `errorType` strings. Any FATAL entry
+also drives the kernel's own `Vehicle.State` to `ERROR`.
+
+**Parsing belongs to the ACL.** `opentcs/domain/vehicle-errors.ts` (pure, with
+`vehicle-errors.spec.ts`) turns those two properties into
+`KernelVehicleErrors { fatal, warning }`, which `toKernelVehicleState` puts on
+`KernelVehicleState.errors`. Business modules read `.errors` and must never know
+the `vda5050:` property keys exist (§5.2).
+
+**Detection is edge-triggered with the same level-triggered backstop as §6.5.**
+`KernelEventListenerService` compares the previous and incoming error sets and
+emits `fms.vehicle.error-changed` on every difference — from the SSE frame, from
+the heartbeat re-pull, and from the store seed on connect. The seed emission is
+what records a vehicle that was already faulted while WES was down; a reconnect
+does not duplicate it, because the store already holds the same error set.
+
+**One row per change, never an update.** `VehicleErrorService` (`agvs/`) inserts
+into `vehicle_error_events` with `kind` ∈ `RAISED` / `CHANGED` / `CLEARED`. The
+table is insert-only like `vehicle_state_transitions` (§8 applies): a later
+recovery attempt appends a *new* row (`RECOVERY_ATTEMPTED` / `RECOVERY_REFUSED`)
+rather than mutating the one that recorded the fault. There is no read endpoint
+yet — the rows are evidence for the recovery work, queried directly during sim
+runs.
+
+**The operating screen is the primary surface.** Operators work on the warehouse
+map, so that is where a fault has to be visible without hunting: `VehicleAlertBar`
+floats over the canvas listing every faulted vehicle (fatal first) and selecting
+one focuses it, `useVehicleShapes` draws a dashed ring around it, and
+`VehicleControlPanel` lists the decoded error types. The ring matters because a
+WARNING-only fault (`noRouteError`) leaves `Vehicle.State` untouched and would
+otherwise be invisible on the map. All three read `KernelVehicle.errors`, which
+already flows through `GET /maps/kernel/vehicles` and the SSE passthrough because
+both hand out `KernelVehicleState` objects unchanged — no extra endpoint.
+
+`AgvDto` deliberately carries **none** of this. `/agvs` is the registry path —
+config plus the derived `kernelStatus`, no live telemetry — and faults belong on
+the operating screen, so duplicating them onto an admin CRUD page would only
+re-open that boundary.
+
+Vietnamese error labels live in `wes-client/src/lib/vehicleErrors.ts` (pure
+utility, per `wes-client/CLAUDE.md`).
+
+**Not yet covered — deliberately.** openTCS freezes a vehicle that reports a
+position outside its route (`kernelapp.requireManualReroutingAfterUnexpectedPosition`,
+default `true`) without raising any vehicle error, and that frozen flag is not
+exposed over REST. Such a vehicle is invisible to everything above; catching it
+needs a periodic sweep for a `BEING_PROCESSED` order that stops progressing.
 
 ---
 

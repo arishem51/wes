@@ -25,6 +25,7 @@ import { PickupDependencyService } from './pickup-dependency.service';
 import { LaneSafetyService } from './lane-safety.service';
 import { RoutingService } from './routing.service';
 import { ApproachPointService } from './approach-point.service';
+import { RetreatPointService } from './retreat-point.service';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
 
 @Module({
@@ -49,6 +50,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     RoutingService,
     DispatchPolicyService,
     ApproachPointService,
+    RetreatPointService,
     ParkClaimStore,
     ReleaseEngineService,
     AssignmentEngineService,

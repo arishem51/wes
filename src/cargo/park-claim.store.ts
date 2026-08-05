@@ -1,11 +1,16 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { KernelApiService } from '../opentcs/kernel-api.service';
-import type { KernelParkOrder } from '../opentcs/kernel-api.service';
+import type { KernelTransportOrder } from '../opentcs/domain/kernel-model';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
+import { parkPointFromOrderName } from './domain/transport-order-name';
 
 export interface ParkClaim {
   readonly point: string;
   readonly orderName: string;
+}
+
+interface LiveParkClaim extends ParkClaim {
+  readonly vehicle: string;
 }
 
 const TERMINAL_PARK_ORDER_STATES: ReadonlySet<string> = new Set([
@@ -13,6 +18,20 @@ const TERMINAL_PARK_ORDER_STATES: ReadonlySet<string> = new Set([
   'FAILED',
   'UNROUTABLE',
 ]);
+
+function liveParkClaim(order: KernelTransportOrder): LiveParkClaim | null {
+  if (!order.intendedVehicle) return null;
+  if (TERMINAL_PARK_ORDER_STATES.has(order.state)) return null;
+
+  const parkPoint = parkPointFromOrderName(order.name, order.intendedVehicle);
+  if (!parkPoint) return null;
+
+  return {
+    vehicle: order.intendedVehicle,
+    point: order.destinations[0] ?? parkPoint,
+    orderName: order.name,
+  };
+}
 
 @Injectable()
 export class ParkClaimStore implements OnApplicationBootstrap {
@@ -69,7 +88,7 @@ export class ParkClaimStore implements OnApplicationBootstrap {
   ): Promise<boolean> {
     const state = this.vehicleStore.get(vehicle);
     if (state?.currentPosition === claim.point) return true;
-    if (state?.transportOrder === claim.orderName) return true;
+    if (state?.transportOrder === claim.orderName) return false;
 
     try {
       const orderState = await this.kernelApi.getTransportOrderStateStrict(
@@ -85,9 +104,9 @@ export class ParkClaimStore implements OnApplicationBootstrap {
   }
 
   private async rehydrate(): Promise<void> {
-    let live: KernelParkOrder[];
+    let orders: KernelTransportOrder[];
     try {
-      live = await this.kernelApi.getLiveParkOrders();
+      orders = await this.kernelApi.getTransportOrders();
     } catch (err) {
       this.ready = false;
       this.logger.warn(
@@ -97,16 +116,19 @@ export class ParkClaimStore implements OnApplicationBootstrap {
     }
 
     this.claims.clear();
-    for (const order of live) {
-      const superseded = this.claims.get(order.vehicle);
+    for (const order of orders) {
+      const claim = liveParkClaim(order);
+      if (!claim) continue;
+
+      const superseded = this.claims.get(claim.vehicle);
       if (superseded) {
         this.logger.warn(
-          `${order.vehicle} has more than one live park order — tracking ${order.name}, dropping ${superseded.orderName}`,
+          `${claim.vehicle} has more than one live park order — tracking ${claim.orderName}, dropping ${superseded.orderName}`,
         );
       }
-      this.claims.set(order.vehicle, {
-        point: order.destination,
-        orderName: order.name,
+      this.claims.set(claim.vehicle, {
+        point: claim.point,
+        orderName: claim.orderName,
       });
     }
     this.ready = true;

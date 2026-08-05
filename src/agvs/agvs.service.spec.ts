@@ -41,7 +41,11 @@ describe('AgvsService', () => {
     getVehicles: jest.Mock;
     setVehicleIntegrationLevel: jest.Mock;
   };
-  let vehicleStore: { getAll: jest.Mock; isConnected: jest.Mock };
+  let vehicleStore: {
+    getAll: jest.Mock;
+    get: jest.Mock;
+    isConnected: jest.Mock;
+  };
 
   beforeEach(async () => {
     repo = {
@@ -60,6 +64,7 @@ describe('AgvsService', () => {
     // REST call. Default to reachable/empty; individual tests override.
     vehicleStore = {
       getAll: jest.fn().mockReturnValue([]),
+      get: jest.fn().mockReturnValue(undefined),
       isConnected: jest.fn().mockReturnValue(true),
     };
 

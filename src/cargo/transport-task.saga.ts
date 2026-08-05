@@ -10,39 +10,23 @@ import {
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import type { TransportOrderDestination as OrderDestination } from '../opentcs/domain/kernel-model';
 import { TransportTaskService } from './transport-task.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
 import { ApproachPointService } from './approach-point.service';
+import { RetreatPointService } from './retreat-point.service';
 import {
   FMS_EVENTS,
+  FmsDropOffUnloadedEvent,
   FmsTransportOrderFinishedEvent,
   ORDER_PROP,
   TaskLeg,
 } from './domain/events';
 import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 
-/**
- * Drives a transport task through its physical legs in openTCS:
- *
- *   TO1 (PICK_UP)  done → create TO2, task → DELIVERING
- *   TO2 (approach) done → create TO3 (still DELIVERING)
- *   TO3 (DROP_OFF) done → task → DELIVERY_COMPLETED, cargo → DELIVERED
- *
- * The kernel tells us "order X FINISHED" along with the wes:taskId / wes:leg
- * properties WES stamped on it; the leg decides which step just completed and
- * the task id identifies the task — the order name itself is opaque.
- */
 @Injectable()
 export class TransportTaskSaga {
   private readonly logger = new Logger(TransportTaskSaga.name);
-  /**
-   * Task ids whose finished-event is being handled right now. The same "finished"
-   * arrives from two paths — the live SSE frame and the LegReconcile backstop
-   * re-emitting it — and the per-leg guards below are check-then-act (an await
-   * sits between reading `to2Name`/`to3Name` and writing it), so two concurrent
-   * handlers would both create the next leg. This set makes handling single-flight
-   * per task: while one is in flight, the duplicate returns immediately.
-   */
   private readonly processing = new Set<string>();
 
   constructor(
@@ -58,15 +42,13 @@ export class TransportTaskSaga {
     private readonly transportTask: TransportTaskService,
     private readonly deliverySlotEngine: DeliverySlotEngine,
     private readonly approachPoint: ApproachPointService,
+    private readonly retreatPoint: RetreatPointService,
   ) {}
 
   @OnEvent(FMS_EVENTS.TRANSPORT_ORDER_FINISHED)
   async onTransportOrderFinished(
     event: FmsTransportOrderFinishedEvent,
   ): Promise<void> {
-    // Drop a duplicate finished-event for a task already in flight (see
-    // `processing`). has/add are synchronous, so the lock closes before the first
-    // await — unlike the leg guards it protects.
     if (this.processing.has(event.taskId)) return;
     this.processing.add(event.taskId);
     try {
@@ -86,13 +68,22 @@ export class TransportTaskSaga {
     }
   }
 
+  @OnEvent(FMS_EVENTS.DROPOFF_UNLOADED)
+  async onDropOffUnloaded(event: FmsDropOffUnloadedEvent): Promise<void> {
+    const task = await this.findTask(event.taskId, TaskStatus.DELIVERING);
+    if (!task || task.metadata?.unloadedAt) return;
+
+    task.metadata = { ...task.metadata, unloadedAt: new Date().toISOString() };
+    await this.taskRepo.save(task);
+    this.logger.log(
+      `Task ${task.id}: cargo unloaded at drop-off slot, retreat leg running`,
+    );
+  }
+
   private async onPickupFinished(taskId: string): Promise<void> {
     const task = await this.findTask(taskId, TaskStatus.PICKING_UP);
     if (!task) return;
 
-    // Idempotency: the status advance below normally filters re-fired TO1
-    // events, but there's a window between creating TO2 and committing the
-    // status change. If TO2 already exists, this is a duplicate — bail.
     if (task.metadata?.to2Name) {
       this.logger.debug(
         `Task ${task.id}: TO2 already created — ignoring duplicate TO1 finished`,
@@ -141,8 +132,7 @@ export class TransportTaskSaga {
     );
     const created = await this.createNextOrder(
       to2Name,
-      approachPoint,
-      'MOVE',
+      [{ locationName: approachPoint, operation: 'MOVE' }],
       vehicle,
       { taskId: task.id, leg: 'APPROACH' },
     );
@@ -185,10 +175,6 @@ export class TransportTaskSaga {
     const task = await this.findTask(taskId, TaskStatus.DELIVERING);
     if (!task) return;
 
-    // Idempotency: TO2→TO3 doesn't advance the task status (both legs are
-    // DELIVERING), so a re-fired TO2 FINISHED event still matches this task.
-    // If TO3 already exists, this is a duplicate — bail before creating it
-    // again (openTCS would reject the repeated name with ObjectExistsException).
     if (task.metadata?.to3Name) {
       this.logger.debug(
         `Task ${task.id}: TO3 already created — ignoring duplicate TO2 finished`,
@@ -218,10 +204,6 @@ export class TransportTaskSaga {
       return;
     }
 
-    // Commit the concrete drop-off slot now (barrier): the vehicle is parked at
-    // the zone's approach head, so occupancy reflects physical reality and the
-    // fill order stays correct on one-way lanes. Idempotent — a re-fired event
-    // reuses the already-committed slot.
     let slot = cargo.destinationLocationName;
     if (!slot) {
       slot = await this.commitDropoffSlot(cargo);
@@ -237,6 +219,13 @@ export class TransportTaskSaga {
       }
     }
 
+    const retreatPath = await this.retreatPoint.pathFor(slot);
+    if (!retreatPath) {
+      this.logger.warn(
+        `Task ${task.id}: no retreat point behind ${slot} — drop-off goes out without the retreat leg`,
+      );
+    }
+
     const to3Name = buildOrderName(
       ORDER_TYPE.DROPOFF,
       vehicle,
@@ -245,43 +234,48 @@ export class TransportTaskSaga {
     );
     const created = await this.createNextOrder(
       to3Name,
-      slot,
-      this.kernelApi.unloadOperation,
+      this.dropOffDestinations(slot, retreatPath),
       vehicle,
       { taskId: task.id, leg: 'DROPOFF' },
     );
     if (!created) return;
 
-    // No status change here — the task stays DELIVERING until drop-off lands.
+    const retreatPoint = retreatPath?.at(-1);
     task.metadata = { ...task.metadata, to3Name };
+    if (retreatPoint) task.metadata.retreatPointName = retreatPoint;
     await this.taskRepo.save(task);
     this.logger.log(
-      `Task ${task.id}: created ${to3Name} (drop-off at ${slot})`,
+      `Task ${task.id}: created ${to3Name} (drop-off at ${slot}${
+        retreatPath ? `, retreat via ${retreatPath.join(' → ')}` : ''
+      })`,
     );
   }
 
-  /**
-   * Atomically pick + reserve a concrete drop-off slot for a seat-reserved cargo.
-   * A per-zone advisory lock serializes concurrent barriers so two vehicles never
-   * commit the same slot; findSlot reads committed occupancy only (reserved
-   * cargos with a null slot don't consume a specific slot). Returns the slot
-   * name, or null when the zone is full / misconfigured.
-   */
+  private dropOffDestinations(
+    slot: string,
+    retreatPath: readonly string[] | null,
+  ): OrderDestination[] {
+    const dropOff = {
+      locationName: slot,
+      operation: this.kernelApi.unloadOperation,
+    };
+    const retreatSteps = (retreatPath ?? []).map((cell) => ({
+      locationName: cell,
+      operation: 'MOVE',
+    }));
+    return [dropOff, ...retreatSteps];
+  }
+
   private async commitDropoffSlot(cargo: CargoEntity): Promise<string | null> {
     const zone = await this.destinationZoneOf(cargo);
     if (!zone) return null;
 
     return this.dataSource.transaction(async (manager) => {
-      // Held until the transaction commits, so the next barrier's findSlot sees
-      // this cargo's committed slot. (findSlot itself reads via its own repo at
-      // READ COMMITTED — safe because the lock serializes commit order.)
       await manager.query(
         'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
         [cargo.destinationZoneId],
       );
       const repo = manager.getRepository(CargoEntity);
-      // Re-read under the lock: a concurrent / re-fired barrier may have already
-      // committed a slot for this cargo — reuse it instead of double-assigning.
       const fresh = await repo.findOne({ where: { id: cargo.id } });
       if (fresh?.destinationLocationName) {
         cargo.destinationLocationName = fresh.destinationLocationName;
@@ -330,15 +324,14 @@ export class TransportTaskSaga {
 
   private async createNextOrder(
     orderName: string,
-    locationName: string,
-    operation: string,
+    destinations: OrderDestination[],
     vehicle: string,
     props: { taskId: string; leg: TaskLeg },
   ): Promise<boolean> {
     try {
       await this.kernelApi.createTransportOrder(
         orderName,
-        [{ locationName, operation }],
+        destinations,
         vehicle,
         { [ORDER_PROP.TASK_ID]: props.taskId, [ORDER_PROP.LEG]: props.leg },
       );
