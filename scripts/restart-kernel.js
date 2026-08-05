@@ -133,7 +133,7 @@ async function main() {
   }
   console.log('kernel down');
 
-  const logSizeBefore = fs.existsSync(kernelLog) ? fs.statSync(kernelLog).size : 0;
+  const restartEpochMs = Date.now();
   const child = spawn(
     `start "FMS kernel ${condition}" /D "${kernelDir}" gradlew.bat :opentcs-FMS-kernel:run -Pcondition=${condition}`,
     { shell: true, detached: true, stdio: 'ignore' },
@@ -146,8 +146,9 @@ async function main() {
 
   const confirmed = await waitFor(
     async () => {
-      const size = fs.existsSync(kernelLog) ? fs.statSync(kernelLog).size : 0;
-      return size >= logSizeBefore && loggedCondition(kernelLog) === condition;
+      if (!fs.existsSync(kernelLog)) return false;
+      const freshSinceRestart = fs.statSync(kernelLog).mtimeMs >= restartEpochMs;
+      return freshSinceRestart && loggedCondition(kernelLog) === condition;
     },
     60000,
     2000,

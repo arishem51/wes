@@ -7,7 +7,40 @@ for (const l of fs.readFileSync('.env', 'utf8').split('\n')) {
 }
 const K = 'http://localhost:55200';
 const STALL_S = 180;
-const MAX_MIN = 55;
+const MAX_MIN = 65;
+const FLEET_N = Number(process.env.WATCH_FLEET_N ?? 15);
+const LABEL_LIKE = process.env.WATCH_LABEL ?? `E1|cond=S1|n=${FLEET_N}%`;
+const FLEET_RE = new RegExp(`^Vehicle-\\d{4}$`);
+const WATCH_CONDITION = process.env.WATCH_CONDITION ?? null;
+
+const { spawnSync } = require('child_process');
+function kernelJvmCondition() {
+  const script = [
+    "$p = Get-NetTCPConnection -LocalPort 55200 -State Listen -ErrorAction SilentlyContinue |",
+    'Select-Object -First 1 -ExpandProperty OwningProcess;',
+    'if (-not $p) { exit 1 };',
+    '$c = (Get-CimInstance Win32_Process -Filter "ProcessId=$p").CommandLine;',
+    "if ($c -match '-Dfms\\.condition=(\\S+)') { $Matches[1] } else { 'S1' }",
+  ].join(' ');
+  const res = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8',
+  });
+  if (res.status !== 0) return null;
+  const value = String(res.stdout ?? '').trim().toUpperCase();
+  return /^[A-Z0-9_]+$/.test(value) ? value : null;
+}
+
+function assertConditionOrDie() {
+  if (!WATCH_CONDITION) return;
+  const found = kernelJvmCondition();
+  if (found !== null && found !== WATCH_CONDITION) {
+    console.log(
+      `WATCHDOG ALARM: kernel condition is ${found}, expected ${WATCH_CONDITION} — ` +
+        'the kernel was swapped mid-campaign; runs since the swap are invalid. Exiting loudly.',
+    );
+    process.exit(3);
+  }
+}
 
 async function doneCount(db, since) {
   return Number((await db.query(
@@ -17,7 +50,9 @@ async function doneCount(db, since) {
 async function fleet() {
   try {
     const v = await fetch(`${K}/v1/vehicles`).then((r) => r.json());
-    const f = v.filter((x) => /^Vehicle-000[1-4]$/.test(x.name));
+    const f = v
+      .filter((x) => FLEET_RE.test(x.name))
+      .filter((x) => x.integrationLevel === 'TO_BE_UTILIZED');
     return {
       idle: f.filter((x) => x.state === 'IDLE' && x.procState === 'IDLE').length,
       minE: Math.min(...f.map((x) => x.energyLevel ?? 0)),
@@ -80,10 +115,11 @@ async function watchRun(db, run) {
     const warmingUp = done === 0 && f.idle === 0;
     if (stalledS >= STALL_S && !warmingUp) {
       const cause = f.minE >= 0 && f.minE <= 20 ? 'BATTERY (min energy ' + f.minE + '%)' : 'WEDGE';
-      console.log(`WATCHDOG: STALL run #${run.id} — done=${done}/80, ${stalledS}s no progress, idle=${f.idle}/4, minE=${f.minE}% => ${cause}`);
+      console.log(`WATCHDOG: STALL run #${run.id} — done=${done}/80, ${stalledS}s no progress, idle=${f.idle}/${FLEET_N}, minE=${f.minE}% => ${cause}`);
       return 'stall';
     }
-    console.log(`  ${new Date().toISOString().slice(11, 19)}  #${run.id}  done=${done}/80  stalled=${stalledS}s  idle=${f.idle}/4  minE=${f.minE}%`);
+    console.log(`  ${new Date().toISOString().slice(11, 19)}  #${run.id}  done=${done}/80  stalled=${stalledS}s  idle=${f.idle}/${FLEET_N}  minE=${f.minE}%`);
+    assertConditionOrDie();
     await unstickParkLimbo();
     await new Promise((r) => setTimeout(r, 30000));
   }
@@ -96,14 +132,16 @@ async function watchRun(db, run) {
   await db.connect();
   const seen = new Set();
   let emptySince = null;
-  console.log('WATCHDOG campaign mode: auto-heal on, following every n=4 run');
+  console.log(`WATCHDOG campaign mode: auto-heal on, following every open run matching ${LABEL_LIKE}`);
   for (;;) {
     const run = (await db.query(
-      "SELECT id, started_at FROM runs WHERE label LIKE 'E1|cond=S1|n=4%' AND ended_at IS NULL ORDER BY id DESC LIMIT 1",
+      'SELECT id, started_at FROM runs WHERE label LIKE $1 AND ended_at IS NULL AND id > $2 ORDER BY id DESC LIMIT 1',
+      [LABEL_LIKE, Number(process.env.WATCH_MIN_RUN_ID ?? 77)],
     )).rows[0];
     if (!run) {
       emptySince = emptySince ?? Date.now();
       if (Date.now() - emptySince > 10 * 60000) { console.log('WATCHDOG: no open run for 10 min — campaign over'); break; }
+      assertConditionOrDie();
       await unstickParkLimbo();
       await new Promise((r) => setTimeout(r, 10000));
       continue;

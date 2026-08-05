@@ -25,11 +25,7 @@ const parks = new Set(['PARK-1', 'PARK-2']);
 describe('parking.policy', () => {
   describe('needsParking', () => {
     it('accepts an idle, free, localized AGV standing off a park point', () => {
-      expect(needsParking(candidate(), parks, false)).toBe(true);
-    });
-
-    it('rejects while cargo is waiting to be assigned', () => {
-      expect(needsParking(candidate(), parks, true)).toBe(false);
+      expect(needsParking(candidate(), parks)).toBe(true);
     });
 
     it.each([
@@ -43,7 +39,7 @@ describe('parking.policy', () => {
       ['not localized', { currentPosition: null }],
       ['already standing on a park point', { currentPosition: 'PARK-1' }],
     ])('rejects when %s', (_label, overrides) => {
-      expect(needsParking(candidate(overrides), parks, false)).toBe(false);
+      expect(needsParking(candidate(overrides), parks)).toBe(false);
     });
   });
 

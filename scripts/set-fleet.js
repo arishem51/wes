@@ -75,7 +75,10 @@ async function main() {
   const fleet = vehicles.filter((v) => /^Vehicle-\d+$/.test(v.name)).sort((a, b) => a.name.localeCompare(b.name));
 
   const positionName = (v) => (v.currentPosition ? v.currentPosition.name ?? v.currentPosition : null);
-  const dispatchable = (v) => v.integrationLevel === 'TO_BE_UTILIZED' && positionName(v) != null;
+  const dispatchable = (v) =>
+    v.integrationLevel === 'TO_BE_UTILIZED' &&
+    positionName(v) != null &&
+    (v.energyLevel ?? 0) > 10;
 
   if (args['verify-only']) {
     const have = fleet.filter(dispatchable).length;
@@ -143,7 +146,14 @@ async function main() {
   for (const v of inactive) {
     const id = idByName[v.name];
     if (!id) continue;
-    const res = await fetch(`${base}/agvs/${id}/disconnect`, { method: 'POST', headers });
+    let res = await fetch(`${base}/agvs/${id}/disconnect`, { method: 'POST', headers });
+    if (res.status >= 400) {
+      await fetch(`${kernel}/v1/vehicles/${encodeURIComponent(v.name)}/withdrawal?immediate=false`, {
+        method: 'POST',
+      });
+      await new Promise((r) => setTimeout(r, 4000));
+      res = await fetch(`${base}/agvs/${id}/disconnect`, { method: 'POST', headers });
+    }
     console.log(`${v.name} disconnect=${res.status} (removed from fleet)`);
   }
 

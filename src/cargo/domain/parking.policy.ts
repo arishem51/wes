@@ -18,9 +18,7 @@ export interface ParkVehicleCandidate {
 export function needsParking(
   c: ParkVehicleCandidate,
   parkingPointNames: ReadonlySet<string>,
-  hasPendingWork: boolean,
 ): boolean {
-  if (hasPendingWork) return false;
   return (
     c.dispatchEnabled &&
     !c.ignored &&

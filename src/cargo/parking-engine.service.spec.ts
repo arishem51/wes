@@ -141,7 +141,7 @@ describe('ParkingEngineService', () => {
     expect(parkClaims.claimedPoints()).toEqual(new Set());
   });
 
-  it('does not park while cargo work is created, ready or blocked', async () => {
+  it('parks an off-bay idle vehicle even while cargo work is pending', async () => {
     const { svc, taskRepo, kernelApi } = await setup(
       [idleAt('V1', 'P1')],
       [agv('V1')],
@@ -150,16 +150,7 @@ describe('ParkingEngineService', () => {
 
     await svc.run();
 
-    expect(taskRepo.count).toHaveBeenCalledWith({
-      where: {
-        status: In([
-          TaskStatus.CREATED,
-          TaskStatus.READY_TO_ASSIGN,
-          TaskStatus.BLOCKED,
-        ]),
-      },
-    });
-    expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(1);
   });
 
   it('does not re-park a vehicle already standing on a park point', async () => {

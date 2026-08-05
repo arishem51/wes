@@ -23,6 +23,13 @@
  *   WES_USER       default quan.tran
  *   WES_PASS       default Wes@1234
  *   POLL_MS        completion poll interval, default 2000
+ *   NO_PROGRESS_STOP_MS  close the cell early once no cargo has reached a
+ *                  terminal state for this long, default 1500000 (25 min).
+ *                  A jammed fleet never recovers: across the 13 B0 cells that
+ *                  ran to the full timeout, the shortest gap between the last
+ *                  completion and the timeout was 35.6 min, so this bound
+ *                  reproduces the same done/80 while cutting the dead wait.
+ *                  Set to 0 to disable and always run to TIMEOUT_MS.
  *   TIMEOUT_MS     max wait for completion, default 600000 (10 min)
  *
  * Scenario file shape (JSON):
@@ -99,6 +106,7 @@ async function main() {
   const user = args.user ?? process.env.WES_USER ?? 'quan.tran';
   const pass = args.pass ?? process.env.WES_PASS ?? 'Wes@1234';
   const pollMs = Number(process.env.POLL_MS ?? 2000);
+  const noProgressStopMs = Number(process.env.NO_PROGRESS_STOP_MS ?? 1500000);
   const timeoutMs = Number(process.env.TIMEOUT_MS ?? 600000);
 
   const scenario = JSON.parse(fs.readFileSync(path.resolve(scenarioPath), 'utf8'));
@@ -178,6 +186,8 @@ async function main() {
     // --- poll for completion ---------------------------------------------
     const deadline = Date.now() + timeoutMs;
     const outcome = { DELIVERY_COMPLETED: 0, FAILED: 0, CANCELLED: 0 };
+    let lastProgressAt = Date.now();
+    let stalledOut = false;
     while (!aborted && pending.size > 0 && Date.now() < deadline) {
       await sleep(pollMs);
       let list;
@@ -191,7 +201,12 @@ async function main() {
         if (pending.has(c.id) && c.taskStatus && TERMINAL.has(c.taskStatus)) {
           pending.delete(c.id);
           outcome[c.taskStatus] = (outcome[c.taskStatus] ?? 0) + 1;
+          lastProgressAt = Date.now();
         }
+      }
+      if (noProgressStopMs > 0 && Date.now() - lastProgressAt >= noProgressStopMs) {
+        stalledOut = true;
+        break;
       }
       process.stdout.write(`\r  waiting… ${pending.size} pending  (done ${outcome.DELIVERY_COMPLETED}, failed ${outcome.FAILED}, cancelled ${outcome.CANCELLED})   `);
     }
@@ -199,7 +214,11 @@ async function main() {
 
     if (aborted) return;
 
-    const note = pending.size > 0 ? `timeout: ${pending.size} unfinished` : 'complete';
+    const note = stalledOut
+      ? `early-stop: ${pending.size} unfinished after ${Math.round(noProgressStopMs / 60000)} min with no completion`
+      : pending.size > 0
+        ? `timeout: ${pending.size} unfinished`
+        : 'complete';
     await closeRun(note);
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);

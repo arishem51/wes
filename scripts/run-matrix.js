@@ -172,7 +172,11 @@ async function dispatchableCount(kernelUrl) {
   const vehicles = await fetchJson(`${kernelUrl}/v1/vehicles`);
   if (!vehicles) return null;
   return vehicles.filter(
-    (v) => /^Vehicle-\d+$/.test(v.name) && v.integrationLevel === 'TO_BE_UTILIZED' && v.currentPosition,
+    (v) =>
+      /^Vehicle-\d+$/.test(v.name) &&
+      v.integrationLevel === 'TO_BE_UTILIZED' &&
+      v.currentPosition &&
+      (v.energyLevel ?? 0) > 10,
   ).length;
 }
 
@@ -258,6 +262,17 @@ async function drive(args) {
 
   for (const cell of batch) {
     const label = labelFor(cell);
+    const cellCondition = kernelCondition(kernelLog, kernelUrl);
+    if (!cellCondition.ok || cellCondition.condition !== target) {
+      console.error(
+        `HALT before ${label}: kernel condition is now ` +
+          `${cellCondition.ok ? cellCondition.condition : 'UNKNOWN'}, expected ${target}.` +
+          ' The kernel was restarted mid-campaign — restart it with' +
+          ` -Dfms.condition=${target} (scripts/restart-kernel.js) and re-run.`,
+      );
+      await db.end();
+      process.exit(5);
+    }
     const have = await dispatchableCount(kernelUrl);
     if (have === null) {
       console.error('HALT: kernel unreachable');
