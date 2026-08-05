@@ -28,6 +28,7 @@ import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 export class TransportTaskSaga {
   private readonly logger = new Logger(TransportTaskSaga.name);
   private readonly processing = new Set<string>();
+  private readonly unloading = new Set<string>();
 
   constructor(
     @InjectRepository(TransportTaskEntity)
@@ -70,14 +71,23 @@ export class TransportTaskSaga {
 
   @OnEvent(FMS_EVENTS.DROPOFF_UNLOADED)
   async onDropOffUnloaded(event: FmsDropOffUnloadedEvent): Promise<void> {
-    const task = await this.findTask(event.taskId, TaskStatus.DELIVERING);
-    if (!task || task.metadata?.unloadedAt) return;
+    if (this.unloading.has(event.taskId)) return;
+    this.unloading.add(event.taskId);
+    try {
+      const task = await this.findTask(event.taskId, TaskStatus.DELIVERING);
+      if (!task || task.metadata?.unloadedAt) return;
 
-    task.metadata = { ...task.metadata, unloadedAt: new Date().toISOString() };
-    await this.taskRepo.save(task);
-    this.logger.log(
-      `Task ${task.id}: cargo unloaded at drop-off slot, retreat leg running`,
-    );
+      task.metadata = {
+        ...task.metadata,
+        unloadedAt: new Date().toISOString(),
+      };
+      await this.taskRepo.save(task);
+      this.logger.log(
+        `Task ${task.id}: cargo unloaded at drop-off slot, retreat leg running`,
+      );
+    } finally {
+      this.unloading.delete(event.taskId);
+    }
   }
 
   private async onPickupFinished(taskId: string): Promise<void> {

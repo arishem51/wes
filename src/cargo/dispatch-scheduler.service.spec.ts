@@ -79,3 +79,70 @@ describe('DispatchSchedulerService single-flight', () => {
     expect(schedule).toHaveBeenCalledTimes(1); // rerun requested exactly once
   });
 });
+
+describe('DispatchSchedulerService max-wait', () => {
+  const idle = () => jest.fn().mockResolvedValue(undefined);
+  const build = () =>
+    new DispatchSchedulerService(
+      engine(idle()),
+      engine(idle()),
+      engine(idle()),
+      engine(idle()),
+      engine(idle()),
+      claims(idle()),
+    );
+  const stubFlush = (svc: DispatchSchedulerService) =>
+    jest
+      .spyOn(svc as unknown as { flush: () => Promise<void> }, 'flush')
+      .mockResolvedValue(undefined);
+
+  const triggerEverySecondUntilDeadline = (svc: DispatchSchedulerService) => {
+    svc.schedule();
+    for (let elapsed = 1_000; elapsed <= 3_000; elapsed += 1_000) {
+      jest.advanceTimersByTime(1_000);
+      svc.schedule();
+    }
+  };
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('keeps the plain debounce window when triggers stop', () => {
+    const svc = build();
+    const flush = stubFlush(svc);
+
+    svc.schedule();
+    jest.advanceTimersByTime(1_499);
+    expect(flush).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(1);
+    expect(flush).toHaveBeenCalledTimes(1);
+  });
+
+  it('still flushes when triggers keep arriving faster than the debounce window', () => {
+    const svc = build();
+    const flush = stubFlush(svc);
+
+    triggerEverySecondUntilDeadline(svc);
+    expect(flush).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(500);
+    expect(flush).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts a fresh max-wait budget after the deadline flush', () => {
+    const svc = build();
+    const flush = stubFlush(svc);
+
+    triggerEverySecondUntilDeadline(svc);
+    jest.advanceTimersByTime(500);
+    expect(flush).toHaveBeenCalledTimes(1);
+
+    svc.schedule();
+    jest.advanceTimersByTime(1_499);
+    expect(flush).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(1);
+    expect(flush).toHaveBeenCalledTimes(2);
+  });
+});

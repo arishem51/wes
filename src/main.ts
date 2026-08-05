@@ -6,8 +6,8 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // FE-07 API lives under /api (Vite proxies /api → here). The legacy demo
-  // routes on AppController stay at the root.
+  app.enableShutdownHooks();
+
   app.setGlobalPrefix('api', { exclude: ['/', 'transport-order'] });
 
   app.use(cookieParser());

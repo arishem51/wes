@@ -77,10 +77,15 @@ export class FleetTelemetryService
 
   private async reapOrphanedSessions(): Promise<void> {
     try {
-      await this.sessionRepo.update(
+      const reaped = await this.sessionRepo.update(
         { endedAt: IsNull() },
         { endedAt: new Date(), endReason: 'orphaned (process exit)' },
       );
+      if (reaped.affected && reaped.affected > 1) {
+        this.logger.warn(
+          `Reaped ${reaped.affected} orphaned SSE session(s) — more than one was open, a previous listener leaked`,
+        );
+      }
     } catch (err) {
       this.logger.error(
         `Failed to reap orphaned SSE sessions: ${(err as Error).message}`,

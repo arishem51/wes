@@ -9,11 +9,13 @@ import { ParkClaimStore } from './park-claim.store';
 import { FMS_EVENTS, TRANSPORT_TASK_EVENTS } from './domain/events';
 
 const DEBOUNCE_MS = 1_500;
+const MAX_WAIT_MS = 3_500;
 
 @Injectable()
 export class DispatchSchedulerService implements OnApplicationBootstrap {
   private readonly logger = new Logger(DispatchSchedulerService.name);
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private burstStartedAt: number | null = null;
   private isFlushing = false;
   private rerunWanted = false;
 
@@ -41,11 +43,17 @@ export class DispatchSchedulerService implements OnApplicationBootstrap {
   }
 
   schedule(): void {
+    const now = Date.now();
+    this.burstStartedAt ??= now;
+    const remainingBudget = MAX_WAIT_MS - (now - this.burstStartedAt);
+    const delay = Math.max(0, Math.min(DEBOUNCE_MS, remainingBudget));
+
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
+      this.burstStartedAt = null;
       void this.flush();
-    }, DEBOUNCE_MS);
+    }, delay);
   }
 
   private async flush(): Promise<void> {

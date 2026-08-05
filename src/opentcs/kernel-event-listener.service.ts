@@ -60,6 +60,9 @@ export class KernelEventListenerService
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private currentRequest: http.ClientRequest | null = null;
   private connectionGeneration = 0;
+  private connectionActive = false;
+  private stallTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly stallTimeoutMs: number;
   private readonly lastOrderSignature = new Map<string, string>();
 
   constructor(
@@ -69,6 +72,7 @@ export class KernelEventListenerService
     private readonly telemetry: FleetTelemetryService,
   ) {
     this.baseUrl = process.env.OPENTCS_KERNEL_URL ?? 'http://localhost:55200';
+    this.stallTimeoutMs = Number(process.env.SSE_STALL_TIMEOUT_MS ?? 60_000);
   }
 
   onApplicationBootstrap(): void {
@@ -78,8 +82,10 @@ export class KernelEventListenerService
 
   onApplicationShutdown(): void {
     this.destroyed = true;
+    this.connectionActive = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.clearStallWatchdog();
     this.currentRequest?.destroy();
   }
 
@@ -146,6 +152,7 @@ export class KernelEventListenerService
     const generation = ++this.connectionGeneration;
     const isCurrentConnection = (): boolean =>
       !this.destroyed && generation === this.connectionGeneration;
+    this.clearStallWatchdog();
     const supersededRequest = this.currentRequest;
     this.currentRequest = null;
     supersededRequest?.destroy();
@@ -178,10 +185,25 @@ export class KernelEventListenerService
         void this.seedStore();
         res.setEncoding('utf8');
 
+        const rearmStallWatchdog = (): void => {
+          if (!isCurrentConnection() || this.stallTimeoutMs <= 0) return;
+          this.clearStallWatchdog();
+          this.stallTimer = setTimeout(() => {
+            if (!isCurrentConnection()) return;
+            this.logger.warn(
+              `SSE stalled — no frame for ${this.stallTimeoutMs} ms — reconnecting`,
+            );
+            this.currentRequest?.destroy();
+            this.handleDisconnect('stream stalled');
+          }, this.stallTimeoutMs);
+        };
+        rearmStallWatchdog();
+
         let buffer = '';
 
         res.on('data', (chunk: string) => {
           if (!isCurrentConnection()) return;
+          rearmStallWatchdog();
           buffer += chunk;
           const parts = buffer.split('\n\n');
           buffer = parts.pop() ?? '';
@@ -211,16 +233,17 @@ export class KernelEventListenerService
         res.on('end', () => {
           if (!isCurrentConnection()) return;
           this.logger.warn('SSE stream ended — reconnecting');
-          this.vehicleStateStore.setConnected(false);
-          void this.telemetry.closeSession('stream ended');
-          this.scheduleReconnect(RETRY_DELAY_MS);
+          this.handleDisconnect('stream ended');
         });
 
         res.on('error', () => {
           if (!isCurrentConnection()) return;
-          this.vehicleStateStore.setConnected(false);
-          void this.telemetry.closeSession('stream error');
-          this.scheduleReconnect(RETRY_DELAY_MS);
+          this.handleDisconnect('stream error');
+        });
+
+        res.on('close', () => {
+          if (!isCurrentConnection()) return;
+          this.handleDisconnect('stream closed');
         });
       },
     );
@@ -233,13 +256,12 @@ export class KernelEventListenerService
     req.on('error', (err: Error) => {
       if (!isCurrentConnection()) return;
       this.logger.warn(`SSE request error: ${err.message} — reconnecting`);
-      this.vehicleStateStore.setConnected(false);
-      void this.telemetry.closeSession(`request error: ${err.message}`);
-      this.scheduleReconnect(RETRY_DELAY_MS);
+      this.handleDisconnect(`request error: ${err.message}`);
     });
 
     req.end();
     this.currentRequest = req;
+    this.connectionActive = true;
   }
 
   private async seedStore(): Promise<void> {
@@ -254,8 +276,22 @@ export class KernelEventListenerService
     this.eventEmitter.emit(FMS_EVENTS.VEHICLE_AVAILABLE, null);
   }
 
+  private clearStallWatchdog(): void {
+    if (this.stallTimer) clearTimeout(this.stallTimer);
+    this.stallTimer = null;
+  }
+
+  private handleDisconnect(reason: string): void {
+    if (!this.connectionActive) return;
+    this.connectionActive = false;
+    this.clearStallWatchdog();
+    this.vehicleStateStore.setConnected(false);
+    void this.telemetry.closeSession(reason);
+    this.scheduleReconnect(RETRY_DELAY_MS);
+  }
+
   private scheduleReconnect(delayMs: number): void {
-    if (this.destroyed || this.reconnectTimer) return;
+    if (this.destroyed || this.reconnectTimer || this.connectionActive) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
