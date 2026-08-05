@@ -1,0 +1,54 @@
+@startuml mf-03-cancel-delete
+' SRS Section II.1.2.3 — Main Workflow: Cancel & Delete
+' Business-level vocabulary only; implementation detail belongs in the SDS.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng mf-03-cancel-delete.puml
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam swimlaneWidth 260
+skinparam ArrowColor #000000
+skinparam ActivityBorderColor #000000
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #000000
+skinparam ActivityDiamondBackgroundColor #FFFFFF
+skinparam NoteBackgroundColor #FFF8DC
+skinparam NoteBorderColor #999999
+
+|#FAFAFA|Admin / Operator|
+start
+:Request cargo deletion;
+
+|#FFFFFF|WES|
+if (Cargo exists?) then (No)
+  :Reject: cargo not found;
+  stop
+else (Yes)
+endif
+:Look up the linked transport task;
+if (Task is DELIVERING?) then (Yes)
+  :Reject: the AGV is currently carrying\nthis item to its destination;
+  note right: The cargo is NOT deleted.\nThis is the ONLY guard that blocks deletion
+  stop
+else (No, or no task at all)
+endif
+
+if (Task is PICKING_UP?) then (Yes)
+  |#F2F2F2|FMS (openTCS)|
+  :Withdraw the pick-up\ntransport order;
+  note right: WES does NOT wait\nfor confirmation
+  |WES|
+else (No)
+endif
+
+if (Task cancellable?\nCREATED / READY_TO_ASSIGN /\nBLOCKED / PICKING_UP) then (Yes)
+  :Set the cancellation timestamp;
+  :Task -> CANCELLED\n(reason: cargo deleted);
+else (No)
+  :No task update - the task is already\nin a terminal state\n(DELIVERY_COMPLETED / FAILED / CANCELLED);
+endif
+
+:Remove the cargo from the system;
+:Confirm the deletion to the operator;
+stop
+
+@enduml

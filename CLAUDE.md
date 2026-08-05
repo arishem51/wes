@@ -9,9 +9,9 @@ what the system was meant to do; when they are wrong, fix the document — never
 working code to match a bad spec. A text mirror of those reports lives in
 `report/specs/` — grep it, it is cheap. Never read the `.docx` files for this.
 
-The mirror is generated and **not committed**. If `report/specs/` is missing or
-`_manifest.json` is stale, run `python scripts/sync-specs.py` — do not skip the
-checks below because the mirror is absent.
+If `report/specs/` is missing or `_manifest.json` is stale, run
+`python scripts/sync-specs.py` — do not skip the checks below because the mirror
+is absent.
 
 | Mirror file | Report | Use it to answer |
 |---|---|---|
@@ -52,8 +52,8 @@ surviving weight is `weight_battery` (§6.1). Task selection is plain FIFO by
 `createdAt`; lane blocking is enforced as a hard constraint by
 `PickupDependencyService`, not as a scoring term.
 
-**Refreshing the mirror** (never hand-edit `report/specs/` — a re-sync overwrites
-it; real edits belong in the Drive `.docx`):
+**Refreshing the mirror** — note a re-sync overwrites `report/specs/`, so anything
+you want to keep must also land in the source document:
 
 ```bash
 python scripts/sync-specs.py          # all reports

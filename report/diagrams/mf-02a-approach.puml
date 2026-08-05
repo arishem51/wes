@@ -1,0 +1,58 @@
+@startuml mf-02a-approach
+' SRS Section II.1.2.2 — Main Workflow: Delivery, part A (Approach)
+' Continues in mf-02b-dropoff-retreat.puml
+' Business-level vocabulary only; implementation detail belongs in the SDS.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng mf-02a-approach.puml
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam swimlaneWidth 240
+skinparam ArrowColor #000000
+skinparam ActivityBorderColor #000000
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #000000
+skinparam ActivityDiamondBackgroundColor #FFFFFF
+skinparam NoteBackgroundColor #FFF8DC
+skinparam NoteBorderColor #999999
+
+|#F2F2F2|FMS (openTCS)|
+start
+:The pick-up transport order\nreaches FINISHED;
+:Notify WES;
+note right: WES re-checks order state on a heartbeat,\nso a lost notification does not stall the task
+
+|#FFFFFF|WES|
+:Receive the pick-up completion;
+if (Approach already issued?) then (Yes)
+  :Ignore the duplicate notification;
+  stop
+else (No)
+endif
+if (Assigned vehicle and\ndestination zone both present?) then (No)
+  :Task -> FAILED;
+  stop
+else (Yes)
+endif
+:Select the approach point:\nthe entry point of the destination zone\nnearest to this vehicle;
+if (Any approach point reachable?) then (No)
+  :Stay in PICKING_UP;\nthe periodic re-check retries;
+  stop
+else (Yes)
+endif
+:Issue the approach transport order;
+:Task -> DELIVERING;
+note right: The task becomes DELIVERING as soon as the\napproach order is issued, not on arrival
+
+|FMS (openTCS)|
+:Route the vehicle to the approach point;
+
+|#FAFAFA|AGV|
+:Drive to the approach point;
+
+|FMS (openTCS)|
+:The approach transport order\nreaches FINISHED;
+:Notify WES;
+stop
+note right: Continues in part B\n(Drop-off & Retreat)
+
+@enduml

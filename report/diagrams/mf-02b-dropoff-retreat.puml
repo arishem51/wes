@@ -1,0 +1,68 @@
+@startuml mf-02b-dropoff-retreat
+' SRS Section II.1.2.2 — Main Workflow: Delivery, part B (Drop-off & Retreat)
+' Continues from mf-02a-approach.puml
+' Business-level vocabulary only; implementation detail belongs in the SDS.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng mf-02b-dropoff-retreat.puml
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam swimlaneWidth 240
+skinparam ArrowColor #000000
+skinparam ActivityBorderColor #000000
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #000000
+skinparam ActivityDiamondBackgroundColor #FFFFFF
+skinparam NoteBackgroundColor #FFF8DC
+skinparam NoteBorderColor #999999
+
+|#F2F2F2|FMS (openTCS)|
+start
+:The approach transport order\nreaches FINISHED;
+note right: Continued from part A\n(Approach)
+
+|#FFFFFF|WES|
+:Approach barrier;
+if (Cargo already has a slot?) then (No)
+  :Take exclusive access\nto the zone's slot map;
+  :Select the drop-off slot\n(BR-11 cascading depth-first fill);
+  if (Slot available?) then (No)
+    :Task -> FAILED\n(no drop-off slot available);
+    stop
+  else (Yes)
+  endif
+  :Record the committed slot on the cargo;
+  :Release the zone;
+else (Yes)
+endif
+:Resolve the 2-cell retreat path\nbehind the slot;
+if (Retreat path found?) then (No)
+  :Log a warning - the drop-off order\ngoes out without the retreat steps;
+else (Yes)
+endif
+:Issue the drop-off transport order:\nunload at the slot, then one move step\nper retreat cell;
+
+|FMS (openTCS)|
+:Route the vehicle to the slot;
+
+|#FAFAFA|AGV|
+:Unload the cargo at the slot;
+
+|FMS (openTCS)|
+:Notify WES that the cargo\nhas been unloaded;
+
+|WES|
+:Record that the cargo has been unloaded;
+note right: The task is STILL DELIVERING -\nthe retreat steps are running
+
+|AGV|
+:Retreat 2 cells clear of the slot;
+
+|FMS (openTCS)|
+:The drop-off transport order\nreaches FINISHED;
+
+|WES|
+:Task -> DELIVERY_COMPLETED;
+:Cargo -> DELIVERED;
+stop
+
+@enduml
