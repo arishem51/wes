@@ -1,9 +1,13 @@
 import { AgvEntity } from './entities/agv.entity';
+import { VehicleErrorEventEntity } from './entities/vehicle-error-event.entity';
+import { VehicleStateTransitionEntity } from '../opentcs/entities/vehicle-state-transition.entity';
 import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import type {
   AgvAcceptanceStatus,
   AgvDto,
+  AgvErrorEventDto,
   AgvKernelStatus,
+  AgvStateChangeDto,
 } from './dto/agvs.dto';
 
 export function acceptanceStatusOf(agv: AgvEntity): AgvAcceptanceStatus {
@@ -43,5 +47,38 @@ export function toAgvDto(
     createdAt: agv.createdAt,
     createdById: agv.createdById,
     kernelStatus,
+  };
+}
+
+export function toAgvStateChangeDto(
+  transition: VehicleStateTransitionEntity,
+): AgvStateChangeDto {
+  return {
+    id: transition.id,
+    vehicleName: transition.vehicleName,
+    pointName: transition.pointName,
+    procState: transition.procState,
+    vehicleState: transition.vehicleState,
+    orderName: transition.orderName,
+    occurredAt: transition.occurredAt,
+    observedAt: transition.observedAt,
+  };
+}
+
+export function toAgvErrorEventDto(
+  event: VehicleErrorEventEntity,
+): AgvErrorEventDto {
+  return {
+    id: event.id,
+    vehicleName: event.vehicleName,
+    kind: event.kind,
+    fatalErrorTypes: event.fatalErrorTypes,
+    warningErrorTypes: event.warningErrorTypes,
+    vehicleState: event.vehicleState,
+    pointName: event.pointName,
+    transportOrderName: event.transportOrderName,
+    metadata: event.metadata,
+    occurredAt: event.occurredAt,
+    observedAt: event.observedAt,
   };
 }

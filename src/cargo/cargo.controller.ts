@@ -29,6 +29,11 @@ export class CargoController {
     return this.service.list(query);
   }
 
+  @Get(':id/decision')
+  assignmentDecision(@Param('id') id: string) {
+    return this.service.getAssignmentDecision(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);

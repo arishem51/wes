@@ -4,27 +4,108 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import {
   TransportTaskEntity,
   TaskStatus,
 } from './entities/transport-task.entity';
+import { TaskStatusTransitionEntity } from './entities/task-status-transition.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { TransportTaskService } from './transport-task.service';
 import { LaneSafetyService } from './lane-safety.service';
 import { TransportTaskStateMachine } from './domain/transport-task.state-machine';
+import type { DispatchMatcher } from './domain/dispatch.policy';
 import {
   ZoneEntity,
   ZoneStatus,
   ZoneType,
 } from '../zones/entities/zone.entity';
 import type {
+  CargoAssignmentDecisionDto,
+  CargoListResponse,
   CargoResponseDto,
   CargoVisualDto,
   CreateCargoDto,
   ListCargosQueryDto,
 } from './cargo.dto';
+
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
+
+const ASSIGNMENT_TRIGGER = 'ASSIGNMENT_ENGINE';
+
+const SEARCHABLE_COLUMNS = [
+  'cargo.itemCode',
+  'cargo.sourcePointName',
+  'cargo.destinationLocationName',
+];
+
+const NEWEST_TASK_HAS_STATUS = `EXISTS (
+  SELECT 1
+  FROM transport_requests candidate
+  WHERE candidate.cargo_id = cargo.id
+    AND candidate.status = :taskStatus
+    AND candidate.created_at = (
+      SELECT MAX(any_task.created_at)
+      FROM transport_requests any_task
+      WHERE any_task.cargo_id = cargo.id
+    )
+)`;
+
+function readFiniteNumber(
+  context: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = context[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readNonEmptyString(
+  context: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = context[key];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function readMatcher(context: Record<string, unknown>): DispatchMatcher | null {
+  const matcher = context.matcher;
+  return matcher === 'hungarian' || matcher === 'greedy' ? matcher : null;
+}
+
+function otherMatcher(matcher: DispatchMatcher): DispatchMatcher {
+  return matcher === 'greedy' ? 'hungarian' : 'greedy';
+}
+
+function toAssignmentDecision(
+  cargoId: string,
+  taskId: string,
+  transition: TaskStatusTransitionEntity,
+): CargoAssignmentDecisionDto {
+  const context = transition.context ?? {};
+  const matcher = readMatcher(context);
+  const alternativeVehicleName = readNonEmptyString(context, 'altVehicleName');
+
+  return {
+    cargoId,
+    taskId,
+    decidedAt: transition.occurredAt,
+    vehicleName: transition.vehicleName,
+    matcher,
+    matchedRequestCount: readFiniteNumber(context, 'batchSize'),
+    distanceToSource: readFiniteNumber(context, 'distanceToSource'),
+    approachDistance: readFiniteNumber(context, 'approachDistance'),
+    alternative:
+      matcher && alternativeVehicleName
+        ? {
+            matcher: otherMatcher(matcher),
+            vehicleName: alternativeVehicleName,
+            distanceToSource: readFiniteNumber(context, 'altDistanceToSource'),
+          }
+        : null,
+  };
+}
 
 @Injectable()
 export class CargoService {
@@ -33,6 +114,8 @@ export class CargoService {
     private readonly cargoRepo: Repository<CargoEntity>,
     @InjectRepository(TransportTaskEntity)
     private readonly taskRepo: Repository<TransportTaskEntity>,
+    @InjectRepository(TaskStatusTransitionEntity)
+    private readonly transitionRepo: Repository<TaskStatusTransitionEntity>,
     @InjectRepository(ZoneEntity)
     private readonly zoneRepo: Repository<ZoneEntity>,
     @InjectDataSource()
@@ -134,13 +217,76 @@ export class CargoService {
     return saved;
   }
 
-  async list(query: ListCargosQueryDto = {}): Promise<CargoResponseDto[]> {
-    const where = query.status ? { status: query.status as CargoStatus } : {};
-    const cargos = await this.cargoRepo.find({
-      where,
+  async list(query: ListCargosQueryDto = {}): Promise<CargoListResponse> {
+    const page = query.page ?? DEFAULT_PAGE;
+    const limit = query.limit ?? DEFAULT_LIMIT;
+
+    const [cargos, total] = await this.buildListQuery(query)
+      .orderBy('cargo.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return { cargos: await this.enrichCargos(cargos), total, page, limit };
+  }
+
+  async getAssignmentDecision(
+    cargoId: string,
+  ): Promise<CargoAssignmentDecisionDto> {
+    const cargo = await this.cargoRepo.findOne({ where: { id: cargoId } });
+    if (!cargo) throw new NotFoundException('Cargo not found.');
+
+    const task = await this.taskRepo.findOne({
+      where: { cargoId },
       order: { createdAt: 'DESC' },
     });
-    return this.enrichCargos(cargos);
+    if (!task) {
+      throw new NotFoundException('Cargo has no transport request yet.');
+    }
+
+    const transition = await this.transitionRepo.findOne({
+      where: {
+        taskId: task.id,
+        trigger: ASSIGNMENT_TRIGGER,
+        toStatus: TaskStatus.PICKING_UP,
+      },
+      order: { occurredAt: 'DESC', id: 'DESC' },
+    });
+    if (!transition) {
+      throw new NotFoundException(
+        'This request has not been assigned to a vehicle yet.',
+      );
+    }
+
+    return toAssignmentDecision(cargo.id, task.id, transition);
+  }
+
+  private buildListQuery(
+    query: ListCargosQueryDto,
+  ): SelectQueryBuilder<CargoEntity> {
+    const builder = this.cargoRepo.createQueryBuilder('cargo');
+
+    if (query.status) {
+      builder.andWhere('cargo.status = :status', {
+        status: query.status as CargoStatus,
+      });
+    }
+
+    const search = query.search?.trim();
+    if (search) {
+      const matches = SEARCHABLE_COLUMNS.map(
+        (column) => `${column} ILIKE :search`,
+      ).join(' OR ');
+      builder.andWhere(`(${matches})`, { search: `%${search}%` });
+    }
+
+    if (query.taskStatus) {
+      builder.andWhere(NEWEST_TASK_HAS_STATUS, {
+        taskStatus: query.taskStatus,
+      });
+    }
+
+    return builder;
   }
 
   async findOne(id: string): Promise<CargoResponseDto> {
@@ -268,6 +414,7 @@ export class CargoService {
         deletedAt: cargo.deletedAt,
         taskStatus: task?.status ?? null,
         assignedVehicleName: task?.metadata.assignedVehicleName ?? null,
+        blockedReason: task?.metadata.blockedReason ?? null,
         visual: this.resolveVisual(
           cargo,
           task,

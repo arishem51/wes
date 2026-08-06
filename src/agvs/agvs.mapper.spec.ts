@@ -1,30 +1,33 @@
 import { AgvEntity } from './entities/agv.entity';
+import { VehicleErrorEventEntity } from './entities/vehicle-error-event.entity';
+import { VehicleStateTransitionEntity } from '../opentcs/entities/vehicle-state-transition.entity';
 import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import {
   acceptanceStatusOf,
   resolveKernelStatus,
   toAgvDto,
+  toAgvErrorEventDto,
+  toAgvStateChangeDto,
 } from './agvs.mapper';
 
-const entity = (o: Partial<AgvEntity> = {}): AgvEntity =>
-  ({
-    id: 'a1',
-    code: 'AGV-01',
-    name: 'V1',
-    model: null,
-    manufacturer: null,
-    serialNumber: null,
-    initialPosition: null,
-    isDispatchEnabled: true,
-    isIgnored: false,
-    criticalBatteryThreshold: 20,
-    sufficientBatteryThreshold: 60,
-    config: {},
-    createdAt: new Date('2026-01-01T00:00:00Z'),
-    updatedAt: new Date('2026-02-02T00:00:00Z'),
-    createdById: 'u1',
-    ...o,
-  }) as AgvEntity;
+const entity = (o: Partial<AgvEntity> = {}): AgvEntity => ({
+  id: 'a1',
+  code: 'AGV-01',
+  name: 'V1',
+  model: null,
+  manufacturer: null,
+  serialNumber: null,
+  initialPosition: null,
+  isDispatchEnabled: true,
+  isIgnored: false,
+  criticalBatteryThreshold: 20,
+  sufficientBatteryThreshold: 60,
+  config: {},
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  updatedAt: new Date('2026-02-02T00:00:00Z'),
+  createdById: 'u1',
+  ...o,
+});
 
 const vehicle = (integrationLevel: string): KernelVehicleState =>
   ({ integrationLevel }) as unknown as KernelVehicleState;
@@ -99,6 +102,81 @@ describe('agvs.mapper', () => {
       const dto = toAgvDto(entity(), 'connected');
       expect('errors' in dto).toBe(false);
       expect('vehicleState' in dto).toBe(false);
+    });
+  });
+
+  describe('toAgvStateChangeDto', () => {
+    const transition = (
+      o: Partial<VehicleStateTransitionEntity> = {},
+    ): VehicleStateTransitionEntity => ({
+      id: '7',
+      sessionId: '2',
+      vehicleName: 'V1',
+      pointName: 'P-02',
+      procState: 'IDLE',
+      vehicleState: 'IDLE',
+      orderName: null,
+      occurredAt: new Date('2026-08-01T00:00:00Z'),
+      observedAt: new Date('2026-08-01T00:00:01Z'),
+      ...o,
+    });
+
+    it('maps every observable column of the transition row', () => {
+      expect(toAgvStateChangeDto(transition())).toEqual({
+        id: '7',
+        vehicleName: 'V1',
+        pointName: 'P-02',
+        procState: 'IDLE',
+        vehicleState: 'IDLE',
+        orderName: null,
+        occurredAt: new Date('2026-08-01T00:00:00Z'),
+        observedAt: new Date('2026-08-01T00:00:01Z'),
+      });
+    });
+
+    it('does not leak the SSE session id', () => {
+      expect('sessionId' in toAgvStateChangeDto(transition())).toBe(false);
+    });
+  });
+
+  describe('toAgvErrorEventDto', () => {
+    const event = (
+      o: Partial<VehicleErrorEventEntity> = {},
+    ): VehicleErrorEventEntity => ({
+      id: '9',
+      vehicleName: 'V1',
+      kind: 'RAISED',
+      fatalErrorTypes: ['motorOverheat'],
+      warningErrorTypes: ['noRouteError'],
+      vehicleState: 'ERROR',
+      pointName: 'P-03',
+      transportOrderName: 'TO1-x',
+      metadata: { source: 'sse' },
+      occurredAt: new Date('2026-08-01T00:00:00Z'),
+      observedAt: null,
+      ...o,
+    });
+
+    it('maps the fault row including both error type lists', () => {
+      expect(toAgvErrorEventDto(event())).toEqual({
+        id: '9',
+        vehicleName: 'V1',
+        kind: 'RAISED',
+        fatalErrorTypes: ['motorOverheat'],
+        warningErrorTypes: ['noRouteError'],
+        vehicleState: 'ERROR',
+        pointName: 'P-03',
+        transportOrderName: 'TO1-x',
+        metadata: { source: 'sse' },
+        occurredAt: new Date('2026-08-01T00:00:00Z'),
+        observedAt: null,
+      });
+    });
+
+    it('keeps recovery rows distinguishable by kind', () => {
+      expect(toAgvErrorEventDto(event({ kind: 'RECOVERY_REFUSED' })).kind).toBe(
+        'RECOVERY_REFUSED',
+      );
     });
   });
 });

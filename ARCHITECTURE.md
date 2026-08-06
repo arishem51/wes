@@ -626,9 +626,70 @@ does not duplicate it, because the store already holds the same error set.
 into `vehicle_error_events` with `kind` ∈ `RAISED` / `CHANGED` / `CLEARED`. The
 table is insert-only like `vehicle_state_transitions` (§8 applies): a later
 recovery attempt appends a *new* row (`RECOVERY_ATTEMPTED` / `RECOVERY_REFUSED`)
-rather than mutating the one that recorded the fault. There is no read endpoint
-yet — the rows are evidence for the recovery work, queried directly during sim
-runs.
+rather than mutating the one that recorded the fault.
+
+**The per-vehicle read paths.** `AgvHistoryService` (`agvs/`) owns all four,
+admin-only under the `AgvsController` guards:
+
+| Route | Table | Shape |
+|---|---|---|
+| `GET /agvs/:id/history` | `transport_requests` ⋈ `cargos` | that vehicle's **task ledger** — Task ID, source, destination, start, end, status — newest first, paged, optional date range (SRS §2.1.15) |
+| `GET /agvs/:id/state-log` | `vehicle_state_transitions` | that vehicle's observed state changes, newest first, paged |
+| `GET /agvs/:id/errors` | `vehicle_error_events` | that vehicle's fault rows, newest first, paged (SRS §2.1.16) |
+| `GET /agvs/error-frequency` | `vehicle_error_events` | fleet-wide count per vehicle over a rolling window, highest first (SRS §2.6.14) |
+
+All four key their history by **vehicle name**, not by `AgvEntity.id`, so the
+per-vehicle routes resolve id → name through the registry first and 404 on an
+unknown id. The two insert-only listings filter on `vehicle_name` and order by
+`occurred_at DESC`, which is exactly the `(vehicle_name, occurred_at)` index each
+table carries; `id DESC` is only a tiebreak so paging is stable. The aggregate
+counts `RAISED` and `CHANGED` alone — `CLEARED` and the `RECOVERY_*` kinds record
+the end of a fault, not another one, and counting them would inflate every
+vehicle that recovers.
+
+**The task ledger is what UC 15 asks for; the state log is not.**
+`vehicle_state_transitions` is a telemetry change-log — one row per observed
+state or point change, ~4M rows fleet-wide and ~240k for a single vehicle — and
+it carries none of the six columns the use case names. The ledger reads
+`transport_requests` instead, which owns all six: `request_code` is the Task ID,
+`cargos` supplies `source_point_name` and `destination_location_name`, and
+`started_at` / `completed_at` / `cancelled_at` / `status` are columns on the
+task. `/state-log` keeps the old telemetry read for diagnostics; no use case is
+behind it.
+
+Reading those two tables from `agvs/` is the §2.3 Application-Service rule
+("may import Entity/Repo"), exercised the way `dashboard/` already does it:
+`AgvsModule` registers `TransportTaskEntity` through `TypeOrmModule.forFeature`
+and the entity files stay in `cargo/`. `CargoEntity` needs no registration — it
+is reached as a join target, not an injected repository. `agvs/` still writes
+nothing there, so the cargo module keeps sole ownership of the task lifecycle
+(§4.1).
+
+Two constraints the ledger query cannot drop:
+
+- The assigned vehicle lives at `metadata ->> 'assignedVehicleName'`, inside the
+  JSONB — there is no column to filter on. At ~380 tasks per vehicle over 8.5k
+  rows a sequential scan is the right plan, so **no index is warranted**;
+  revisit only if the table grows by an order of magnitude.
+- `withDeleted()` must be called **before** the `cargos` join, not after.
+  `CargoEntity` is soft-deleted and cargo rows are routinely removed once
+  delivered (641 of 646 for one measured vehicle), so the default join condition
+  `AND cargo.deleted_at IS NULL` blanks the source and destination on
+  substantially every historical row. `agv-history.service.spec.ts` pins the
+  call order.
+
+The range filter and the sort both run on `task.created_at`: it is the only one
+of the task's four timestamps that is never null, so filtering on a start or end
+time would silently drop the rows an auditor most wants to see.
+
+The literal `error-frequency` route **must stay declared above `@Get(':id')`**:
+NestJS matches in declaration order and `AgvEntity.id` is a uuid column, so the
+reversed order sends the literal into a uuid cast and turns a fleet query into a
+500.
+
+This does not re-open the boundary below: `AgvDto` still carries no live
+telemetry. These are historical rows behind their own routes, not fault fields
+grafted onto the registry payload.
 
 **The operating screen is the primary surface.** Operators work on the warehouse
 map, so that is where a fault has to be visible without hunting: `VehicleAlertBar`

@@ -11,27 +11,58 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AgvsService } from './agvs.service';
+import { AgvHistoryService } from './agv-history.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/jwt-payload';
-import { CreateAgvDto, ListAgvsQueryDto, UpdateAgvDto } from './dto/agvs.dto';
+import {
+  AgvErrorFrequencyQueryDto,
+  AgvHistoryQueryDto,
+  AgvTaskHistoryQueryDto,
+  CreateAgvDto,
+  ListAgvsQueryDto,
+  UpdateAgvDto,
+} from './dto/agvs.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 @Controller('agvs')
 export class AgvsController {
-  constructor(private readonly service: AgvsService) {}
+  constructor(
+    private readonly service: AgvsService,
+    private readonly history: AgvHistoryService,
+  ) {}
 
   @Get()
   list(@Query() query: ListAgvsQueryDto) {
     return this.service.list(query);
   }
 
+  @Get('error-frequency')
+  errorFrequency(@Query() query: AgvErrorFrequencyQueryDto) {
+    return this.history.errorFrequency(query);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
+  }
+
+  @Get(':id/history')
+  taskHistory(@Param('id') id: string, @Query() query: AgvTaskHistoryQueryDto) {
+    return this.history.taskHistory(id, query);
+  }
+
+  @Get(':id/state-log')
+  stateLog(@Param('id') id: string, @Query() query: AgvHistoryQueryDto) {
+    return this.history.stateLog(id, query);
+  }
+
+  @Get(':id/errors')
+  errorHistory(@Param('id') id: string, @Query() query: AgvHistoryQueryDto) {
+    return this.history.errorHistory(id, query);
   }
 
   @Post()
