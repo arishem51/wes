@@ -244,11 +244,12 @@ async function createCargo(baseUrl, token, body) {
 }
 
 async function listCargo(baseUrl, token) {
-  const res = await fetch(`${baseUrl}/cargo`, {
+  const res = await fetch(`${baseUrl}/cargo?limit=200`, {
     headers: { authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
-  return res.json();
+  const body = await res.json();
+  return Array.isArray(body) ? body : (body.cargos ?? []);
 }
 
 main().catch((err) => {
