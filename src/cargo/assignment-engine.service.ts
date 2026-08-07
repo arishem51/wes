@@ -1,70 +1,39 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
 import { In, Repository } from 'typeorm';
-import { ORDER_PROP, PARK_ORDER_PREFIX } from './domain/events';
-import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 import {
   TransportTaskEntity,
   TaskStatus,
 } from './entities/transport-task.entity';
 import { CargoEntity } from './entities/cargo.entity';
-import { AgvEntity } from '../agvs/entities/agv.entity';
-import { ZoneEntity } from '../zones/entities/zone.entity';
-import { KernelApiService } from '../opentcs/kernel-api.service';
-import { VehicleStateStore } from '../opentcs/vehicle-state.store';
-import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
-import { TransportTaskService } from './transport-task.service';
 import { PickupDependencyService } from './pickup-dependency.service';
-import { RoutingService } from './routing.service';
-import { ApproachPointService } from './approach-point.service';
+import { LaneSafetyService } from './lane-safety.service';
+import { DispatchPolicyService } from './dispatch-policy.service';
+import {
+  DispatchDistanceService,
+  type DispatchDistances,
+} from './dispatch-distance.service';
+import { VehicleCandidateService } from './vehicle-candidate.service';
+import { PickupOrderService } from './pickup-order.service';
 import {
   type DispatchMatcher,
   type DispatchTaskCandidate,
+  type SwapOptions,
   type VehicleCandidate,
-  type VehicleTaskAssignment,
   hasDispatchableVehicle,
   isEligible,
+  isSwapCandidate,
   planVehicleAssignments,
   planVehicleAssignmentsGreedy,
 } from './domain/dispatch.policy';
-import { shortestDistancesFrom } from './domain/routing';
-import { DispatchPolicyService } from './dispatch-policy.service';
+import { describeSwapOptions, swapOptionsFrom } from './domain/dispatch-swap';
+import {
+  comparableCounterfactual,
+  summariseDistance,
+} from './domain/dispatch-counterfactual';
+import type { DispatchContext, PlannedAction } from './assignment-engine.types';
 
 const BUSY_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
-
-interface DispatchMeasurement {
-  readonly matcher: DispatchMatcher;
-  readonly batchSize: number;
-  readonly altVehicleName: string | null;
-  readonly altDistanceToSource: number | null;
-  readonly approachDistance: number | null;
-}
-
-function summariseDistance(plan: readonly VehicleTaskAssignment[]): string {
-  const known = plan.flatMap(({ distance }) =>
-    distance === null ? [] : [distance],
-  );
-  return `${known.reduce((sum, distance) => sum + distance, 0)}(${known.length}/${plan.length})`;
-}
-
-function isFmsDispatchable(state: KernelVehicleState | undefined): boolean {
-  if (!state) return false;
-  return (
-    (state.procState === 'IDLE' || state.procState === 'AWAITING_ORDER') &&
-    state.integrationLevel === 'TO_BE_UTILIZED' &&
-    state.state !== 'CHARGING'
-  );
-}
-
-function isEnRouteToPark(state: KernelVehicleState | undefined): boolean {
-  if (!state) return false;
-  return (
-    state.procState === 'PROCESSING_ORDER' &&
-    state.integrationLevel === 'TO_BE_UTILIZED' &&
-    (state.transportOrder?.startsWith(PARK_ORDER_PREFIX) ?? false)
-  );
-}
 
 @Injectable()
 export class AssignmentEngineService {
@@ -72,25 +41,23 @@ export class AssignmentEngineService {
 
   private readonly matcher: DispatchMatcher;
 
+  private readonly swap: SwapOptions;
+
   constructor(
     @InjectRepository(TransportTaskEntity)
     private readonly taskRepo: Repository<TransportTaskEntity>,
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
-    @InjectRepository(AgvEntity)
-    private readonly agvRepo: Repository<AgvEntity>,
-    @InjectRepository(ZoneEntity)
-    private readonly zoneRepo: Repository<ZoneEntity>,
-    private readonly kernelApi: KernelApiService,
-    private readonly vehicleStore: VehicleStateStore,
-    private readonly transportTask: TransportTaskService,
     private readonly pickupDependency: PickupDependencyService,
-    private readonly routing: RoutingService,
-    private readonly approachPoint: ApproachPointService,
+    private readonly laneSafety: LaneSafetyService,
     private readonly dispatchPolicy: DispatchPolicyService,
+    private readonly distanceSource: DispatchDistanceService,
+    private readonly vehicleCandidates: VehicleCandidateService,
+    private readonly pickupOrders: PickupOrderService,
   ) {
     const requested = process.env.DISPATCH_MATCHER;
     this.matcher = requested === 'greedy' ? 'greedy' : 'hungarian';
+    this.swap = swapOptionsFrom(process.env);
 
     if (requested && requested !== 'greedy' && requested !== 'hungarian') {
       this.logger.warn(
@@ -101,6 +68,7 @@ export class AssignmentEngineService {
       `Dispatch matcher: ${this.matcher.toUpperCase()} ` +
         `(counterfactual ${this.counterfactualMatcher().toUpperCase()} recorded on every assignment)`,
     );
+    this.logger.log(`Pickup swapping: ${describeSwapOptions(this.swap)}`);
   }
 
   private counterfactualMatcher(): DispatchMatcher {
@@ -112,68 +80,17 @@ export class AssignmentEngineService {
       where: { status: TaskStatus.READY_TO_ASSIGN },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
-    if (tasks.length === 0) return;
+    const busyTasks = await this.busyTasksByVehicle();
+    const heldByVehicle = this.heldPickupsByVehicle(busyTasks);
+    if (tasks.length === 0 && heldByVehicle.size < 2) return;
 
     const weights = await this.dispatchPolicy.getActiveWeights();
-    const graph = await this.routing.getReverseRoadGraph();
-    const distanceCache = new Map<string, ReadonlyMap<string, number>>();
-    const distancesTo = (point: string): ReadonlyMap<string, number> | null => {
-      if (!graph) return null;
-      const cached = distanceCache.get(point);
-      if (cached) return cached;
-      const computed = shortestDistancesFrom(graph, point);
-      distanceCache.set(point, computed);
-      return computed;
-    };
-
-    const feederCache = new Map<string, readonly string[]>();
-    const feedersOfZone = async (
-      zoneId: string,
-    ): Promise<readonly string[]> => {
-      const cached = feederCache.get(zoneId);
-      if (cached) return cached;
-      const zone = await this.zoneRepo.findOne({
-        where: { id: zoneId },
-        relations: { members: true },
-      });
-      const feeders = zone ? await this.approachPoint.feederPointsOf(zone) : [];
-      feederCache.set(zoneId, feeders);
-      return feeders;
-    };
-
-    const approachDistanceOf = async (
-      cargo: CargoEntity,
-    ): Promise<number | null> => {
-      const sourcePoint = cargo.sourcePointName;
-      if (!sourcePoint || !cargo.destinationZoneId) return null;
-      const feeders = await feedersOfZone(cargo.destinationZoneId);
-      let shortest: number | null = null;
-      for (const feeder of feeders) {
-        const distance = distancesTo(feeder)?.get(sourcePoint);
-        if (
-          distance === undefined ||
-          !Number.isFinite(distance) ||
-          distance < 0
-        ) {
-          continue;
-        }
-        if (shortest === null || distance < shortest) shortest = distance;
-      }
-      return shortest;
-    };
-
-    const busyTasks = await this.busyTasksByVehicle();
-    const candidates = await this.buildCandidates(busyTasks);
-    this.logger.debug(
-      `Assignment: ${tasks.length} READY task(s); candidates=[` +
-        candidates
-          .map(
-            (c) =>
-              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},e:${c.energyLevel}/${c.criticalThreshold},pos:${c.currentPosition ?? '?'}}`,
-          )
-          .join(' ') +
-        ']',
+    const distances = await this.distanceSource.open();
+    const candidates = await this.vehicleCandidates.build(
+      busyTasks,
+      heldByVehicle,
     );
+    this.logCandidates(tasks.length, heldByVehicle.size, candidates);
 
     const quarantinedVehicleNames = new Set<string>();
     const dispatchCandidates = (): VehicleCandidate[] =>
@@ -186,14 +103,13 @@ export class AssignmentEngineService {
           .filter(isEligible)
           .map((candidate) => candidate.name),
       ).size;
-    if (freeVehicleCount() === 0) return;
+    const heldVehicleCount = (): number =>
+      this.swap.enabled
+        ? dispatchCandidates().filter(isSwapCandidate).length
+        : 0;
+    if (freeVehicleCount() === 0 && heldVehicleCount() < 2) return;
 
-    type DispatchContext = {
-      task: TransportTaskEntity;
-      cargo: CargoEntity;
-      distanceByPoint: ReadonlyMap<string, number> | null;
-      approachDistance: number | null;
-    };
+    const heldContexts = await this.buildHeldContexts(heldByVehicle, distances);
     const pendingTasks: DispatchContext[] = [];
     let taskCursor = 0;
 
@@ -209,55 +125,38 @@ export class AssignmentEngineService {
           continue;
         }
 
-        const cargo = task.cargoId
-          ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
-          : null;
-        if (!cargo?.sourcePickupLocationName) {
-          this.logger.warn(
-            `Task ${task.id} missing pickup location — skipping`,
-          );
-          continue;
-        }
-
-        const distanceByPoint = cargo.sourcePointName
-          ? distancesTo(cargo.sourcePointName)
-          : null;
-        const approachDistance = await approachDistanceOf(cargo);
-        pendingTasks.push({ task, cargo, distanceByPoint, approachDistance });
+        const context = await this.buildContext(task, false, distances);
+        if (context) pendingTasks.push(context);
       }
     };
 
-    const removePendingTask = (taskId: string): DispatchContext | null => {
+    const removePendingTask = (taskId: string): void => {
       const index = pendingTasks.findIndex(
         (context) => context.task.id === taskId,
       );
-      if (index < 0) return null;
-      return pendingTasks.splice(index, 1)[0];
+      if (index >= 0) pendingTasks.splice(index, 1);
     };
 
     for (;;) {
       await fillPendingTasks();
-      if (pendingTasks.length === 0) break;
-      if (freeVehicleCount() === 0) break;
+      const rows = [...heldContexts, ...pendingTasks];
+      if (rows.length === 0) break;
+      if (freeVehicleCount() === 0 && heldContexts.length < 2) break;
 
-      const taskCandidates: DispatchTaskCandidate[] = pendingTasks.map(
-        ({ task, distanceByPoint, approachDistance }) => ({
-          taskId: task.id,
-          distanceByPoint,
-          approachDistance,
-        }),
-      );
       const availableCandidates = dispatchCandidates();
       const batteryWeight = weights?.battery ?? 0;
+      const taskCandidates = rows.map(toTaskCandidate);
       const hungarianPlan = planVehicleAssignments(
         availableCandidates,
         taskCandidates,
         batteryWeight,
+        this.swap,
       );
       const greedyPlan = planVehicleAssignmentsGreedy(
         availableCandidates,
         taskCandidates,
         batteryWeight,
+        this.swap,
       );
       const assignments =
         this.matcher === 'greedy' ? greedyPlan : hungarianPlan;
@@ -274,10 +173,14 @@ export class AssignmentEngineService {
         .filter((context) => !plannedTaskIds.has(context.task.id))
         .filter(
           (context) =>
-            !hasDispatchableVehicle(availableCandidates, {
-              taskId: context.task.id,
-              distanceByPoint: context.distanceByPoint,
-            }),
+            !hasDispatchableVehicle(
+              availableCandidates,
+              {
+                taskId: context.task.id,
+                distanceByPoint: context.distanceByPoint,
+              },
+              this.swap,
+            ),
         )
         .map((context) => context.task.id);
       if (unreachableTaskIds.length > 0) {
@@ -300,21 +203,55 @@ export class AssignmentEngineService {
           ` | counterfactual ${summariseDistance(counterfactual)} vs ${summariseDistance(assignments)}`,
       );
 
-      if (assignments.length === 0) break;
-
+      const heldByTaskId = new Map(
+        heldContexts.map((context) => [context.task.id, context]),
+      );
+      const swaps: PlannedAction[] = [];
+      const dispatches: PlannedAction[] = [];
       for (const { taskId, vehicle, distance } of assignments) {
-        const context = removePendingTask(taskId);
-        if (!context) continue;
+        const held = heldByTaskId.get(taskId);
+        if (held) {
+          if (
+            (held.task.metadata?.assignedVehicleName ?? null) !== vehicle.name
+          ) {
+            swaps.push({ context: held, vehicle, distance });
+          }
+          continue;
+        }
+        const pending = pendingTasks.find(
+          (context) => context.task.id === taskId,
+        );
+        if (pending) dispatches.push({ context: pending, vehicle, distance });
+      }
+      if (swaps.length === 0 && dispatches.length === 0) break;
+
+      const handedOver: PlannedAction[] = [];
+      for (const action of swaps) {
+        if (
+          await this.pickupOrders.revoke(
+            action.context.task,
+            action.vehicle.name,
+          )
+        ) {
+          handedOver.push(action);
+        }
+      }
+
+      const freeVehicleNames = new Set(
+        availableCandidates.filter(isEligible).map((c) => c.name),
+      );
+      for (const action of [...handedOver, ...dispatches]) {
+        const { context, vehicle, distance } = action;
+        removePendingTask(context.task.id);
 
         if (await this.pickupDependency.isBlocked(context.task)) {
           this.logger.debug(
-            `Task ${taskId} blocked before dispatch — skipping`,
+            `Task ${context.task.id} blocked before dispatch — skipping`,
           );
           break;
         }
 
-        const alternative = counterfactualByTask.get(taskId);
-        const assigned = await this.assign(
+        const issued = await this.pickupOrders.issue(
           context.task,
           context.cargo,
           vehicle.name,
@@ -322,12 +259,18 @@ export class AssignmentEngineService {
           {
             matcher: this.matcher,
             batchSize: assignments.length,
-            altVehicleName: alternative ? alternative.vehicle.name : null,
-            altDistanceToSource: alternative ? alternative.distance : null,
             approachDistance: context.approachDistance,
+            swapCount: context.task.metadata?.swapCount ?? null,
+            ...comparableCounterfactual(
+              counterfactualByTask.get(context.task.id),
+              vehicle.name,
+              heldByTaskId.has(context.task.id),
+              freeVehicleNames,
+              this.swap.enabled,
+            ),
           },
         );
-        if (!assigned) {
+        if (!issued) {
           quarantinedVehicleNames.add(vehicle.name);
           this.logger.warn(
             `Vehicle ${vehicle.name} assignment failed — quarantined for this cycle`,
@@ -336,48 +279,84 @@ export class AssignmentEngineService {
         }
         vehicle.hasActiveTask = true;
       }
+
+      if (handedOver.length > 0) break;
     }
   }
 
-  private async buildCandidates(
+  private logCandidates(
+    readyCount: number,
+    heldCount: number,
+    candidates: readonly VehicleCandidate[],
+  ): void {
+    this.logger.debug(
+      `Assignment: ${readyCount} READY task(s), ${heldCount} in-flight pickup(s); candidates=[` +
+        candidates
+          .map(
+            (c) =>
+              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},held:${c.inFlightPickupTaskId ?? '-'},e:${c.energyLevel}/${c.criticalThreshold},pos:${c.currentPosition ?? '?'}}`,
+          )
+          .join(' ') +
+        ']',
+    );
+  }
+
+  private async buildContext(
+    task: TransportTaskEntity,
+    pinned: boolean,
+    distances: DispatchDistances,
+  ): Promise<DispatchContext | null> {
+    const cargo = task.cargoId
+      ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
+      : null;
+    if (!cargo?.sourcePickupLocationName) {
+      this.logger.warn(`Task ${task.id} missing pickup location — skipping`);
+      return null;
+    }
+    return {
+      task,
+      cargo,
+      distanceByPoint: cargo.sourcePointName
+        ? distances.distancesTo(cargo.sourcePointName)
+        : null,
+      approachDistance: await distances.approachDistanceOf(cargo),
+      pinned,
+    };
+  }
+
+  private heldPickupsByVehicle(
     busyTasks: ReadonlyMap<string, TransportTaskEntity>,
-  ): Promise<VehicleCandidate[]> {
-    const agvs = await this.agvRepo.find();
-    const busy = new Set(busyTasks.keys());
+  ): Map<string, TransportTaskEntity> {
+    const held = new Map<string, TransportTaskEntity>();
+    if (!this.swap.enabled) return held;
+    for (const [vehicleName, task] of busyTasks) {
+      if (task.status === TaskStatus.PICKING_UP) held.set(vehicleName, task);
+    }
+    return held;
+  }
 
-    const agvsByName = new Map<string, AgvEntity[]>();
-    for (const agv of agvs) {
-      const rows = agvsByName.get(agv.name) ?? [];
-      rows.push(agv);
-      agvsByName.set(agv.name, rows);
+  private async buildHeldContexts(
+    heldByVehicle: ReadonlyMap<string, TransportTaskEntity>,
+    distances: DispatchDistances,
+  ): Promise<DispatchContext[]> {
+    const tasks = [...heldByVehicle.values()];
+    if (tasks.length === 0) return [];
+
+    const pinned = await this.laneSafety.committedInsideLane(tasks);
+    for (const task of tasks) {
+      if (await this.pickupDependency.isBlocked(task)) pinned.add(task.id);
     }
 
-    const uniqueAgvs: AgvEntity[] = [];
-    for (const [name, rows] of agvsByName) {
-      if (rows.length > 1) {
-        this.logger.warn(
-          `Duplicate AGV registry name "${name}" — excluding ${rows.length} ambiguous rows`,
-        );
-        continue;
-      }
-      uniqueAgvs.push(rows[0]);
+    const contexts: DispatchContext[] = [];
+    for (const task of tasks) {
+      const context = await this.buildContext(
+        task,
+        pinned.has(task.id),
+        distances,
+      );
+      if (context) contexts.push(context);
     }
-
-    return uniqueAgvs.map((agv) => {
-      const fms = this.vehicleStore.get(agv.name);
-      const hasActiveTask = busy.has(agv.name);
-      return {
-        name: agv.name,
-        dispatchEnabled: agv.isDispatchEnabled,
-        ignored: agv.isIgnored,
-        available: isFmsDispatchable(fms),
-        preemptibleParking: isEnRouteToPark(fms),
-        energyLevel: fms?.energyLevel ?? 0,
-        criticalThreshold: agv.criticalBatteryThreshold,
-        currentPosition: fms?.currentPosition ?? null,
-        hasActiveTask,
-      };
-    });
+    return contexts;
   }
 
   private async busyTasksByVehicle(): Promise<
@@ -393,59 +372,14 @@ export class AssignmentEngineService {
     }
     return byVehicle;
   }
+}
 
-  private async assign(
-    task: TransportTaskEntity,
-    cargo: CargoEntity | null,
-    vehicleName: string,
-    distanceToSource: number | null,
-    measurement: DispatchMeasurement,
-  ): Promise<boolean> {
-    if (!cargo?.sourcePickupLocationName) {
-      this.logger.warn(`Task ${task.id} missing pickup location — skipping`);
-      return false;
-    }
-
-    const to1Name = buildOrderName(
-      ORDER_TYPE.PICKUP,
-      vehicleName,
-      cargo.sourcePickupLocationName,
-      randomUUID(),
-    );
-    try {
-      await this.kernelApi.createTransportOrder(
-        to1Name,
-        [
-          {
-            locationName: cargo.sourcePickupLocationName,
-            operation: this.kernelApi.loadOperation,
-          },
-        ],
-        vehicleName,
-        { [ORDER_PROP.TASK_ID]: task.id, [ORDER_PROP.LEG]: 'PICKUP' },
-      );
-    } catch (err) {
-      this.logger.error(
-        `Failed to create TO1 for task ${task.id}: ${(err as Error).message}`,
-      );
-      return false;
-    }
-
-    task.assignedAt = new Date();
-    task.startedAt = new Date();
-    task.metadata = {
-      ...task.metadata,
-      assignedVehicleName: vehicleName,
-      to1Name,
-    };
-    await this.transportTask.changeStatus(task, TaskStatus.PICKING_UP, {
-      trigger: 'ASSIGNMENT_ENGINE',
-      vehicleName,
-      context: { to1Name, distanceToSource, ...measurement },
-    });
-    this.logger.log(
-      `Task ${task.id} → PICKING_UP on ${vehicleName} (${to1Name})`,
-    );
-    return true;
-  }
+function toTaskCandidate(context: DispatchContext): DispatchTaskCandidate {
+  return {
+    taskId: context.task.id,
+    distanceByPoint: context.distanceByPoint,
+    approachDistance: context.approachDistance,
+    swapCount: context.task.metadata?.swapCount ?? 0,
+    pinned: context.pinned,
+  };
 }

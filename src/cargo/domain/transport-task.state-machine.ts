@@ -29,6 +29,7 @@ const TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   [TaskStatus.BLOCKED]: [TaskStatus.READY_TO_ASSIGN, TaskStatus.CANCELLED],
   [TaskStatus.PICKING_UP]: [
     TaskStatus.DELIVERING,
+    TaskStatus.READY_TO_ASSIGN,
     // Preempt: an outer same-lane cargo appeared; withdraw TO1 and re-block.
     TaskStatus.BLOCKED,
     TaskStatus.CANCELLED,

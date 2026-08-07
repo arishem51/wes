@@ -1,7 +1,9 @@
 import {
+  SwapOptions,
   VehicleCandidate,
   VehicleTaskAssignment,
   isEligible,
+  isSwapCandidate,
   planVehicleAssignments,
   planVehicleAssignmentsGreedy,
   pickVehicle,
@@ -19,7 +21,27 @@ const candidate = (
   energyLevel: 80,
   criticalThreshold: 20,
   currentPosition: null,
+  inFlightPickupTaskId: null,
   hasActiveTask: false,
+  ...overrides,
+});
+
+const holder = (
+  taskId: string,
+  overrides: Partial<VehicleCandidate> = {},
+): VehicleCandidate =>
+  candidate({
+    available: false,
+    hasActiveTask: true,
+    inFlightPickupTaskId: taskId,
+    ...overrides,
+  });
+
+const swapOptions = (overrides: Partial<SwapOptions> = {}): SwapOptions => ({
+  enabled: true,
+  baseMm: 2000,
+  stepMm: 2000,
+  maxSwaps: 2,
   ...overrides,
 });
 
@@ -594,6 +616,198 @@ describe('dispatch.policy', () => {
       );
 
       expect(assignment.vehicle.name).toBe('V1');
+    });
+  });
+
+  describe('task swapping', () => {
+    const pairingOf = (plan: readonly VehicleTaskAssignment[]) =>
+      plan.map(({ taskId, vehicle, distance }) => [
+        taskId,
+        vehicle.name,
+        distance,
+      ]);
+
+    const fleet = [
+      holder('T1', { name: 'V-HOLD', currentPosition: 'PH' }),
+      candidate({ name: 'V-FREE', currentPosition: 'PF' }),
+    ];
+    const backlog = (challengerDistance: number, held = {}) => [
+      {
+        taskId: 'T1',
+        distanceByPoint: new Map([
+          ['PH', 18_000],
+          ['PF', challengerDistance],
+        ]),
+        ...held,
+      },
+      {
+        taskId: 'T2',
+        distanceByPoint: new Map([
+          ['PH', 1_000],
+          ['PF', 1_000],
+        ]),
+      },
+    ];
+
+    describe('isSwapCandidate', () => {
+      it('accepts a vehicle driving to a pickup it has not reached', () => {
+        expect(isSwapCandidate(holder('T1'))).toBe(true);
+      });
+
+      it.each([
+        ['it carries no in-flight pickup', {}],
+        ['dispatch is disabled', { dispatchEnabled: false }],
+        ['it is ignored', { ignored: true }],
+        ['its battery is at threshold', { energyLevel: 20 }],
+      ])('rejects when %s', (_label, overrides) => {
+        expect(
+          isSwapCandidate(candidate({ hasActiveTask: true, ...overrides })),
+        ).toBe(false);
+      });
+    });
+
+    it('keeps the incumbent when the challenger does not clear the threshold', () => {
+      expect(
+        pairingOf(
+          planVehicleAssignments(fleet, backlog(17_000), 0, swapOptions()),
+        ),
+      ).toEqual([
+        ['T1', 'V-HOLD', 18_000],
+        ['T2', 'V-FREE', 1_000],
+      ]);
+    });
+
+    it('hands the pickup over once the challenger clears the threshold', () => {
+      expect(
+        pairingOf(
+          planVehicleAssignments(fleet, backlog(15_000), 0, swapOptions()),
+        ),
+      ).toEqual([
+        ['T1', 'V-FREE', 15_000],
+        ['T2', 'V-HOLD', 1_000],
+      ]);
+    });
+
+    it('reports the raw distance, not the distance plus the switching cost', () => {
+      const [handover] = planVehicleAssignments(
+        fleet,
+        backlog(15_000),
+        0,
+        swapOptions(),
+      );
+      expect(handover.distance).toBe(15_000);
+    });
+
+    it('raises the threshold for every handover the task already had', () => {
+      expect(
+        pairingOf(
+          planVehicleAssignments(
+            fleet,
+            backlog(15_000, { swapCount: 1 }),
+            0,
+            swapOptions(),
+          ),
+        ),
+      ).toEqual([
+        ['T1', 'V-HOLD', 18_000],
+        ['T2', 'V-FREE', 1_000],
+      ]);
+    });
+
+    it.each([
+      ['the recourse budget is spent', { swapCount: 2 }],
+      ['the task is pinned', { pinned: true }],
+    ])('refuses any handover when %s', (_label, held) => {
+      expect(
+        pairingOf(
+          planVehicleAssignments(fleet, backlog(0, held), 0, swapOptions()),
+        ),
+      ).toEqual([
+        ['T1', 'V-HOLD', 18_000],
+        ['T2', 'V-FREE', 1_000],
+      ]);
+    });
+
+    it('never strands a driving vehicle to hand its pickup to a closer idle one', () => {
+      const onlyHeldTask = [
+        {
+          taskId: 'T1',
+          distanceByPoint: new Map([
+            ['PH', 18_000],
+            ['PF', 10],
+          ]),
+        },
+      ];
+
+      expect(
+        pairingOf(
+          planVehicleAssignments(fleet, onlyHeldTask, 0, swapOptions()),
+        ),
+      ).toEqual([['T1', 'V-HOLD', 18_000]]);
+    });
+
+    it('exchanges pickups between two driving vehicles with no idle vehicle at all', () => {
+      const crossing = [
+        holder('T1', { name: 'V-A', currentPosition: 'PA' }),
+        holder('T2', { name: 'V-B', currentPosition: 'PB' }),
+      ];
+      const crossedTasks = [
+        {
+          taskId: 'T1',
+          distanceByPoint: new Map([
+            ['PA', 20_000],
+            ['PB', 1_000],
+          ]),
+        },
+        {
+          taskId: 'T2',
+          distanceByPoint: new Map([
+            ['PA', 1_000],
+            ['PB', 20_000],
+          ]),
+        },
+      ];
+
+      expect(
+        pairingOf(
+          planVehicleAssignments(crossing, crossedTasks, 0, swapOptions()),
+        ),
+      ).toEqual([
+        ['T1', 'V-B', 1_000],
+        ['T2', 'V-A', 1_000],
+      ]);
+
+      expect(planVehicleAssignments(crossing, crossedTasks)).toEqual([]);
+    });
+
+    it('leaves a fleet without in-flight pickups matched exactly as before', () => {
+      const idleFleet = [
+        candidate({ name: 'V1', currentPosition: 'P1' }),
+        candidate({ name: 'V2', currentPosition: 'P2' }),
+      ];
+      const queued = [
+        {
+          taskId: 'T1',
+          distanceByPoint: new Map([
+            ['P1', 1],
+            ['P2', 2],
+          ]),
+        },
+        {
+          taskId: 'T2',
+          distanceByPoint: new Map([
+            ['P1', 2],
+            ['P2', 100],
+          ]),
+        },
+      ];
+
+      expect(
+        planVehicleAssignments(idleFleet, queued, 0, swapOptions()),
+      ).toEqual(planVehicleAssignments(idleFleet, queued));
+      expect(
+        planVehicleAssignmentsGreedy(idleFleet, queued, 0, swapOptions()),
+      ).toEqual(planVehicleAssignmentsGreedy(idleFleet, queued));
     });
   });
 });

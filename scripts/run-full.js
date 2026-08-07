@@ -90,10 +90,18 @@ async function preflight(cfg) {
     summary.openOrders = open.length;
 
     if (ready.length < cfg.expectFleet) {
-      problems.push(`only ${ready.length}/${cfg.expectFleet} vehicles ready (TO_BE_UTILIZED + positioned) — re-trigger per runbook §1`);
+      problems.push(`only ${ready.length}/${cfg.expectFleet} vehicles ready (TO_BE_UTILIZED + positioned) — run scripts/trigger-fleet.js`);
     }
     if (open.length > 0) {
       problems.push(`${open.length} kernel orders still open — leftovers from a previous batch`);
+    }
+
+    const median = batteries[Math.floor(batteries.length / 2)];
+    summary.median = median;
+    if (median < 55) {
+      summary.warnings = [
+        `median battery ${median}% — expect a mid-batch charging round (~+150s when the whole fleet drains together)`,
+      ];
     }
   }
 
@@ -265,8 +273,9 @@ async function main() {
   const { problems, summary } = await preflight(cfg);
   if (summary.fleet !== undefined) {
     console.log(`  fleet      ${summary.ready}/${summary.fleet} ready`);
-    console.log(`  battery    ${summary.batteries.join(', ')}`);
+    console.log(`  battery    ${summary.batteries.join(', ')}   median ${summary.median}%`);
     console.log(`  open orders ${summary.openOrders}`);
+    for (const w of summary.warnings ?? []) console.log(`  ~ ${w}`);
   }
   if (problems.length) {
     for (const p of problems) console.log(`  ! ${p}`);

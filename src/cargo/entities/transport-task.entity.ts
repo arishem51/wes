@@ -26,6 +26,7 @@ export interface TaskMetadata {
   retreatPointName?: string;
   unloadedAt?: string;
   blockedReason?: string;
+  swapCount?: number;
 }
 
 @Entity('transport_requests')

@@ -1,4 +1,7 @@
 import { AssignmentEngineService } from './assignment-engine.service';
+import { DispatchDistanceService } from './dispatch-distance.service';
+import { VehicleCandidateService } from './vehicle-candidate.service';
+import { PickupOrderService } from './pickup-order.service';
 import { ORDER_PROP } from './domain/events';
 import { buildRoadGraph } from './domain/routing';
 import { TaskStatus } from './entities/transport-task.entity';
@@ -166,19 +169,23 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
           Promise.resolve(feedersByZone.get(zone.id) ?? []),
         ),
     };
+    const laneSafety = {
+      committedInsideLane: jest.fn().mockResolvedValue(new Set<string>()),
+    };
 
     const service = new AssignmentEngineService(
       stub(taskRepo),
       stub(cargoRepo),
-      stub(agvRepo),
-      stub(zoneRepo),
-      stub(kernelApi),
-      stub(vehicleStore),
-      stub(transportTask),
       stub(pickupDependency),
-      stub(routing),
-      stub(approachPoint),
+      stub(laneSafety),
       stub(dispatchPolicy),
+      new DispatchDistanceService(
+        stub(zoneRepo),
+        stub(routing),
+        stub(approachPoint),
+      ),
+      new VehicleCandidateService(stub(agvRepo), stub(vehicleStore)),
+      new PickupOrderService(stub(kernelApi), stub(transportTask)),
     );
     return {
       service,
