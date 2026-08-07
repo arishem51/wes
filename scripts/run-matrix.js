@@ -33,7 +33,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawnSync, spawn } = require('child_process');
 const { Client } = require('pg');
 
 const DEFAULT_KERNEL_LOG =
@@ -63,7 +63,8 @@ function parseArgs(argv) {
 }
 
 function labelFor(cell) {
-  return `${cell.exp}|cond=${cell.cond}|n=${cell.n}|lam=${cell.lam}|seed=${cell.seed}|map=${cell.map}`;
+  const base = `${cell.exp}|cond=${cell.cond}|n=${cell.n}|lam=${cell.lam}|seed=${cell.seed}|map=${cell.map}`;
+  return cell.disturb ? `${base}|d=${cell.disturb}` : base;
 }
 
 function parseLabel(label) {
@@ -91,6 +92,7 @@ function expand(spec) {
             seed,
             count: spec.count ?? 80,
             timeoutMs: spec.timeoutMs ?? 1200000,
+            disturb: spec.disturb ?? null,
           });
         }
       }
@@ -178,6 +180,51 @@ async function dispatchableCount(kernelUrl) {
       v.currentPosition &&
       (v.energyLevel ?? 0) > 10,
   ).length;
+}
+
+const MOSQUITTO_PUB =
+  process.env.MOSQUITTO_PUB ?? 'C:/Program Files/mosquitto/mosquitto_pub.exe';
+const VDA_MANUFACTURER = process.env.VDA_MANUFACTURER ?? 'AUBOT';
+
+/**
+ * Clears the paused state on both sides.
+ *
+ * `paused` lives in two places: the kernel's vehicle model and the vehicle
+ * itself. A kernel restart resets only the former, and the kernel suppresses a
+ * write that matches what it already believes, so REST alone cannot resume a
+ * vehicle whose simulator is still paused. A vehicle stuck that way never moves
+ * and never releases its allocated resources, which stalls everything routed
+ * behind it. The VDA5050 stopPause action is therefore sent unconditionally.
+ */
+async function unpauseAll(fleetSize) {
+  const kernel = (process.env.KERNEL_URL ?? 'http://localhost:55200').replace(/\/$/, '');
+  const broker = process.env.MQTT_HOST ?? 'localhost';
+  for (let i = 1; i <= fleetSize; i++) {
+    const kernelName = `Vehicle-${String(i).padStart(4, '0')}`;
+    await fetch(`${kernel}/v1/vehicles/${kernelName}/paused?newValue=false`, { method: 'PUT' })
+      .catch(() => {});
+
+    const vehicleName = `V${String(i).padStart(2, '0')}`;
+    const payload = JSON.stringify({
+      headerId: Date.now() % 1000000,
+      timestamp: new Date().toISOString(),
+      version: '2.0.0',
+      manufacturer: VDA_MANUFACTURER,
+      serialNumber: vehicleName,
+      actions: [
+        {
+          actionType: 'stopPause',
+          actionId: `harness-resume-${vehicleName}-${Date.now()}`,
+          blockingType: 'NONE',
+        },
+      ],
+    });
+    spawnSync(MOSQUITTO_PUB, [
+      '-h', broker,
+      '-t', `aubotagv/v2/${VDA_MANUFACTURER}/${vehicleName}/instantActions`,
+      '-m', payload,
+    ], { encoding: 'utf8' });
+  }
 }
 
 function runNode(scriptRelPath, argv, env) {
@@ -310,9 +357,34 @@ async function drive(args) {
       process.exit(9);
     }
 
+    let injector = null;
+    if (cell.disturb) {
+      await unpauseAll(cell.n);
+      injector = spawn(
+        process.execPath,
+        [
+          path.resolve('scripts/disturb.js'),
+          '--level', cell.disturb,
+          '--seed', String(cell.seed),
+          '--n', String(cell.n),
+          '--duration-min', String(Math.ceil(cell.timeoutMs / 60000)),
+        ],
+        { stdio: 'ignore', detached: false },
+      );
+      console.log(`  disturbance injector started (level=${cell.disturb} seed=${cell.seed})`);
+    }
+
     const runOk = runNode('scripts/run-scenario.js', [tmp, '--label', label], {
       TIMEOUT_MS: String(cell.timeoutMs),
     });
+
+    if (injector) {
+      injector.kill('SIGINT');
+      await new Promise((r) => setTimeout(r, 3000));
+      injector.kill('SIGKILL');
+      await unpauseAll(cell.n);
+      console.log('  disturbance injector stopped; all vehicles unpaused');
+    }
     fs.rmSync(tmp, { force: true });
     if (!runOk) {
       console.error(`HALT at ${label}: run-scenario failed`);
@@ -397,7 +469,22 @@ async function aggregate(args) {
     records.push({ ...parseLabel(r.label), runId: r.id, notes: r.notes ?? '', ...metrics });
   }
 
-  const head = ['exp', 'cond', 'n', 'lam', 'seed', 'map', 'runId', ...[...metricKeys].sort()];
+  // Label factors are read off the labels themselves: a matrix that adds one
+  // (E6's d=low/d=high) must not have it silently dropped, which would leave
+  // its arms indistinguishable in the same file.
+  const CANONICAL_LABEL_KEYS = ['exp', 'cond', 'n', 'lam', 'seed', 'map'];
+  const extraLabelKeys = [];
+  for (const r of rows) {
+    for (const k of Object.keys(parseLabel(r.label))) {
+      if (!CANONICAL_LABEL_KEYS.includes(k) && !extraLabelKeys.includes(k)) extraLabelKeys.push(k);
+    }
+  }
+  const head = [
+    ...CANONICAL_LABEL_KEYS,
+    ...extraLabelKeys,
+    'runId',
+    ...[...metricKeys].sort(),
+  ];
   const lines = [head.join(',')];
   for (const rec of records) {
     lines.push(head.map((h) => (rec[h] === undefined ? '' : String(rec[h]))).join(','));

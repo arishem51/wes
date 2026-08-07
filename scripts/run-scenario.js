@@ -157,9 +157,45 @@ async function main() {
     const token = await login(baseUrl, user, pass);
 
     // --- post cargo per schedule -----------------------------------------
+    // The WES creation-time lane-safety gate (master, 2026-08-05) rejects a
+    // POST while a vehicle is ordered into the same rack lane. The workload
+    // must stay 80 orders per cell, so a rejected POST is held and retried
+    // until accepted; only its arrival time shifts, and the shift is logged.
     const t0 = Date.now();
     const pending = new Set(); // cargo ids we are waiting on
+    const retryMs = Number(process.env.POST_RETRY_MS ?? 5000);
+    const retryMaxTries = Number(process.env.POST_RETRY_MAX ?? 60);
+    let retrying = 0;
+    let gaveUp = 0;
     let seq = 0;
+
+    function retryCargo(body) {
+      retrying++;
+      (async () => {
+        try {
+          for (let attempt = 1; attempt <= retryMaxTries; attempt++) {
+            await sleep(retryMs);
+            if (aborted) return;
+            try {
+              const cargo = await createCargo(baseUrl, token, body);
+              pending.add(cargo.id);
+              console.log(
+                `  + cargo ${cargo.id} (${body.sourcePointName}) accepted on retry ${attempt} (+${((attempt * retryMs) / 1000).toFixed(0)}s after schedule)`,
+              );
+              return;
+            } catch (err) {
+              if (attempt === retryMaxTries) {
+                gaveUp++;
+                console.error(`  ! gave up on ${body.sourcePointName} after ${retryMaxTries} retries: ${err.message}`);
+              }
+            }
+          }
+        } finally {
+          retrying--;
+        }
+      })();
+    }
+
     for (const entry of entries) {
       if (aborted) break;
       const due = t0 + (entry.atMs ?? 0);
@@ -177,18 +213,19 @@ async function main() {
           pending.add(cargo.id);
           console.log(`  + cargo ${cargo.id} (${body.sourcePointName} → ${entry.destinationZoneId}) @ +${entry.atMs ?? 0}ms`);
         } catch (err) {
-          console.error(`  ! failed to POST cargo (${body.sourcePointName}): ${err.message}`);
+          console.error(`  ! POST held (${body.sourcePointName}): ${err.message} — retrying every ${retryMs}ms`);
+          retryCargo(body);
         }
       }
     }
-    console.log(`… posted ${pending.size} cargo; waiting for completion (timeout ${timeoutMs}ms)`);
+    console.log(`… posted ${pending.size} cargo (${retrying} held for retry); waiting for completion (timeout ${timeoutMs}ms)`);
 
     // --- poll for completion ---------------------------------------------
     const deadline = Date.now() + timeoutMs;
     const outcome = { DELIVERY_COMPLETED: 0, FAILED: 0, CANCELLED: 0 };
     let lastProgressAt = Date.now();
     let stalledOut = false;
-    while (!aborted && pending.size > 0 && Date.now() < deadline) {
+    while (!aborted && (pending.size > 0 || retrying > 0) && Date.now() < deadline) {
       await sleep(pollMs);
       let list;
       try {
@@ -214,11 +251,17 @@ async function main() {
 
     if (aborted) return;
 
-    const note = stalledOut
-      ? `early-stop: ${pending.size} unfinished after ${Math.round(noProgressStopMs / 60000)} min with no completion`
-      : pending.size > 0
-        ? `timeout: ${pending.size} unfinished`
+    if (pending.size === 0 && retrying === 0) {
+      await sleep(15000);
+    }
+
+    const unfinished = pending.size + retrying;
+    let note = stalledOut
+      ? `early-stop: ${unfinished} unfinished after ${Math.round(noProgressStopMs / 60000)} min with no completion`
+      : unfinished > 0
+        ? `timeout: ${unfinished} unfinished`
         : 'complete';
+    if (gaveUp > 0) note += ` | ${gaveUp} POST(s) never accepted by the lane-safety gate`;
     await closeRun(note);
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
@@ -227,7 +270,7 @@ async function main() {
     console.log(`  delivered      ${outcome.DELIVERY_COMPLETED}`);
     console.log(`  failed         ${outcome.FAILED}`);
     console.log(`  cancelled      ${outcome.CANCELLED}`);
-    console.log(`  unfinished     ${pending.size}`);
+    console.log(`  unfinished     ${pending.size + retrying}`);
   } catch (err) {
     console.error('run failed:', err.message);
     await closeRun(`error: ${err.message}`);
@@ -241,15 +284,26 @@ async function main() {
 // --- HTTP helpers -----------------------------------------------------------
 
 async function login(baseUrl, username, password) {
-  const res = await fetch(`${baseUrl}/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  });
-  if (!res.ok) throw new Error(`login ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  if (!data.token) throw new Error('login response has no token');
-  return data.token;
+  let lastErr;
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      const res = await fetch(`${baseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.ok) throw new Error(`login ${res.status}: ${await res.text()}`);
+      const data = await res.json();
+      if (!data.token) throw new Error('login response has no token');
+      if (attempt > 1) console.log(`  login succeeded on attempt ${attempt}`);
+      return data.token;
+    } catch (err) {
+      lastErr = err;
+      console.error(`  ! login attempt ${attempt} failed: ${err.message}`);
+      await sleep(5000);
+    }
+  }
+  throw lastErr;
 }
 
 async function createCargo(baseUrl, token, body) {

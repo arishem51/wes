@@ -119,7 +119,7 @@ async function main() {
 
   if (args['dry-run']) {
     for (const p of [...app, ...wrapper]) console.log(`  would kill ${p.pid}: ${p.cmd.slice(0, 150)}`);
-    console.log(`  would start: gradlew :opentcs-FMS-kernel:run -Pcondition=${condition} (cwd ${kernelDir})`);
+    console.log(`  would start: gradlew :opentcs-FMS-kernel:run -Pcondition=${condition}${args.flags ? ` -Pfmsflags="${args.flags}"` : ''} (cwd ${kernelDir})`);
     return;
   }
 
@@ -133,13 +133,31 @@ async function main() {
   }
   console.log('kernel down');
 
+  // Created through WMI so the kernel belongs to the WMI service, not to this
+  // shell's job object: a job object kills every descendant when it closes, and
+  // that is what terminated the kernel each time the launching session ended.
   const restartEpochMs = Date.now();
-  const child = spawn(
-    `start "FMS kernel ${condition}" /D "${kernelDir}" gradlew.bat :opentcs-FMS-kernel:run -Pcondition=${condition}`,
-    { shell: true, detached: true, stdio: 'ignore' },
+  const winDir = kernelDir.replace(/\//g, '\\');
+  const consoleLog = path.join(kernelDir, 'kernel-console.log').replace(/\//g, '\\');
+  const gradleCmd =
+    `gradlew.bat :opentcs-FMS-kernel:run -Pcondition=${condition}` +
+    `${args.flags ? ` "-Pfmsflags=${args.flags}"` : ''}`;
+  // Single-quoted PowerShell strings take no backslash escapes, so the inner
+  // double quotes cmd.exe needs are written plainly.
+  const launched = powershell(
+    `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{` +
+      `CommandLine = 'cmd.exe /c cd /d "${winDir}" && ${gradleCmd} > "${consoleLog}" 2>&1'` +
+      `}; ` +
+      `if ($r.ReturnValue -eq 0) { "pid=" + $r.ProcessId } else { "FAILED rc=" + $r.ReturnValue }`,
   );
-  child.unref();
-  console.log(`starting kernel in condition ${condition} (gradle pid ${child.pid})`);
+  if (!launched.startsWith('pid=')) {
+    console.error(`BLOCKED: could not launch the kernel via WMI: ${launched}`);
+    process.exit(11);
+  }
+  console.log(
+    `starting kernel in condition ${condition} (${launched}, detached from this session;` +
+      ` console output -> ${consoleLog})`,
+  );
 
   if (!(await waitFor(() => kernelUp(kernelUrl), 300000, 3000, 'kernel to answer'))) process.exit(4);
   console.log('kernel is up');

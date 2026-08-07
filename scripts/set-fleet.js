@@ -125,22 +125,9 @@ async function main() {
       console.log(`${v.name} connect=${connect.status} position kept at ${placed}`);
       continue;
     }
-    const point = freePool.shift();
-    if (!point) {
-      console.error(`BLOCKED: no free park point left for ${v.name}; extend PREFERRED_PARK_POINTS`);
-      process.exit(6);
-    }
-    const position = await fetch(`${base}/agvs/${id}/position`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ pointName: point }),
-    });
-    if (!position.ok) {
-      console.error(`BLOCKED: positioning ${v.name} at ${point} returned ${position.status}`);
-      process.exit(7);
-    }
-    occupied.add(point);
-    console.log(`${v.name} connect=${connect.status} position(${point})=${position.status}`);
+    console.log(
+      `${v.name} connect=${connect.status} — not localized yet; waiting for the simulator to report its position`,
+    );
   }
 
   for (const v of inactive) {
