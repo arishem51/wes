@@ -227,6 +227,152 @@ async function unpauseAll(fleetSize) {
   }
 }
 
+const RECHARGE_FLOOR_PCT = Number(process.env.RECHARGE_FLOOR_PCT ?? 0);
+const RECHARGE_TARGET_PCT = Number(process.env.RECHARGE_TARGET_PCT ?? 85);
+const RECHARGE_TIMEOUT_MS = Number(process.env.RECHARGE_TIMEOUT_MS ?? 1500000);
+
+async function fleetEnergy(fleetSize) {
+  const kernel = (process.env.KERNEL_URL ?? 'http://localhost:55200').replace(/\/$/, '');
+  const all = await fetch(`${kernel}/v1/vehicles`).then((r) => r.json()).catch(() => []);
+  const fleet = all
+    .filter((v) => /^Vehicle-\d+$/.test(v.name))
+    .slice(0, fleetSize);
+  return fleet.map((v) => ({ name: v.name, energy: v.energyLevel ?? 0 }));
+}
+
+async function setCriticalThreshold(fleetSize, critical) {
+  const kernel = (process.env.KERNEL_URL ?? 'http://localhost:55200').replace(/\/$/, '');
+  for (let i = 1; i <= fleetSize; i++) {
+    const name = `Vehicle-${String(i).padStart(4, '0')}`;
+    await fetch(`${kernel}/v1/vehicles/${name}/energyLevelThresholdSet`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        energyLevelCritical: critical,
+        energyLevelGood: 60,
+        energyLevelSufficientlyRecharged: 60,
+        energyLevelFullyRecharged: 90,
+      }),
+    }).catch(() => {});
+  }
+}
+
+/**
+ * Sets the WES-side threshold that decides when a vehicle is sent to charge.
+ *
+ * The kernel's energyLevelCritical only governs whether an assignment is
+ * *allowed*; the charge trip itself is dispatched by the WES charge engine at
+ * `energyLevel <= criticalBatteryThreshold`. Raising the kernel value alone
+ * therefore lets an idle fleet sit and drain, which is what it did.
+ */
+async function setWesChargeThreshold(threshold) {
+  const base = (process.env.WES_BASE_URL ?? 'http://localhost:3000/api').replace(/\/$/, '');
+  const user = process.env.WES_USER ?? 'quan.tran';
+  const pass = process.env.WES_PASS;
+  if (!pass) return false;
+  const login = await fetch(`${base}/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: user, password: pass }),
+  }).catch(() => null);
+  if (!login || !login.ok) return false;
+  const token = (await login.json()).token;
+  const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+  const list = await fetch(`${base}/agvs?limit=200`, { headers })
+    .then((r) => r.json())
+    .catch(() => null);
+  if (!list) return false;
+  for (const agv of list.agvs ?? list) {
+    await fetch(`${base}/agvs/${agv.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ criticalBatteryThreshold: threshold }),
+    }).catch(() => {});
+  }
+  return true;
+}
+
+/**
+ * Holds the next cell until the fleet is charged.
+ *
+ * A cell that starts on a half-empty fleet spends itself driving to chargers,
+ * and under disturbance a vehicle routinely falls through the kernel's
+ * energyLevelCritical floor, below which openTCS refuses every assignment
+ * including the charge order that would save it: the vehicle stops for good
+ * while still holding its resources and the fleet queues behind it. The floor
+ * is dropped only while this gate runs, never inside a measured cell, so the
+ * runs themselves see the deployed thresholds.
+ */
+const DEPLOYED_KERNEL_CRITICAL = 10;
+const DEPLOYED_WES_CHARGE_THRESHOLD = 20;
+
+async function rechargeGate(fleetSize) {
+  // Asserted, not assumed: a gate that died mid-run in an earlier campaign can
+  // leave these raised, and a raised WES threshold sends the whole fleet to
+  // charge instead of to work, which looks like a stalled fleet.
+  await setCriticalThreshold(fleetSize, DEPLOYED_KERNEL_CRITICAL);
+  await setWesChargeThreshold(DEPLOYED_WES_CHARGE_THRESHOLD);
+
+  // Math.min of an empty list is Infinity, and an unreachable kernel returns an
+  // empty list: without this guard a dead kernel reads as a fully charged fleet.
+  const before = await fleetEnergy(fleetSize);
+  if (before.length < fleetSize) {
+    console.error(
+      `  recharge gate: kernel reported ${before.length}/${fleetSize} vehicles — treating as not ready`,
+    );
+    return false;
+  }
+  const worst = Math.min(...before.map((v) => v.energy));
+  if (worst >= RECHARGE_TARGET_PCT) return true;
+
+  // Waiting for the fleet to charge itself does not terminate: the plant model
+  // makes every charge point a park point, so a vehicle that finishes charging
+  // is already "parked" and never vacates, and the vehicles that need the
+  // charger cannot reach one. The battery is simulator state, so each cell is
+  // instead given the same defined starting charge.
+  console.log(`  recharge gate: lowest battery ${worst}%, setting the fleet to ${RECHARGE_TARGET_PCT}%`);
+  const broker = process.env.MQTT_HOST ?? 'localhost';
+  for (let i = 1; i <= fleetSize; i++) {
+    const vehicleName = `V${String(i).padStart(2, '0')}`;
+    const payload = JSON.stringify({
+      headerId: Date.now() % 1000000,
+      timestamp: new Date().toISOString(),
+      version: '2.0.0',
+      manufacturer: VDA_MANUFACTURER,
+      serialNumber: vehicleName,
+      actions: [
+        {
+          actionType: 'setPinLevel',
+          actionId: `harness-charge-${vehicleName}-${Date.now()}`,
+          blockingType: 'NONE',
+          actionParameters: [{ key: 'pinLevel', value: RECHARGE_TARGET_PCT }],
+        },
+      ],
+    });
+    spawnSync(MOSQUITTO_PUB, [
+      '-h', broker,
+      '-t', `aubotagv/v2/${VDA_MANUFACTURER}/${vehicleName}/instantActions`,
+      '-m', payload,
+    ], { encoding: 'utf8' });
+  }
+
+  const deadline = Date.now() + 120000;
+  let now = worst;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const levels = await fleetEnergy(fleetSize);
+    if (levels.length < fleetSize) continue;
+    now = Math.min(...levels.map((v) => v.energy));
+    if (now >= RECHARGE_TARGET_PCT - 5) break;
+  }
+  if (now < RECHARGE_TARGET_PCT - 5) {
+    console.error(`  recharge gate: fleet still at ${now}% after the battery reset`);
+    return false;
+  }
+  console.log(`  recharge gate: fleet at ${now}%`);
+  return true;
+}
+
 function runNode(scriptRelPath, argv, env) {
   const res = spawnSync(process.execPath, [path.resolve(scriptRelPath), ...argv], {
     stdio: 'inherit',
@@ -320,6 +466,18 @@ async function drive(args) {
       await db.end();
       process.exit(5);
     }
+    // Before the fleet check, not after: a vehicle drained below the kernel's
+    // critical level is not dispatchable, so set-fleet would fail on exactly
+    // the vehicles the gate exists to recover.
+    if (cell.disturb) {
+      await unpauseAll(cell.n);
+      if (!(await rechargeGate(cell.n))) {
+        console.error(`HALT at ${label}: fleet could not be recharged before the cell`);
+        await db.end();
+        process.exit(12);
+      }
+    }
+
     const have = await dispatchableCount(kernelUrl);
     if (have === null) {
       console.error('HALT: kernel unreachable');
@@ -359,7 +517,6 @@ async function drive(args) {
 
     let injector = null;
     if (cell.disturb) {
-      await unpauseAll(cell.n);
       injector = spawn(
         process.execPath,
         [

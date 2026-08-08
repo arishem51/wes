@@ -1,0 +1,10 @@
+{
+  "exp": "E3w10",
+  "map": "v7",
+  "conditions": ["S1"],
+  "n": [15],
+  "lambda": [8],
+  "seeds": [1, 2, 3, 4, 5],
+  "count": 80,
+  "timeoutMs": 1800000
+}
