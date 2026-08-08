@@ -49,7 +49,5 @@ export function vehicleErrorsEqual(
 }
 
 function sameErrorTypes(a: string[] = [], b: string[] = []): boolean {
-  return (
-    a.length === b.length && a.every((errorType, i) => errorType === b[i])
-  );
+  return a.length === b.length && a.every((errorType, i) => errorType === b[i]);
 }

@@ -27,6 +27,7 @@ const VALID: Record<TaskStatus, TaskStatus[]> = {
   [TaskStatus.BLOCKED]: [TaskStatus.READY_TO_ASSIGN, TaskStatus.CANCELLED],
   [TaskStatus.PICKING_UP]: [
     TaskStatus.DELIVERING,
+    TaskStatus.READY_TO_ASSIGN,
     TaskStatus.BLOCKED,
     TaskStatus.CANCELLED,
     TaskStatus.FAILED,

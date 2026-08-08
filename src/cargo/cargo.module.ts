@@ -26,6 +26,9 @@ import { LaneSafetyService } from './lane-safety.service';
 import { RoutingService } from './routing.service';
 import { ApproachPointService } from './approach-point.service';
 import { RetreatPointService } from './retreat-point.service';
+import { DispatchDistanceService } from './dispatch-distance.service';
+import { VehicleCandidateService } from './vehicle-candidate.service';
+import { PickupOrderService } from './pickup-order.service';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
 
 @Module({
@@ -52,6 +55,9 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     ApproachPointService,
     RetreatPointService,
     ParkClaimStore,
+    DispatchDistanceService,
+    VehicleCandidateService,
+    PickupOrderService,
     ReleaseEngineService,
     AssignmentEngineService,
     ChargeEngineService,

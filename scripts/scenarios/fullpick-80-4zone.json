@@ -1,6 +1,6 @@
 {
-  "label": "fullpick_80cargo_4zone_10agv",
-  "notes": "Full pickup: 1 cargo per pickup slot (80 points 0100-0179), delivered round-robin evenly across 4 dropoff zones (â/aa/b/bbb, 20 each). v7-bidir. Zone ids regenerated from live DB.",
+  "label": "fullpick_80cargo_4zone_15agv",
+  "notes": "Full pickup: 1 cargo per pickup slot (0100-0179), round-robin 20/zone across the 4 BASELINE dropoff zones (â/aa/b/bbb, all in the 3xxx range). Zone ids regenerated from live DB.",
   "cargos": [
     {
       "atMs": 0,

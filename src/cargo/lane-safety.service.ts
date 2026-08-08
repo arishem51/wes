@@ -82,26 +82,76 @@ export class LaneSafetyService {
     );
     if (deeperPickups.length === 0) return;
 
-    const lanePoints =
-      laneIndex.pointsByLane.get(newSlot.laneKey) ?? new Set<string>();
-    const allocatedByVehicle = await this.readAllocatedResources(
-      vehicleNamesOf(deeperPickups),
+    const committed = await this.committedInsideLane(
+      deeperPickups.map((pickup) => pickup.task),
     );
 
     for (const { task, cargo } of deeperPickups) {
-      const vehicleName = task.metadata?.assignedVehicleName;
-      if (!vehicleName) continue;
-      const allocated = allocatedByVehicle.get(vehicleName) ?? [];
-      if (allocationReachesPoints(allocated, lanePoints)) {
-        throw new BadRequestException(
-          `Không đủ an toàn để tạo hàng tại vị trí này: xe ${vehicleName} đã được lệnh vào dãy này để lấy hàng tại ${cargo.sourcePointName ?? cargo.sourcePickupLocationName}.`,
-        );
-      }
+      if (!committed.has(task.id)) continue;
+      throw new BadRequestException(
+        `Không đủ an toàn để tạo hàng tại vị trí này: xe ${task.metadata?.assignedVehicleName} đã được lệnh vào dãy này để lấy hàng tại ${cargo.sourcePointName ?? cargo.sourcePickupLocationName}.`,
+      );
     }
 
     for (const { task } of deeperPickups) {
       await this.preempt(task, pickupLocationName);
     }
+  }
+
+  async committedInsideLane(
+    tasks: readonly TransportTaskEntity[],
+  ): Promise<Set<string>> {
+    const committed = new Set<string>();
+    if (tasks.length === 0) return committed;
+
+    const cargoById = await this.cargoesOf(tasks);
+    const allocatedByVehicle = await this.readAllocatedResources(
+      vehicleNamesOf(tasks),
+    );
+
+    const byZone = new Map<string, DeeperPickup[]>();
+    for (const task of tasks) {
+      const cargo = task.cargoId ? cargoById.get(task.cargoId) : undefined;
+      if (!task.metadata?.assignedVehicleName) continue;
+      if (!cargo?.sourceZoneId || !cargo.sourcePickupLocationName) continue;
+      const entries = byZone.get(cargo.sourceZoneId) ?? [];
+      entries.push({ task, cargo });
+      byZone.set(cargo.sourceZoneId, entries);
+    }
+
+    for (const [zoneId, entries] of byZone) {
+      const zone = await this.zoneRepo.findOne({ where: { id: zoneId } });
+      const laneIndex = zone ? await this.laneIndexOf(zone) : null;
+      if (!laneIndex) continue;
+
+      for (const { task, cargo } of entries) {
+        const slot = laneIndex.axesByLocation.get(
+          cargo.sourcePickupLocationName as string,
+        );
+        if (!slot) continue;
+        const lanePoints =
+          laneIndex.pointsByLane.get(slot.laneKey) ?? new Set<string>();
+        const allocated =
+          allocatedByVehicle.get(
+            task.metadata?.assignedVehicleName as string,
+          ) ?? [];
+        if (allocationReachesPoints(allocated, lanePoints)) {
+          committed.add(task.id);
+        }
+      }
+    }
+    return committed;
+  }
+
+  private async cargoesOf(
+    tasks: readonly TransportTaskEntity[],
+  ): Promise<Map<string, CargoEntity>> {
+    const cargoIds = tasks
+      .map((task) => task.cargoId)
+      .filter((id): id is string => id !== null);
+    if (cargoIds.length === 0) return new Map();
+    const cargos = await this.cargoRepo.find({ where: { id: In(cargoIds) } });
+    return new Map(cargos.map((cargo) => [cargo.id, cargo]));
   }
 
   private async preempt(
@@ -213,8 +263,8 @@ export class LaneSafetyService {
   }
 }
 
-function vehicleNamesOf(pickups: readonly DeeperPickup[]): string[] {
-  return pickups
-    .map((pickup) => pickup.task.metadata?.assignedVehicleName)
+function vehicleNamesOf(tasks: readonly TransportTaskEntity[]): string[] {
+  return tasks
+    .map((task) => task.metadata?.assignedVehicleName)
     .filter((name): name is string => typeof name === 'string');
 }

@@ -14,9 +14,9 @@ describe('parseVehicleErrorTypes', () => {
   });
 
   it('splits the comma-joined list the VDA5050 driver publishes', () => {
-    expect(parseVehicleErrorTypes('adapterLostNavigation, noRouteError')).toEqual(
-      ['adapterLostNavigation', 'noRouteError'],
-    );
+    expect(
+      parseVehicleErrorTypes('adapterLostNavigation, noRouteError'),
+    ).toEqual(['adapterLostNavigation', 'noRouteError']);
   });
 
   it('keeps a single error type', () => {
@@ -72,7 +72,10 @@ describe('vehicleErrorsEqual', () => {
 
   it('detects a new error type', () => {
     expect(
-      vehicleErrorsEqual({ fatal: [], warning: [] }, { fatal: ['x'], warning: [] }),
+      vehicleErrorsEqual(
+        { fatal: [], warning: [] },
+        { fatal: ['x'], warning: [] },
+      ),
     ).toBe(false);
   });
 

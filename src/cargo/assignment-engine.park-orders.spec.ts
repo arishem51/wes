@@ -1,4 +1,7 @@
 import { AssignmentEngineService } from './assignment-engine.service';
+import { DispatchDistanceService } from './dispatch-distance.service';
+import { VehicleCandidateService } from './vehicle-candidate.service';
+import { PickupOrderService } from './pickup-order.service';
 import { ParkClaimStore } from './park-claim.store';
 import { TaskStatus } from './entities/transport-task.entity';
 
@@ -69,19 +72,23 @@ describe('AssignmentEngineService park orders', () => {
     const approachPoint = {
       feederPointsOf: jest.fn().mockResolvedValue([]),
     };
+    const laneSafety = {
+      committedInsideLane: jest.fn().mockResolvedValue(new Set<string>()),
+    };
 
     const svc = new AssignmentEngineService(
       stub(taskRepo),
       stub(cargoRepo),
-      stub(agvRepo),
-      stub(zoneRepo),
-      stub(kernelApi),
-      stub(vehicleStore),
-      stub(transportTask),
       stub(pickupDependency),
-      stub(routing),
-      stub(approachPoint),
+      stub(laneSafety),
       stub(dispatchPolicy),
+      new DispatchDistanceService(
+        stub(zoneRepo),
+        stub(routing),
+        stub(approachPoint),
+      ),
+      new VehicleCandidateService(stub(agvRepo), stub(vehicleStore)),
+      new PickupOrderService(stub(kernelApi), stub(transportTask)),
     );
     return { svc, kernelApi, transportTask, vehicleStore, parkClaims };
   }
