@@ -1,0 +1,167 @@
+@startuml fig-2-7-1-class-mapf
+' SDS Figure II-2.7.1 — Class diagram: in-kernel MAPF coordination (Architecture C)
+' Fixed 2026-08-09: solver class is Lacam2Solver (not LacamSolver); removed the
+' RhcrLoop and SolverResult boxes (no such Java types — the rolling horizon lives
+' in MapfCoordinator, and the solver returns Lacam2Solver.Result); removed
+' FMSRouter.chooseNearestBay() (no such method — bay choice is GoalResolver's).
+' Verified against opentcs-integration-FMS/opentcs-FMS-kernel/src/main/java/org/opentcs/fms.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-7-1-class-mapf.puml
+!include _style.iuml
+
+class FMSInjection <<KernelInjectionModule>> {
+  #configure(): void
+  --bindings--
+  bindDispatcher(FMSDispatcher)
+  bindRouter(FMSRouter)
+  bindScheduler(FMSScheduler)
+  schedulerModuleBinder += MapfPrecedenceModule
+  SingleVehicleBlockModule -> FmsSingleVehicleBlockModule
+}
+
+class FMSDispatcher <<Dispatcher>> {
+  -coordinator: MapfCoordinator
+  -rerouteUtil: RerouteUtil
+  +initialize(): void  «schedules 1s horizon tick»
+  +dispatch(): void
+  -dispatchIfOverdue(): void
+  -readFleet(): Fleet  (positions + goals)
+  -rerouteChangedVehicles(): void
+  -routeDiverges(vehicle): boolean
+}
+
+class FMSRouter <<Router>> {
+  -delegate: DefaultRouter
+  -objectService: InternalTCSObjectService
+  -coordinator: MapfCoordinator
+  +getRoutes(vehicle, src, order, max): Set<List<Route>>
+  +checkRoutability(order): Set<Vehicle>
+  +updateRoutingTopology(paths): void
+}
+
+class MapfCoordinator <<Singleton>> {
+  -routeCache: Map<String, List<String>>
+  -precedence: Precedence
+  +resolve(positions, goals): boolean
+  +context(): RoutingContext
+  +cachedRoute(vehicle, goal): Optional<List<String>>
+  +precedence(): Precedence
+  +overdue(): boolean
+  +planSingle(src, goal): List<String>
+  +invalidateModel(): void
+  -shouldReplan(...) / updateStuck(...)
+  -buildPrecedence(stp): Map<String, List<Visit>>
+  -hasCycleAdg(order, routes): boolean
+}
+
+class MapfPrecedenceModule <<Scheduler.Module>> {
+  +mayAllocate(client, resources): boolean  «veto by ADG per-visit»
+  +setAllocationState(client, alloc, remaining): void
+  +allocationReleased(client, resources): void
+  -clearVeto(point, vehicle): void
+  -nextStepOf(vehicle, routes): int
+}
+
+class FmsSingleVehicleBlockModule <<Scheduler.Module>> {
+  +mayAllocate(...): boolean  «direction-aware»
+}
+
+class GoalResolver <<utility>> {
+  +goalCandidates(dest, objSvc): List<String>
+  +goalPoint(dest, objSvc): Optional<String>
+}
+
+class BlockCrossings <<utility>> {
+  +singleVehicleBlocks(plantModelService): Set<Block>
+  +routeDrivesAlongAnyBlock(client, blocks, ...): boolean
+}
+
+class PlantModelAdapter <<utility>> {
+  +toRoadmap(plantModel): Roadmap
+}
+
+class "MapfCoordinator.RoutingContext" as RoutingContext {
+  +roadmap(): Roadmap
+  +routeBuilder(): RouteBuilder
+  +planSingle(src, goal): List<String>
+  +planAll(positions, goals, boost): PlanResult
+}
+
+class MapfPlanner {
+  +plan(positions, goals, params, boost): PlanResult
+  +planRoutes(...): Map<String, List<String>>
+  +simplify(path): int[]  «drop pure-wait, keep excursion»
+}
+
+class RouteBuilder {
+  +buildRoute(pointNames): Optional<Route>
+}
+
+class Roadmap {
+  +neighborsOf(v): int[]
+  +idOf(name): Integer / +nameOf(id): String
+  +distance(from, goal): int
+}
+
+class Lacam2Solver {
+  +solve(instance, params, priorities?): Result
+}
+
+class "MapfPlanner.PlanResult" as PlanResult <<record>> {
+  routes
+  spaceTimePaths
+  executable
+}
+
+class SolverParams <<record>> {
+  window
+  deadlineMs
+  anytime
+}
+
+class Precedence <<record>> {
+  byPoint
+  routes
+  generation
+}
+
+class Visit <<record>> {
+  vehicle: String
+  step: int
+}
+
+class DefaultDispatcher <<openTCS>>
+class DefaultRouter <<openTCS>>
+interface "Scheduler.Module" as SchedulerModule <<openTCS interface>>
+
+FMSInjection ..> FMSDispatcher
+FMSInjection ..> FMSRouter
+FMSInjection ..> MapfPrecedenceModule
+FMSDispatcher --|> DefaultDispatcher
+FMSDispatcher --> MapfCoordinator
+FMSDispatcher ..> GoalResolver
+FMSRouter ..> DefaultRouter : delegates fallback
+FMSRouter --> MapfCoordinator
+FMSRouter ..> GoalResolver
+MapfPrecedenceModule ..|> SchedulerModule
+FmsSingleVehicleBlockModule ..|> SchedulerModule
+MapfPrecedenceModule --> MapfCoordinator : precedence()
+MapfPrecedenceModule ..> BlockCrossings
+MapfCoordinator *-- RoutingContext
+MapfCoordinator ..> PlantModelAdapter
+MapfCoordinator ..> Precedence
+MapfCoordinator ..> Visit
+RoutingContext --> MapfPlanner
+RoutingContext --> RouteBuilder
+RoutingContext --> Roadmap
+MapfPlanner ..> PlanResult
+MapfPlanner --> Lacam2Solver
+MapfPlanner ..> SolverParams
+
+note bottom of Lacam2Solver
+  Anytime, validity-aware LaCAM* (swap on, rising priority).
+  The rolling-horizon (RHCR) loop is not a class of its own:
+  it is MapfCoordinator.overdue() / shouldReplan() driven by
+  the dispatcher's 1s horizon tick.
+end note
+
+@enduml

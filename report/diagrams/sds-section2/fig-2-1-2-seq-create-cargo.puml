@@ -1,0 +1,46 @@
+@startuml fig-2-1-2-seq-create-cargo
+' SDS Figure II-2.1.2 — Create cargo: seat reservation, task birth, dispatch trigger
+' Verified against wes/src/cargo/cargo.service.ts create() on 2026-08-09.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-1-2-seq-create-cargo.puml
+!include _style.iuml
+
+actor "Operator /\nBarcode Scanner" as Actor
+participant CargoController
+participant CargoService
+participant "KernelApiService\n(ACL -> kernel)" as ACL
+database PostgreSQL
+participant TransportTaskService
+participant EventEmitter2
+participant DispatchScheduler
+
+Actor -> CargoController: POST /cargo (CreateCargoDto)
+CargoController -> CargoService: create(dto, userId)
+CargoService -> ACL: findPickupLocationForPoint(sourcePointName)
+ACL --> CargoService: pickupLocationName
+
+alt point invalid / source occupied / zone full
+  CargoService --> CargoController: throw BadRequestException
+  CargoController --> Actor: 400 Bad Request
+else valid
+  CargoService -> PostgreSQL: pg_advisory_xact_lock(zoneId)
+  CargoService -> PostgreSQL: capacity check (free drop-off seats)
+  CargoService -> PostgreSQL: INSERT cargos (destination_location_name = NULL)
+  CargoService -> PostgreSQL: INSERT transport_requests (status = CREATED)
+  PostgreSQL --> CargoService: saved cargo, task
+
+  CargoService -> TransportTaskService: publishCreated(task)
+  TransportTaskService -> PostgreSQL: INSERT task_status_transitions
+  TransportTaskService -> EventEmitter2: emit transport-task.created
+  EventEmitter2 -> DispatchScheduler: onDispatchTrigger() -> schedule()
+
+  CargoService --> CargoController: cargo
+  CargoController --> Actor: 201 Created
+end
+
+note over CargoService, PostgreSQL
+  Seat reservation is a capacity reservation only.
+  The concrete drop-off slot stays NULL and is
+  committed late, at the TO2 barrier (Figure II-2.3.2).
+end note
+
+@enduml

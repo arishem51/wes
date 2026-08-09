@@ -1,0 +1,98 @@
+@startuml fig-2-4-1-class-parking
+' SDS Figure II-2.4.1 — Class diagram: idle parking & preemption
+' REDRAWN 2026-08-09: the previous version showed an in-memory idle-clock
+' (idleSince / parkTargets / inFlightParkTarget / occupiedParkPoints). None of
+' those exist any more — park targets are held by ParkClaimStore, a ledger
+' rehydrated from the kernel at bootstrap.
+' Verified against wes/src/cargo/parking-engine.service.ts, park-claim.store.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-4-1-class-parking.puml
+!include _style.iuml
+skinparam nodesep 18
+skinparam ranksep 30
+
+class ParkingEngineService <<Engine>> {
+  +run(): void
+  -parkPool(): ParkingPoint[]
+  -toCandidate(agv, fms, busy): ParkVehicleCandidate
+  -hasPendingWork(): boolean
+  -createParkOrder(vehicleName, pointName): void
+  -logParkDecisionInput(...): void
+}
+
+class ParkClaimStore <<Store, ledger>> {
+  +onApplicationBootstrap(): void
+  +claim(vehicle, point, orderName): void
+  +release(vehicle): void
+  +get(vehicle): ParkClaim?
+  +claimedPoints(): Set<string>
+  +claimedVehicles(): Set<string>
+  +isReady(): boolean
+  +reconcile(): void
+  -rehydrate(): void
+}
+
+class "parking.policy" as Policy <<pure/functions>> {
+  +needsParking(c, parkNames, hasPendingWork): boolean
+  +unavailableParkPoints(states, parkNames): Set<string>
+  +pickParkingPoint(points, distances, excluded): ParkingPoint?
+}
+
+class RoutingService <<Service>> {
+  +getRoadGraph(): RoadGraph?
+}
+
+class KernelApiService <<ACL>> {
+  +getParkingPoints(): KernelParkingPoint[]
+  +getChargeLocations(): KernelChargeLocation[]
+  +createTransportOrder(name, drops, vehicle, props, options)
+}
+
+class VehicleStateStore <<ACL, in-memory>> {
+  +get(name): KernelVehicleState?
+  +getAll(): KernelVehicleState[]
+}
+
+class ChargeEngineService <<Engine>> {
+  +run(): void
+}
+
+interface ParkVehicleCandidate {
+  name: string
+  dispatchEnabled: boolean
+  ignored: boolean
+  idleAvailable: boolean
+  onOrder: boolean
+  hasActiveTask: boolean
+  belowCritical: boolean
+  charging: boolean
+  currentPosition: string?
+}
+
+RoutingService -[hidden]- KernelApiService
+KernelApiService -[hidden]- VehicleStateStore
+
+ParkingEngineService --> ParkClaimStore
+ParkingEngineService --> RoutingService
+ParkingEngineService --> KernelApiService
+ParkingEngineService --> VehicleStateStore
+ParkingEngineService ..> Policy
+ParkingEngineService ..> ParkVehicleCandidate
+ParkClaimStore --> KernelApiService
+ChargeEngineService --> ParkClaimStore
+ChargeEngineService .right.> Policy
+
+note right of ParkClaimStore
+  Rebuilt from the kernel on start-up. While isReady()
+  is false the engine issues no park order at all —
+  an empty ledger read as "nothing is claimed" is what
+  sends two AGVs to one position (BR-15).
+end note
+
+note bottom of ParkingEngineService
+  Park orders are created dispensable, so the kernel drops
+  one by itself the moment the AGV is needed for transport
+  work; WES never withdraws a park order.
+  Charge points are excluded from the park pool.
+end note
+
+@enduml

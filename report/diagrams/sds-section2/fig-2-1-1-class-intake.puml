@@ -1,0 +1,115 @@
+@startuml fig-2-1-1-class-intake
+' SDS Figure II-2.1.1 — Class diagram: cargo intake, release engine, shared write choke point
+' Verified against wes/src/cargo (cargo.service.ts, release-engine.service.ts,
+' pickup-dependency.service.ts, transport-task.service.ts) on 2026-08-09.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-1-1-class-intake.puml
+!include _style.iuml
+
+class CargoController <<Controller>> {
+  +create(dto: CreateCargoDto, user): CargoEntity
+  +list(query): CargoListResponse
+  +findOne(id): CargoResponseDto
+  +remove(id)
+  +triggerDispatch()
+}
+
+class CargoService <<Service>> {
+  +create(dto: CreateCargoDto, userId): CargoEntity
+  +list(query): CargoListResponse
+  +findOne(id): CargoResponseDto
+  +remove(id)
+  +getTaskByCargo(cargoId): TransportTaskEntity?
+  +getAssignmentDecision(...)
+}
+
+class DispatchSchedulerService <<Service>> {
+  +onDispatchTrigger(event): void
+  +schedule(): void
+  -flush(): void
+}
+
+class ReleaseEngineService <<Engine>> {
+  +run(): void
+  -block(task, reason): void
+  -unblock(task): void
+}
+
+class PickupDependencyService <<Service>> {
+  +evaluate(): PickupDecision[]
+  +isBlocked(task): boolean
+  -decide(...): PickupDecision[]
+}
+
+class ZoneGeometryService <<Service>> {
+  +computeMemberAxes(zone): Map<string, MemberAxes>
+}
+
+class TransportTaskService <<Service, choke-point>> {
+  +publishCreated(task): void
+  +changeStatus(task, to, log): TransportTaskEntity
+  -recordTransition(task, from, to, log): void
+}
+
+class KernelApiService <<ACL>> {
+  +findPickupLocationForPoint(point): string
+  +withdrawTransportOrder(name, immediate): void
+}
+
+class "pickup-dependency.policy" as PickupPolicy <<pure/functions>> {
+  +findBlocker(target, others): PickupCandidate?
+  +isBlocked(target, others): boolean
+}
+
+class TransportTaskStateMachine <<pure/static>> {
+  +canTransition(from, to): boolean
+  +isCancellable(status): boolean
+  +transition(task, to): void
+}
+
+class CargoEntity <<Entity: cargos>> {
+  +id: uuid
+  +itemCode: string
+  +sourcePointName: string
+  +sourcePickupLocationName: string
+  +sourceZoneId: uuid
+  +destinationZoneId: uuid
+  +destinationLocationName: string
+  +status: CargoStatus
+}
+
+class TransportTaskEntity <<Entity: transport_requests>> {
+  +id: uuid
+  +requestCode: string
+  +cargoId: uuid
+  +status: TaskStatus
+  +metadata: TaskMetadata
+  +assignedAt: Date
+  +startAt: Date
+  +completedAt: Date
+}
+
+CargoController ..> CargoService
+CargoController ..> DispatchSchedulerService
+CargoService --> TransportTaskService
+CargoService ..> KernelApiService
+CargoService --> CargoEntity
+ReleaseEngineService --> PickupDependencyService
+ReleaseEngineService --> TransportTaskService
+PickupDependencyService --> ZoneGeometryService
+PickupDependencyService ..> PickupPolicy
+TransportTaskService ..> TransportTaskStateMachine
+TransportTaskService --> TransportTaskEntity
+CargoEntity "1" -- "0..*" TransportTaskEntity
+
+note right of TransportTaskService
+  The only writer of TransportTaskEntity.status:
+  validate -> persist -> audit row -> emit event.
+end note
+
+note bottom of ReleaseEngineService
+  Preemption of an in-flight PICKING_UP task is NOT
+  done here — it belongs to LaneSafetyService
+  (see Figure II-2.2.1).
+end note
+
+@enduml

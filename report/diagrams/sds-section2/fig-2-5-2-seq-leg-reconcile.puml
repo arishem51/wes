@@ -1,0 +1,58 @@
+@startuml fig-2-5-2-seq-leg-reconcile
+' SDS Figure II-2.5.2 — Leg reconcile heals a lost "TO FINISHED"
+' Fixed 2026-08-09: corrected the flush order (parkClaims.reconcile runs before
+' legReconcile) and replaced the meaningless "(found message)" trigger label.
+' Verified against wes/src/cargo/leg-reconcile.service.ts, dispatch-scheduler.service.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-5-2-seq-leg-reconcile.puml
+!include _style.iuml
+
+actor "openTCS / FMS kernel" as Kernel
+participant "KernelEventListener\n(ACL)" as Listener
+participant DispatchScheduler
+participant LegReconcileService as Reconcile
+participant VehicleStateStore as Store
+participant KernelApiService as ACL
+participant EventEmitter2 as Bus
+participant TransportTaskSaga as Saga
+participant TransportTaskService as TTS
+
+group Trigger — any one starts the debounced flush
+  alt a vehicle frees up (external kernel event)
+    Kernel -> Listener: SSE — vehicle -> IDLE
+    Listener -> DispatchScheduler: emit fms.vehicle.available -> schedule()
+  else task status change / 5s heartbeat (internal)
+    Listener -> DispatchScheduler: debounced timer (1.5s window)
+  end
+end
+
+note over DispatchScheduler
+  leg-reconcile runs FIRST among the engines:
+  parkClaims.reconcile -> **legReconcile** -> release
+  -> assign -> charge -> park
+end note
+
+DispatchScheduler -> Reconcile: run()
+Reconcile -> Reconcile: load live tasks (PICKING_UP, DELIVERING)
+
+loop each task
+  Reconcile -> Reconcile: expectedLeg(task) from status + metadata
+  Reconcile -> Store: get(vehicle).transportOrder
+
+  alt vehicle still on the expected order
+    Reconcile -> Reconcile: running — skip fetch
+  else moved off the expected order
+    Reconcile -> ACL: getTransportOrderState(expected.orderName)
+    ACL --> Reconcile: FINISHED | FAILED | UNROUTABLE | pending
+
+    alt FINISHED (the in-process event was lost)
+      Reconcile -> Bus: re-emit fms.transport-order.finished
+      Bus -> Saga: onTransportOrderFinished() (idempotent)
+    else FAILED / UNROUTABLE
+      Reconcile -> TTS: changeStatus(task, FAILED)
+    else still pending
+      Reconcile -> Reconcile: leave task, re-check next cycle
+    end
+  end
+end
+
+@enduml

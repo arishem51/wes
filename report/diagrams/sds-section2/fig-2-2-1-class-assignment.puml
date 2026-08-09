@@ -1,0 +1,192 @@
+@startuml fig-2-2-1-class-assignment
+' SDS Figure II-2.2.1 — Class diagram: weighted dispatch (Hungarian / Greedy + pickup swapping)
+' REDRAWN 2026-08-09: the previous version documented a lookahead / soon-free
+' reservation mechanism that no longer exists in the code (grep "lookahead" = 0 hits),
+' and a dispatch_policies table whose urgency/proximity/inventory weights were
+' dropped by migrations 1796/1797.
+' Verified against wes/src/cargo/assignment-engine.service.ts and domain/*.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-2-1-class-assignment.puml
+!include _style.iuml
+' Grouping the leaf modules into packages keeps the diagram from degenerating
+' into one very wide row, which is illegible at 6.5in page width.
+skinparam nodesep 18
+skinparam ranksep 32
+
+class AssignmentEngineService <<Engine>> {
+  -matcher: DispatchMatcher
+  -swap: SwapOptions
+  +run(): void
+  -buildContext(task, pinned, distances): DispatchContext?
+  -buildHeldContexts(heldByVehicle, distances): DispatchContext[]
+  -heldPickupsByVehicle(busyTasks): Map<name, TransportTaskEntity>
+  -busyTasksByVehicle(): Map<name, TransportTaskEntity>
+  -counterfactualMatcher(): DispatchMatcher
+  -logCandidates(readyCount, heldCount, candidates): void
+}
+
+class VehicleCandidateService <<Service>> {
+  +build(busyTasks, heldByVehicle): VehicleCandidate[]
+  -unambiguousAgvs(): AgvEntity[]
+}
+
+class DispatchDistanceService <<Service>> {
+  +open(): DispatchDistances
+}
+
+class PickupOrderService <<Service>> {
+  +issue(task, cargo, vehicleName, distance, measurement): boolean
+  +revoke(task, newVehicleName): boolean
+}
+
+class TransportTaskService <<Service, choke-point>> {
+  +changeStatus(task, to, log): TransportTaskEntity
+}
+
+class LaneSafetyService <<Service, guard>> {
+  +committedInsideLane(tasks): Set<taskId>
+  +clearLaneForNewCargo(...): void
+  -preempt(task, pickupLocationName): void
+}
+
+class PickupDependencyService <<Service>> {
+  +isBlocked(task): boolean
+}
+
+class DispatchPolicyService <<Service>> {
+  +getActiveWeights(): ActiveDispatchWeights?
+}
+
+class RoutingService <<Service>> {
+  +getRoadGraph(): RoadGraph?
+  +getReverseRoadGraph(): RoadGraph?
+  +pointsOfLocations(locNames): Map<location, point>
+}
+
+class KernelApiService <<ACL>> {
+  +createTransportOrder(name, drops, vehicle, props)
+  +withdrawTransportOrder(name, immediate)
+}
+
+class VehicleStateStore <<ACL, in-memory>> {
+  +get(name): KernelVehicleState?
+  +getAll(): KernelVehicleState[]
+}
+
+package "cargo/domain (framework-free)" {
+
+class "dispatch.policy" as Policy <<pure/functions>> {
+  +isEligible(c): boolean
+  +isSwapCandidate(c): boolean
+  +planVehicleAssignments(cands, tasks, w, swap): VehicleTaskAssignment[]
+  +planVehicleAssignmentsGreedy(cands, tasks, w, swap): VehicleTaskAssignment[]
+  +hasDispatchableVehicle(cands, task, swap): boolean
+  +pickVehicle(...) / pickNearestVehicle(...)
+}
+
+class "dispatch-cost" as Cost <<pure/functions>> {
+  +batteryCost(distance, energy, w): number
+  +clampWeight(v): number
+  +clamp01(v): number
+  +nonNegativeOr(v, fallback): number
+}
+
+class "dispatch-swap" as Swap <<pure/functions>> {
+  +swapOptionsFrom(env): SwapOptions
+  +describeSwapOptions(opts): string
+}
+
+class "dispatch-counterfactual" as Counterfactual <<pure/functions>> {
+  +comparableCounterfactual(...): object
+  +summariseDistance(assignments): string
+}
+
+class hungarian <<pure>> {
+  +solveHungarian(cost): HungarianResult
+}
+
+class routing <<pure/functions>> {
+  +buildRoadGraph(edges): RoadGraph
+  +reverseRoadGraph(graph): RoadGraph
+  +shortestDistancesFrom(graph, src): Map<string, number>
+}
+
+}
+
+package "shared contracts" {
+
+interface VehicleCandidate {
+  name: string
+  dispatchEnabled: boolean
+  ignored: boolean
+  available: boolean
+  preemptibleParking: boolean
+  energyLevel: number
+  criticalThreshold: number
+  currentPosition: string?
+  inFlightPickupTaskId: string?
+  hasActiveTask: boolean
+}
+
+interface DispatchTaskCandidate {
+  taskId: string
+  distanceByPoint: Map<string, number>?
+  approachDistance: number?
+  swapCount: number?
+  pinned: boolean?
+}
+
+interface SwapOptions {
+  enabled: boolean
+  baseMm: number
+  stepMm: number
+  maxSwaps: number
+}
+
+}
+
+class DispatchPolicyEntity <<Entity: dispatch_policies>> {
+  +id: uuid
+  +name: string
+  +weightBattery: double
+  +maxAgvPerBlock: smallint
+  +isActive: boolean
+}
+
+AssignmentEngineService --> VehicleCandidateService
+AssignmentEngineService --> DispatchDistanceService
+AssignmentEngineService --> PickupOrderService
+AssignmentEngineService --> LaneSafetyService
+AssignmentEngineService --> PickupDependencyService
+AssignmentEngineService --> DispatchPolicyService
+AssignmentEngineService ..> Policy
+AssignmentEngineService ..> Swap
+AssignmentEngineService ..> Counterfactual
+AssignmentEngineService ..> DispatchTaskCandidate
+
+VehicleCandidateService --> VehicleStateStore
+VehicleCandidateService ..> VehicleCandidate
+DispatchDistanceService --> RoutingService
+PickupOrderService --> KernelApiService
+PickupOrderService --> TransportTaskService
+RoutingService ..> routing
+Policy ..> Cost
+Policy ..> hungarian
+Policy ..> VehicleCandidate
+Policy ..> SwapOptions
+DispatchPolicyService --> DispatchPolicyEntity
+
+note right of AssignmentEngineService
+  Both matchers run every cycle: the one selected by
+  DISPATCH_MATCHER (default hungarian) produces the
+  assignment, the other is recorded as a counterfactual
+  for offline evaluation.
+end note
+
+note bottom of DispatchPolicyEntity
+  weight_urgency, weight_proximity and
+  weight_inventory_position were dropped by migrations
+  1796/1797. battery is the only surviving weight;
+  task selection is plain FIFO by createdAt.
+end note
+
+@enduml

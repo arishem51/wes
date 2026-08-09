@@ -1,0 +1,69 @@
+@startuml fig-2-5-1-class-reconcile
+' SDS Figure II-2.5.1 — Class diagram: self-healing reconciliation (level-triggered backstops)
+' NOTE: section heading in the .docx currently duplicates 2.4 ("Idle Parking &
+' Preemption"); it should read "Self-Healing Reconciliation".
+' Verified against wes/src/opentcs/kernel-event-listener.service.ts,
+' vehicle-state.store.ts and wes/src/cargo/leg-reconcile.service.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-5-1-class-reconcile.puml
+!include _style.iuml
+
+class KernelEventListenerService <<ACL, SSE>> {
+  +onApplicationBootstrap(): void
+  +onApplicationShutdown(): void
+  -connect(): void
+  -seedStore(): void
+  -reconcileVehicleStates(): void  «heartbeat 5s»
+  -handleTO(payload): void
+  -handleVehicle(payload): void
+}
+
+class LegReconcileService <<Service, backstop>> {
+  +run(): void
+  -reconcileTask(task): void
+  -expectedLeg(task): {leg, orderName}?
+}
+
+class VehicleStateStore <<ACL, in-memory>> {
+  +get(name): KernelVehicleState?
+  +getAll(): KernelVehicleState[]
+  +set(name, state): void
+  +setConnected(value): void
+  +isConnected(): boolean
+}
+
+class KernelApiService <<ACL>> {
+  +getVehicleStates(): KernelVehicleState[]
+  +getTransportOrderState(name): string
+}
+
+class TransportTaskService <<Service, choke-point>> {
+  +changeStatus(task, to, log): TransportTaskEntity
+}
+
+class EventEmitter2
+
+VehicleStateStore -[hidden]- KernelApiService
+TransportTaskService -[hidden]- EventEmitter2
+
+KernelEventListenerService --> VehicleStateStore
+KernelEventListenerService --> KernelApiService
+KernelEventListenerService --> EventEmitter2
+LegReconcileService --> VehicleStateStore
+LegReconcileService --> KernelApiService
+LegReconcileService --> TransportTaskService
+LegReconcileService --> EventEmitter2
+
+note bottom of LegReconcileService
+  Runs as the first engine of every flush. Re-confirms each
+  live task's expected leg against the kernel and either
+  re-fires fms.transport-order.finished (FINISHED) or fails
+  the task (FAILED / UNROUTABLE).
+end note
+
+note right of KernelEventListenerService
+  Correctness never depends on an in-process event surviving:
+  the 5s heartbeat re-seeds VehicleStateStore and re-emits
+  fms.vehicle.available from authoritative kernel state.
+end note
+
+@enduml

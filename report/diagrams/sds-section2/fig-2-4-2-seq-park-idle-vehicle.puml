@@ -1,0 +1,84 @@
+@startuml fig-2-4-2-seq-park-idle-vehicle
+' SDS Figure II-2.4.2 — Park an idle vehicle
+' REDRAWN 2026-08-09: replaced the idleSince / PARK_IDLE_DELAY_MS / parkTargets
+' flow (removed from the code) with the ParkClaimStore ledger, and corrected the
+' flush order — parking runs after the charge engine, not straight after assign.
+' Verified against wes/src/cargo/parking-engine.service.ts run().
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-4-2-seq-park-idle-vehicle.puml
+!include _style.iuml
+
+actor "openTCS / FMS kernel" as Kernel
+participant "KernelEventListener\n(ACL)" as Listener
+participant DispatchScheduler
+participant ParkingEngineService as Parking
+participant ParkClaimStore as Claims
+participant "KernelApiService\n(ACL -> kernel)" as ACL
+participant VehicleStateStore as Store
+participant RoutingService as Routing
+participant "parking.policy" as Policy
+
+group Trigger — any one starts the debounced flush
+  alt a vehicle frees up (external kernel event)
+    Kernel -> Listener: SSE — vehicle -> IDLE
+    Listener -> DispatchScheduler: emit fms.vehicle.available -> schedule()
+  else task status change / 5s heartbeat (internal)
+    Listener -> DispatchScheduler: debounced timer (1.5s window)
+  end
+end
+
+note over DispatchScheduler
+  parking runs at the TAIL of the flush:
+  parkClaims.reconcile -> legReconcile -> release
+  -> assign -> charge -> **park**
+end note
+
+DispatchScheduler -> Parking: run()
+
+Parking -> ACL: getParkingPoints()
+Parking -> ACL: getChargeLocations()
+Parking -> Parking: parkPool() = parking points minus charge points (BR-15)
+alt pool empty
+  Parking --> DispatchScheduler: return
+end
+
+Parking -> Parking: hasPendingWork() — any CREATED / READY_TO_ASSIGN / BLOCKED?
+
+loop each AGV
+  Parking -> Store: get(agv.name)
+  Parking -> Policy: needsParking(candidate, parkNames, hasPendingWork)
+  Policy --> Parking: park this vehicle?
+end
+
+alt nothing ready to park
+  Parking --> DispatchScheduler: return
+end
+
+Parking -> Claims: isReady()
+alt ledger not rehydrated from the kernel yet
+  Parking --> DispatchScheduler: skip this park pass (log a warning)
+end
+
+Parking -> Claims: claimedVehicles()
+Parking -> Parking: drop vehicles that already hold a live park order
+Parking -> Routing: getRoadGraph()
+Parking -> Policy: unavailableParkPoints(allVehicleStates, parkNames)
+Parking -> Claims: claimedPoints()
+Parking -> Parking: excluded = occupied + in-flight target + claimed
+
+loop each unclaimed ready vehicle
+  Parking -> Policy: pickParkingPoint(points, shortestDistancesFrom(pos), excluded)
+  Policy --> Parking: nearest free point | null
+  opt point found
+    Parking -> ACL: createTransportOrder(PARK-uuid, MOVE @ point,\nvehicle, {wes:leg = PARK}, {dispensable: true})
+    Parking -> Claims: claim(vehicle, point, orderName)
+    Parking -> Parking: exclude the point for the rest of this pass
+  end
+end
+
+note over Parking, Claims
+  AGVs at or below the critical battery threshold are left
+  to the Charge Engine, which has already run in this flush.
+  IGNORED and dispatch-disabled AGVs are never parked.
+end note
+
+@enduml

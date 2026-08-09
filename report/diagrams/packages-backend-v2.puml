@@ -1,0 +1,68 @@
+@startuml packages-backend-v2
+' Section 1.2 Package Diagram — wes backend (NestJS)
+' Corrected against the implementation (wes @ 2026-08-09):
+'   added the dashboard package, renamed admin_users -> admin-users,
+'   added the zones and dashboard dependencies on the ACL and the
+'   entity reuse that the first revision omitted.
+' Render: java -jar plantuml.jar -tpng packages-backend-v2.puml   (requires Graphviz dot)
+
+!include style-template.iuml
+skinparam nodesep 80
+skinparam ranksep 95
+skinparam packageStyle folder
+' polyline instead of the template's ortho routing: orthogonal edges run along the
+' package borders, which pushes every edge label onto a box outline and makes the
+' entity-reuse labels unreadable. Colours, borders and fonts still come from the template.
+skinparam linetype polyline
+
+package "auth" as auth {}
+package "account" as account {}
+package "users" as users {}
+package "admin-users" as adminusers {}
+package "mail" as mail {}
+
+package "agvs" as agvs {}
+package "maps" as maps {}
+package "zones" as zones {}
+package "dashboard" as dashboard {}
+
+package "cargo" as cargo {
+  package "domain" as cargodomain #FFFFFF {}
+  package "entities" as cargoentities #FFFFFF {}
+}
+
+package "opentcs (ACL)" as opentcs {
+  package "map_loader" as maploader #FFFFFF {}
+}
+
+package "database" as database {}
+
+' ── real module dependencies (from @Module imports) ──
+adminusers --> users
+adminusers --> auth
+adminusers --> mail
+account --> users
+account --> auth
+auth --> users
+auth --> mail
+
+agvs      --> opentcs
+cargo     --> opentcs
+maps      --> opentcs
+zones     --> opentcs
+dashboard --> opentcs
+
+' ── entity reuse (dashed = compile-time entity import) ──
+maps      ..> cargo : CargoEntity
+cargo     ..> zones : ZoneEntity
+cargo     ..> agvs  : AgvEntity
+agvs      ..> cargo : TransportTaskEntity
+dashboard ..> cargo : TransportTaskEntity,\nTaskStatusTransitionEntity
+dashboard ..> agvs  : AgvEntity
+
+legend bottom
+  solid  = module dependency (@Module imports)
+  dashed = compile-time entity reuse; the label names the entity
+endlegend
+
+@enduml

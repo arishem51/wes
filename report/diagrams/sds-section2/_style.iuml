@@ -1,0 +1,57 @@
+' Shared style for SDS Section II.2 (Detailed Design) diagrams.
+' Matches report/diagrams/style-template.iuml (draw.io look) but omits
+' `linetype ortho`, which distorts sequence-diagram self-calls.
+' Usage: !include _style.iuml
+
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam ArrowColor #000000
+skinparam ArrowFontSize 11
+skinparam WrapWidth 260
+
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  BorderThickness 1
+  FontStyle bold
+  AttributeFontSize 11
+  StereotypeFontSize 11
+}
+
+skinparam interface {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+}
+
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+  BorderThickness 1
+  FontStyle bold
+}
+
+skinparam sequence {
+  ParticipantBackgroundColor #FFFFFF
+  ParticipantBorderColor #000000
+  ParticipantFontStyle bold
+  ActorBackgroundColor #FFFFFF
+  ActorBorderColor #000000
+  DatabaseBackgroundColor #FFFFFF
+  DatabaseBorderColor #000000
+  LifeLineBorderColor #000000
+  LifeLineBackgroundColor #FFFFFF
+  ArrowColor #000000
+  GroupBorderColor #000000
+  GroupBackgroundColor #FFFFFF
+  GroupHeaderFontSize 11
+  BoxBorderColor #000000
+  BoxBackgroundColor #F7F7F7
+}
+
+skinparam note {
+  BackgroundColor #FFFDF0
+  BorderColor #666666
+  FontSize 11
+}

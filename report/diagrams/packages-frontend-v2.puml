@@ -1,0 +1,55 @@
+@startuml packages-frontend-v2
+' Section 1.2 Package Diagram — wes-client (React SPA)
+' Corrected against the implementation (wes-client @ 2026-08-09):
+'   added the dashboard feature and the data package, and moved the
+'   permission matrix out of components, where it does not live.
+' Render: java -jar plantuml.jar -tpng packages-frontend-v2.puml   (requires Graphviz dot)
+
+!include style-template.iuml
+skinparam nodesep 45
+skinparam ranksep 70
+skinparam packageStyle folder
+' polyline instead of the template's ortho routing, to match Figure II-2.
+skinparam linetype polyline
+
+package "App (entry)\nApp.tsx, main.tsx, i18n.ts" as app {}
+
+package "components" as components {
+  package "AppShell\n(role-gated navigation)" as shell #FFFFFF {}
+}
+
+package "features" as features {
+  package "auth" as fauth #FFFFFF {}
+  package "account" as faccount #FFFFFF {}
+  package "agv" as fagv #FFFFFF {}
+  package "cargo" as fcargo #FFFFFF {}
+  package "dashboard" as fdash #FFFFFF {}
+  package "map" as fmap #FFFFFF {}
+  package "usersAdmin" as fusers #FFFFFF {}
+  package "zones" as fzones #FFFFFF {}
+}
+
+package "api" as api {
+  package "client.ts (axios)" as client #FFFFFF {}
+}
+
+package "data\n(role → permission matrix)" as data {}
+package "types" as types {}
+package "ui" as ui {}
+package "lib" as lib {}
+package "styles" as styles {}
+
+app --> components
+app --> features
+components --> features
+features --> api
+features --> ui
+features --> types
+features --> lib
+features --> data
+api --> client
+api ..> types
+data ..> types
+app ..> styles
+
+@enduml

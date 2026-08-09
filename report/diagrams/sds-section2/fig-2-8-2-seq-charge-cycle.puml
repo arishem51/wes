@@ -1,0 +1,78 @@
+@startuml fig-2-8-2-seq-charge-cycle
+' SDS Figure II-2.8.2 — Charge cycle: release the charged, dispatch the depleted
+' NEW 2026-08-09.
+' Verified against wes/src/cargo/charge-engine.service.ts run().
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-8-2-seq-charge-cycle.puml
+!include _style.iuml
+
+participant DispatchScheduler
+participant ChargeEngineService as Charge
+participant "KernelApiService\n(ACL -> kernel)" as ACL
+participant VehicleStateStore as Store
+participant "charge.policy" as Policy
+participant ParkClaimStore as Claims
+participant RoutingService as Routing
+
+note over DispatchScheduler
+  charge runs between assign and park:
+  parkClaims.reconcile -> legReconcile -> release
+  -> assign -> **charge** -> park
+end note
+
+DispatchScheduler -> Charge: run()
+Charge -> ACL: getChargeLocations()
+alt no charge location configured
+  Charge --> DispatchScheduler: return
+end
+
+Charge -> Charge: reconcileChargeTargets() — forget targets whose\nvehicle arrived or whose order reached a terminal state
+Charge -> ACL: getParkingPoints()
+
+group Release — an AGV that has charged enough
+  loop each AGV
+    Charge -> Store: get(agv.name)
+    Charge -> Policy: isReleaseCandidate(c) && shouldRelease(c, CHARGE_FULL_PCT)
+    opt release
+      Charge -> ACL: sendInstantAction(vehicle, "stopCharging")
+    end
+  end
+end
+
+group Dispatch — an AGV at or below the critical threshold
+  loop each AGV
+    Charge -> Policy: needsCharging(candidate, chargePoints)  [BR-02]
+    Charge -> Charge: skip if a charge order is already in flight
+  end
+
+  alt nobody needs charging
+    Charge --> DispatchScheduler: return
+  end
+
+  Charge -> Charge: freeSlotsByLocation() = slots - occupied - in-flight
+  Charge -> Routing: getRoadGraph()
+  Charge -> Claims: claimedPoints() / claimedVehicles() / isReady()
+
+  loop each vehicle that needs charging
+    Charge -> Policy: pickChargeLocation(locations, distances, freeSlots)  [BR-13]
+
+    alt a charge slot is free
+      Charge -> ACL: createTransportOrder(CHARGE-uuid, MOVE @ location,\nvehicle, {wes:leg = CHARGE})
+      Charge -> Charge: chargeTargets[vehicle] = {location, order};\ndecrement the location's free-slot count
+    else no free slot — fall back to parking
+      Charge -> Policy: pickParkingPoint(nonChargeParks, distances, excluded)
+      opt point found and the park ledger is ready
+        Charge -> ACL: createTransportOrder(PARK-uuid, MOVE @ point,\nvehicle, {dispensable: true})
+        Charge -> Claims: claim(vehicle, point, orderName)
+      end
+    end
+  end
+end
+
+note over Charge, Claims
+  With no free charge slot the AGV is parked and re-evaluated
+  on the next dispatch cycle (BR-03). The park fallback is
+  skipped while the claim ledger is not yet rehydrated;
+  charging itself still dispatches.
+end note
+
+@enduml

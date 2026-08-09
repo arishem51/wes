@@ -1,0 +1,65 @@
+@startuml fig-2-9-2-seq-lane-safety
+' SDS Figure II-2.9.2 — Lane Safety Guard: refuse or preempt when new cargo
+' appears nearer the aisle
+' NEW 2026-08-09.
+' Verified against wes/src/cargo/lane-safety.service.ts clearLaneForNewCargo().
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-9-2-seq-lane-safety.puml
+!include _style.iuml
+
+actor "Operator /\nBarcode Scanner" as Actor
+participant CargoService
+participant LaneSafetyService as Guard
+participant ZoneGeometryService as Geometry
+database PostgreSQL
+participant VehicleStateStore as Store
+participant "lane-safety.policy" as Policy
+participant "KernelApiService\n(ACL -> kernel)" as ACL
+participant TransportTaskService as TTS
+
+Actor -> CargoService: create cargo at a slot nearer the aisle
+CargoService -> Guard: clearLaneForNewCargo(sourceZoneId, pickupLocationName)
+
+Guard -> Geometry: computeMemberAxes(zone)  [cached per member signature]
+Geometry --> Guard: laneKey / depthKey per slot
+
+Guard -> PostgreSQL: load live pickups of this zone
+Guard -> Policy: isDeeperInSameLane(candidate, newSlot)
+Policy --> Guard: deeper pickups behind the new cargo
+
+alt no deeper pickup
+  Guard --> CargoService: nothing to do
+end
+
+group Is any deeper pickup already committed?
+  Guard -> Store: isConnected()
+  alt SSE stream is live
+    Guard -> Store: get(vehicle).allocatedResources
+  else fall back to the kernel
+    Guard -> ACL: getVehicleStates()
+  end
+  Guard -> Policy: allocationReachesPoints(allocated, lanePoints)
+  Policy --> Guard: committed task ids
+end
+
+alt a deeper pickup is already committed
+  Guard --> CargoService: throw BadRequestException
+  CargoService --> Actor: 400 — the vehicle is already driving into this lane
+else none committed — preempt them
+  loop each deeper pickup
+    Guard -> ACL: withdrawTransportOrder(to1Name, immediate = false)
+    Guard -> Guard: clear metadata.to1Name, assignedVehicleName,\nassignedAt, startedAt
+    Guard -> TTS: changeStatus(task, BLOCKED)\n{trigger: CARGO_CREATE, preempted: true}
+  end
+  Guard --> CargoService: lane cleared
+  CargoService --> Actor: 201 Created
+end
+
+note over Guard, TTS
+  This is the only path that revokes a task already in
+  PICKING_UP. The Release Engine never does — it only moves
+  tasks between CREATED, READY_TO_ASSIGN and BLOCKED.
+  The preempted task returns to BLOCKED and is re-released
+  once the outer cargo has left its source point (BR-10).
+end note
+
+@enduml

@@ -1,0 +1,61 @@
+@startuml architecture-v2b
+' Figure II-1b — Software Architecture, integration boundary (ACL ↔ FMS ↔ AGV fleet)
+' Companion: architecture-v2a.puml (business layers)
+' Corrected against the implementation (wes @ 2026-08-09).
+' Render: java -jar plantuml.jar -tpng architecture-v2b.puml   (requires Graphviz dot)
+!include style-template.iuml
+skinparam defaultFontSize 11
+skinparam nodesep 35
+skinparam ranksep 55
+skinparam roundCorner 10
+top to bottom direction
+
+' ── Backend ──────────────────────────────────────────
+package "SWES Backend — NestJS Modular Monolith (wes)" #E1D5E7 {
+
+  rectangle "Application Layer (Business Services)\n─────────────────────────\nDispatch Orchestration · CargoService / TransportTaskService\nAgvsService · MapsService / ZoneService · DashboardService\n─────────────────────────\n<i>detailed in Figure II-1a</i>" as AppLayer
+
+  rectangle "In-process Event Bus\n(@nestjs/event-emitter)" as EventBus
+
+  package "Anti-Corruption Layer (opentcs/)" {
+    rectangle "KernelApiService\n(REST client)" as KernelApi
+    rectangle "KernelEventListenerService\n(SSE subscriber + heartbeat)" as SSEListener
+    rectangle "VehicleStateStore\n(live telemetry cache)" as VehStore
+    rectangle "KernelSyncService\nMapLoaderService" as KernelSync
+    rectangle "FleetTelemetryService\n(KPI instrumentation)" as FleetTel
+  }
+}
+
+' ── External systems ─────────────────────────────────
+database "PostgreSQL" as DB
+node "FMS (openTCS Kernel)\nopentcs-integration-FMS" as FMS
+node "AGV Fleet" as AGV
+
+' ── Application → ACL ────────────────────────────────
+AppLayer --> KernelApi : transport orders (intendedVehicle\npre-assigned), plant model,\nkernel mode, vehicle activation
+AppLayer --> VehStore  : read live vehicle state
+KernelSync --> KernelApi : push plant model / sync
+
+' ── Event bus ────────────────────────────────────────
+SSEListener --> EventBus : emit fms.*
+EventBus    --> AppLayer : @OnEvent\n(triggers the dispatch flush)
+
+' ── ACL ↔ FMS ────────────────────────────────────────
+KernelApi   --> FMS : REST /v1/*\n(transportOrders, plantModel,\nvehicles, dispatcher/trigger)
+SSEListener <-- FMS : SSE /v1/sse\n(vehicles, transportOrders)
+SSEListener --> VehStore : update cache
+
+' ── Telemetry → DB ───────────────────────────────────
+VehStore --> FleetTel : vehicle updates (observe)
+FleetTel --> DB : batch-write\nvehicle_state_transitions
+
+' ── FMS ↔ AGV hardware ───────────────────────────────
+FMS <--> AGV : VDA5050 1.1 / 2.0 over MQTT\n(movement commands / telemetry)
+
+note bottom of FMS
+  In-kernel MAPF (Architecture C): FMSDispatcher · FMSRouter
+  MapfCoordinator · MapfPlanner (Lacam2Solver) · MapfPrecedenceModule
+  ReplanPolicy · PrecedenceService — see Section II.2.7 and II.3.3
+end note
+
+@enduml

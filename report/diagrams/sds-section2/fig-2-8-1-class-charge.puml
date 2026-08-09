@@ -1,0 +1,117 @@
+@startuml fig-2-8-1-class-charge
+' SDS Figure II-2.8.1 — Class diagram: forced charging and release
+' NEW 2026-08-09. The Charge Engine is specified in the SRS (non-UI function #20,
+' BR-01/02/03/13/14) and implemented, but Section II.2 had no subsection for it.
+' Verified against wes/src/cargo/charge-engine.service.ts, domain/charge.policy.ts,
+' charge-engine.constants.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-8-1-class-charge.puml
+!include _style.iuml
+skinparam nodesep 18
+skinparam ranksep 30
+
+class ChargeEngineService <<Engine>> {
+  -chargeTargets: Map<vehicle, {location, order}>
+  -fullChargePct: number  «CHARGE_FULL_PCT, default 85»
+  +run(): void
+  -releaseCharged(agvs, busy): void
+  -dispatchToCharge(agvs, locations, chargePoints, parks, ...): void
+  -stopCharging(vehicleName): void
+  -parkForNoSlot(vehicleName, pointName): void
+  -createChargeOrder(vehicleName, locationName): void
+  -freeSlotsByLocation(locations, chargePoints): Map<string, number>
+  -reconcileChargeTargets(chargePoints): void
+  -hasInFlightCharge(vehicleName, chargePoints): boolean
+  -toCandidate(agv, fms, busy): ChargeVehicleCandidate
+}
+
+package "cargo/domain (framework-free)" {
+
+class "charge.policy" as ChargePolicy <<pure/functions>> {
+  +needsCharging(c, chargePoints): boolean
+  +isReleaseCandidate(c): boolean
+  +shouldRelease(c, fullChargePct): boolean
+  +pickChargeLocation(locations, distances, freeSlots): ChargeLocation?
+}
+
+class "parking.policy" as ParkPolicy <<pure/functions>> {
+  +unavailableParkPoints(states, parkNames): Set<string>
+  +pickParkingPoint(points, distances, excluded): ParkingPoint?
+}
+
+class routing <<pure/functions>> {
+  +shortestDistancesFrom(graph, src): Map<string, number>
+}
+
+}
+
+class ParkClaimStore <<Store, ledger>> {
+  +isReady(): boolean
+  +claim(vehicle, point, orderName): void
+  +claimedPoints(): Set<string>
+  +claimedVehicles(): Set<string>
+}
+
+class RoutingService <<Service>> {
+  +getRoadGraph(): RoadGraph?
+}
+
+class KernelApiService <<ACL>> {
+  +getChargeLocations(): KernelChargeLocation[]
+  +getParkingPoints(): KernelParkingPoint[]
+  +getTransportOrderState(name): string?
+  +createTransportOrder(name, drops, vehicle, props, options)
+  +sendInstantAction(vehicle, action)  «VDA5050 stopCharging»
+}
+
+class VehicleStateStore <<ACL, in-memory>> {
+  +get(name): KernelVehicleState?
+  +getAll(): KernelVehicleState[]
+}
+
+interface ChargeVehicleCandidate {
+  name: string
+  dispatchEnabled: boolean
+  ignored: boolean
+  idleAvailable: boolean
+  charging: boolean
+  onOrder: boolean
+  hasActiveTask: boolean
+  currentPosition: string?
+  energyLevel: number
+  criticalThreshold: number
+  sufficientThreshold: number
+}
+
+class AgvEntity <<Entity: agvs>> {
+  +criticalBatteryThreshold: number
+  +sufficientBatteryThreshold: number
+}
+
+RoutingService -[hidden]- KernelApiService
+KernelApiService -[hidden]- VehicleStateStore
+
+ChargeEngineService --> ParkClaimStore
+ChargeEngineService --> RoutingService
+ChargeEngineService --> KernelApiService
+ChargeEngineService --> VehicleStateStore
+ChargeEngineService ..> ChargePolicy
+ChargeEngineService ..> ParkPolicy
+ChargeEngineService ..> routing
+ChargeEngineService ..> ChargeVehicleCandidate
+ChargeEngineService ..> AgvEntity
+
+note right of ChargeEngineService
+  Runs between the assignment engine and the parking
+  engine in every dispatch flush. Forced charging takes
+  priority over idle parking (BR-14).
+end note
+
+note bottom of ChargePolicy
+  BR-01 critical < sufficient. BR-02 only AGVs above the
+  critical threshold enter the dispatch candidate set.
+  BR-03 released at or above sufficient when there is
+  demand, otherwise charged to CHARGE_FULL_PCT.
+  BR-13 nearest CHARGE location with a free slot.
+end note
+
+@enduml

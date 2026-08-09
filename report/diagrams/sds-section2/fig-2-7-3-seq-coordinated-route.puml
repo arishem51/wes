@@ -1,0 +1,54 @@
+@startuml fig-2-7-3-seq-coordinated-route
+' SDS Figure II-2.7.3 — Coordinated route service
+' Fixed 2026-08-09: the bay choice step was attributed to a non-existent
+' FMSRouter.chooseNearestBay(); candidate bay selection is GoalResolver's
+' goalCandidates()/goalPoint().
+' Verified against opentcs-integration-FMS .../fms/kernel/FMSRouter.java, GoalResolver.java.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-7-3-seq-coordinated-route.puml
+!include _style.iuml
+
+participant "DefaultDispatcher /\nvehicle controller" as Caller
+participant FMSRouter as Router
+participant MapfCoordinator as Coordinator
+participant GoalResolver as Goals
+participant RouteBuilder as Builder
+participant "DefaultRouter\n(Dijkstra)" as Fallback
+
+Caller -> Router: getRoutes(vehicle, srcPoint, order, max)
+Router -> Coordinator: context()
+
+alt no roadmap / no source
+  Router -> Fallback: getRoutes(...)  [fallback]
+  Fallback --> Caller: Set<List<Route>>
+else roadmap ready
+  loop each DriveOrder in order
+    Router -> Goals: goalCandidates(destination, objectService)
+    Goals --> Router: candidate bay points
+    Router -> Goals: goalPoint(destination, objectService)
+    Goals --> Router: chosen goal point
+
+    Router -> Coordinator: cachedRoute(vehicle, goal)
+    alt cache HIT and 'from' lies on the route
+      Coordinator --> Router: coordinated suffix (from -> goal)
+    else miss
+      Router -> Coordinator: planSingle(from, goal)  [solo MAPF]
+      Coordinator --> Router: single-vehicle path
+    end
+
+    alt path invalid (too short / wrong goal)
+      Router -> Fallback: getRoutes(...)  [fallback Dijkstra]
+    else valid
+      Router -> Builder: buildRoute(points)  (spatial Route.Steps)
+      Builder --> Router: Route (reverse legs where maxReverseVelocity > 0)
+    end
+  end
+  Router --> Caller: Set.of(routeChain)
+end
+
+note over Router, Coordinator
+  Waiting is never expressed as extra waypoints. Routes are
+  purely spatial; ordering is enforced as allocation denial
+  by MapfPrecedenceModule (Figure II-2.7.4).
+end note
+
+@enduml

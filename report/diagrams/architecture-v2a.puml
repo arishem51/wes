@@ -1,0 +1,94 @@
+@startuml architecture-v2a
+' Figure II-1a — Software Architecture, business layers (client → presentation → application)
+' Companion: architecture-v2b.puml (integration boundary)
+' Corrected against the implementation (wes @ 2026-08-09).
+' Render: java -jar plantuml.jar -tpng architecture-v2a.puml   (requires Graphviz dot)
+!include style-template.iuml
+skinparam defaultFontSize 11
+skinparam nodesep 30
+skinparam ranksep 50
+skinparam roundCorner 10
+skinparam cloud {
+  BackgroundColor #FFFFFF
+  BorderColor #000000
+}
+top to bottom direction
+
+' ── Actors ───────────────────────────────────────────
+actor "Admin" as Admin
+actor "Operator" as Operator
+rectangle "Barcode Scanner\n/ Handheld App" as Scanner
+
+' ── Client ───────────────────────────────────────────
+rectangle "wes-client\nReact SPA (Vite + MUI)" as ReactSPA
+
+' ── Backend ──────────────────────────────────────────
+package "SWES Backend — NestJS Modular Monolith (wes)" #E1D5E7 {
+
+  package "Presentation Layer (REST Controllers)" {
+    rectangle "AuthController\nAccountController\nAdminUsersController" as AuthCtrl
+    rectangle "AgvsController" as AgvsCtrl
+    rectangle "MapsController\nZoneController" as MapsCtrl
+    rectangle "CargoController\nDispatchPolicyController" as CargoCtrl
+    rectangle "DashboardController" as DashCtrl
+  }
+
+  package "Application Layer (Business Services)" as AppLayer {
+    rectangle "CargoService\nTransportTaskService" as CargoSvc
+    rectangle "Dispatch Orchestration\n─────────────────────────\nDispatchSchedulerService\n(debounced 1.5 s, single-flight)\n\nflush order\n1  ParkClaimStore.reconcile\n2  LegReconcileService\n3  ReleaseEngineService\n     + PickupDependencyService\n4  AssignmentEngineService\n5  ChargeEngineService\n6  ParkingEngineService\n─────────────────────────\nTransportTaskSaga · DeliverySlotEngine\nLaneSafetyService · DispatchPolicyService\nRoutingService · ZoneGeometryService" as Dispatch
+    rectangle "AgvsService\nAgvHistoryService\nVehicleErrorService" as AgvsSvc
+    rectangle "MapsService\nZoneService" as MapsSvc
+    rectangle "DashboardService\n(KPI computed live from the\noperational tables — no snapshot store)" as DashSvc
+    rectangle "AuthService, TokenService\nUsersService, AccountService\nAdminUsersService" as AuthSvc
+    rectangle "MailService" as MailSvc
+  }
+
+  rectangle "In-process Event Bus\n(@nestjs/event-emitter)" as EventBus
+
+  rectangle "Anti-Corruption Layer (opentcs/)\n─────────────────────────\nKernelApiService · VehicleStateStore\nKernelEventListenerService\nKernelSyncService / MapLoaderService\nFleetTelemetryService\n─────────────────────────\n<i>detailed in Figure II-1b</i>" as ACL
+}
+
+' ── External systems ─────────────────────────────────
+database "PostgreSQL" as DB
+cloud "Gmail Service" as Gmail
+
+' ── Actor → Client ───────────────────────────────────
+Admin    --> ReactSPA : uses
+Operator --> ReactSPA : uses
+
+' ── Client / Scanner → Controllers ───────────────────
+ReactSPA --> AuthCtrl : HTTPS REST
+ReactSPA --> AgvsCtrl
+ReactSPA --> MapsCtrl : HTTPS REST\n+ SSE /maps/kernel/sse
+ReactSPA --> CargoCtrl
+ReactSPA --> DashCtrl
+Scanner  --> CargoCtrl : HTTPS REST\n(create cargo / request)
+
+' ── Controllers → Services ───────────────────────────
+AuthCtrl  --> AuthSvc
+AgvsCtrl  --> AgvsSvc
+MapsCtrl  --> MapsSvc
+CargoCtrl --> CargoSvc
+CargoCtrl --> Dispatch : dispatch policy CRUD\n(active weights re-read each flush)
+DashCtrl  --> DashSvc
+AuthSvc   --> MailSvc : OTP / reset
+
+' ── Event bus wiring ─────────────────────────────────
+CargoSvc --> EventBus : emit transport-task.*
+ACL      --> EventBus : emit fms.*
+EventBus --> Dispatch : @OnEvent
+CargoSvc --> Dispatch : (TransportTaskService is\nthe single status writer)
+
+' ── Business services → ACL ──────────────────────────
+Dispatch --> ACL : create / withdraw Transport Order\nread live vehicle state
+AgvsSvc  --> ACL : vehicle registry / activation\nread live vehicle state
+MapsSvc  --> ACL : plant model / kernel operating mode
+DashSvc  --> ACL : live fleet snapshot
+
+' ── Services → DB ────────────────────────────────────
+AppLayer --> DB : TypeORM\n(entities / repositories)
+
+' ── Mail ─────────────────────────────────────────────
+MailSvc --> Gmail : SMTP/API\n(OTP, reset link)
+
+@enduml

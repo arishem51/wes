@@ -1,0 +1,73 @@
+@startuml fig-2-3-1-class-saga
+' SDS Figure II-2.3.1 — Class diagram: multi-leg transport order execution (saga)
+' Fixed 2026-08-09: class name was misspelt "AppproachPointService";
+' RetreatPointService, the unloading guard and onDropOffUnloaded were missing.
+' Verified against wes/src/cargo/transport-task.saga.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-3-1-class-saga.puml
+!include _style.iuml
+
+class TransportTaskSaga <<Saga / Process Manager>> {
+  -processing: Set<string>
+  -unloading: Set<string>
+  +onTransportOrderFinished(evt): void
+  +onDropOffUnloaded(evt): void
+  -onPickupFinished(taskId): void
+  -onApproachFinished(taskId): void
+  -onDropOffFinished(taskId): void
+  -commitDropoffSlot(cargo): string?
+  -dropOffDestinations(slot, retreatPath): OrderDestination[]
+  -createNextOrder(name, drops, vehicle, props): boolean
+}
+
+class ApproachPointService <<Service>> {
+  +pickFor(zone, vehicleName): string?
+  -feederPointsOf(zone): string[]
+}
+
+class RetreatPointService <<Service>> {
+  +pathFor(slot): string[]?
+}
+
+class DeliverySlotEngine <<Engine>> {
+  +findSlot(zone): string?
+  +hasAvailableSlot(zone): boolean
+}
+
+class TransportTaskService <<Service, choke-point>> {
+  +changeStatus(task, to, log): TransportTaskEntity
+}
+
+class KernelApiService <<ACL>> {
+  +createTransportOrder(name, drops, vehicle, props)
+  +computeRoutes(vehicle, points): KernelRoute[]
+  +getPlantModel(): PlantModel
+  +unloadOperation: string
+}
+
+class CargoEntity <<Entity: cargos>>
+class ZoneEntity <<Entity: zones>>
+
+TransportTaskSaga --> ApproachPointService
+TransportTaskSaga --> RetreatPointService
+TransportTaskSaga --> DeliverySlotEngine
+TransportTaskSaga --> TransportTaskService
+TransportTaskSaga --> KernelApiService
+TransportTaskSaga ..> CargoEntity
+TransportTaskSaga ..> ZoneEntity
+ApproachPointService --> KernelApiService
+DeliverySlotEngine --> KernelApiService
+
+note right of TransportTaskSaga
+  Reacts to fms.transport-order.finished.
+  TO1 PICK_UP -> TO2 approach (MOVE) -> TO3 drop-off + retreat.
+  The concrete drop-off slot is committed late, at the TO2
+  barrier, under a per-zone advisory lock (BR-11).
+end note
+
+note bottom of RetreatPointService
+  TO3 carries the unload destination followed by the
+  retreat MOVE steps, so the AGV clears the slot for the
+  vehicles queued behind it.
+end note
+
+@enduml

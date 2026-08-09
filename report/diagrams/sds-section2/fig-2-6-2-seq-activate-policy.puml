@@ -1,0 +1,50 @@
+@startuml fig-2-6-2-seq-activate-policy
+' SDS Figure II-2.6.2 — Activate a policy (takes effect next flush)
+' Fixed 2026-08-09: getActiveWeights() returns {battery} only — the urgency term
+' and the "urgency -> task selection re-sort" note were removed with the
+' weight_urgency column (migration 1797).
+' Verified against wes/src/cargo/dispatch-policy.service.ts activate()/getActiveWeights().
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-6-2-seq-activate-policy.puml
+!include _style.iuml
+
+actor Admin
+participant DispatchPolicyController as Controller
+participant "JwtAuthGuard\n+ RolesGuard('admin')" as Guards
+participant DispatchPolicyService as Service
+database PostgreSQL
+participant AssignmentEngineService as Engine
+
+Admin -> Controller: POST /dispatch-policies/{id}/activate
+Controller -> Guards: authorize (JWT + role = admin)
+alt not admin
+  Guards --> Admin: 403 Forbidden
+end
+
+Controller -> Service: activate(id)
+Service -> PostgreSQL: findOrThrow(id)
+
+group Transaction (single-active invariant)
+  Service -> PostgreSQL: UPDATE dispatch_policies SET is_active = false WHERE is_active
+  Service -> PostgreSQL: UPDATE dispatch_policies SET is_active = true WHERE id = :id
+  note right of PostgreSQL
+    Partial unique index ux_dispatch_policies_single_active
+    backstops any concurrent race.
+  end note
+end
+
+Service --> Controller: DispatchPolicyView
+Controller --> Admin: 200 OK
+
+== next dispatch flush ==
+
+Engine -> Service: getActiveWeights()
+Service -> PostgreSQL: findOne(isActive = true)
+Service --> Engine: {battery} (clamped 0..10)
+
+note over Engine
+  battery -> per-pair cost scaling.
+  Re-read on every flush, so the change takes effect
+  on the next cycle with no restart.
+end note
+
+@enduml

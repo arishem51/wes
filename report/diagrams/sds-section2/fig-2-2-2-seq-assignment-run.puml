@@ -1,0 +1,81 @@
+@startuml fig-2-2-2-seq-assignment-run
+' SDS Figure II-2.2.2 — Assignment run: selection -> matching -> dispatch
+' REDRAWN 2026-08-09: removed the lookahead / soon-free / reservedSince /
+' rememberPassedOver / selectionScore / blockingCounts steps — none of these
+' exist in the code any more. Added the swap (re-assign an in-flight pickup) path.
+' Verified against wes/src/cargo/assignment-engine.service.ts run().
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-2-2-seq-assignment-run.puml
+!include _style.iuml
+
+participant DispatchScheduler
+participant AssignmentEngineService as Engine
+database PostgreSQL
+participant DispatchPolicyService as PolicySvc
+participant DispatchDistanceService as Distances
+participant VehicleCandidateService as Candidates
+participant LaneSafetyService as LaneSafety
+participant PickupDependencyService as Dependency
+participant "dispatch.policy\n(+ hungarian)" as Policy
+participant PickupOrderService as Orders
+
+DispatchScheduler -> Engine: run()
+
+Engine -> PostgreSQL: load READY_TO_ASSIGN (FIFO by createdAt)
+Engine -> PostgreSQL: load busy tasks (PICKING_UP, DELIVERING)
+Engine -> Engine: heldPickupsByVehicle() — only when swapping is enabled
+
+alt no READY task and fewer than 2 held pickups
+  Engine --> DispatchScheduler: return
+end
+
+Engine -> PolicySvc: getActiveWeights()
+PolicySvc --> Engine: {battery} | null
+Engine -> Distances: open()
+Distances --> Engine: DispatchDistances (reverse-graph Dijkstra, cached per flush)
+Engine -> Candidates: build(busyTasks, heldByVehicle)
+Candidates --> Engine: VehicleCandidate[]
+
+alt no free vehicle and fewer than 2 held pickups
+  Engine --> DispatchScheduler: return
+end
+
+Engine -> LaneSafety: committedInsideLane(heldTasks)
+LaneSafety --> Engine: pinned task ids
+
+loop until no pending task or no free vehicle
+  Engine -> Dependency: isBlocked(task) — fill window up to free-vehicle capacity
+  Engine -> Policy: planVehicleAssignments(cands, tasks, batteryWeight, swap)\n[HUNGARIAN]
+  Policy --> Engine: hungarian plan
+  Engine -> Policy: planVehicleAssignmentsGreedy(...)\n[GREEDY]
+  Policy --> Engine: greedy plan
+  Engine -> Engine: assignments = configured matcher;\ncounterfactual = the other (recorded only)
+
+  alt task has no reachable eligible vehicle
+    Engine -> Engine: defer task (stays READY_TO_ASSIGN)
+  end
+
+  Engine -> Engine: split winners -> swaps (held task moves vehicle)\n+ dispatches (fresh task)
+
+  loop each swap
+    Engine -> Orders: revoke(task, newVehicleName)
+    Orders -> PostgreSQL: bump metadata.swapCount
+  end
+
+  loop each dispatch
+    Engine -> Dependency: isBlocked(task) [final guard]
+    Engine -> Orders: issue(task, cargo, vehicle, distance, measurement)
+    Orders -> Orders: withdraw park order if the vehicle was parking
+    Orders --> Engine: issued?
+    alt kernel refused
+      Engine -> Engine: quarantine vehicle for this cycle
+    end
+  end
+end
+
+note over Engine, Orders
+  PickupOrderService.issue() creates TO1
+  (PICKUP-uuid, PICK_UP, intendedVehicle) and moves the
+  task to PICKING_UP through TransportTaskService.
+end note
+
+@enduml

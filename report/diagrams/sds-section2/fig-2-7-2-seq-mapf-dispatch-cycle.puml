@@ -1,0 +1,65 @@
+@startuml fig-2-7-2-seq-mapf-dispatch-cycle
+' SDS Figure II-2.7.2 — Fleet-wide MAPF dispatch cycle
+' Fixed 2026-08-09: solver participant renamed Lacam2Solver (actual Java class);
+' the solver returns Lacam2Solver.Result, not a "SolverResult" type.
+' Verified against opentcs-integration-FMS .../fms/kernel/FMSDispatcher.java,
+' mapf/MapfCoordinator.java, mapf/MapfPlanner.java.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-7-2-seq-mapf-dispatch-cycle.puml
+!include _style.iuml
+
+participant "KernelExecutor\n(1s horizon tick)" as Executor
+participant FMSDispatcher as Dispatcher
+participant InternalVehicleService as VehicleSvc
+participant MapfCoordinator as Coordinator
+participant MapfPlanner as Planner
+participant Lacam2Solver as Solver
+participant "DefaultDispatcher\n(super)" as Super
+participant RerouteUtil
+
+Executor -> Dispatcher: dispatchIfOverdue()
+Dispatcher -> Coordinator: overdue()  (routeCache age >= COMMIT_MS)
+
+alt overdue
+  Dispatcher -> Dispatcher: dispatch()
+  Dispatcher -> VehicleSvc: fetch(Vehicle) -> readFleet()
+  note over Dispatcher
+    positions = frontier point per localised vehicle;
+    goal = current order dest, else pending order dest,
+    else own position (idle = "stay" obstacle).
+  end note
+
+  Dispatcher -> Coordinator: resolve(positions, goals)
+  Coordinator -> Coordinator: debounce / overdue / shouldReplan?
+
+  alt no replan needed
+    Coordinator --> Dispatcher: false
+  else replan
+    Coordinator -> Coordinator: context() (lazy roadmap build)
+    Coordinator -> Coordinator: updateStuck() -> priority boost (rising priority)
+    Coordinator -> Planner: planAll(positions, goals, boost)
+    Planner -> Solver: solve(instance, params, priorities)
+    Solver --> Planner: Result (paths, executable)
+    Planner -> Planner: simplify() — drop pure-wait, keep excursion
+    Planner --> Coordinator: PlanResult (routes, spaceTimePaths, executable)
+
+    alt not executable (would deadlock)
+      Coordinator --> Dispatcher: false  (KEEP previous plan, re-solve next tick)
+    else executable
+      Coordinator -> Coordinator: routeCache = snapshot(routes)
+      Coordinator -> Coordinator: buildPrecedence(spaceTimePaths) + ADG cycle check
+      Coordinator -> Coordinator: precedence = new generation
+      Coordinator --> Dispatcher: true (replanned)
+    end
+  end
+
+  Dispatcher -> Super: super.dispatch()  (assign orders, honour intendedVehicle)
+
+  opt replanned
+    Dispatcher -> Dispatcher: rerouteChangedVehicles()
+    loop each processing vehicle whose route diverges
+      Dispatcher -> RerouteUtil: reroute(vehicle, REGULAR)
+    end
+  end
+end
+
+@enduml

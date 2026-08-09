@@ -1,0 +1,63 @@
+@startuml fig-2-6-1-class-dispatch-policy
+' SDS Figure II-2.6.1 — Class diagram: dispatch policy administration
+' Fixed 2026-08-09: removed weightUrgency / weightProximity / weightInventoryPosition.
+' Those columns were dropped by migrations 1796-RenameBatteryThresholdsAndDropDead
+' DispatchWeights and 1797-DropDispatchPolicyUrgencyWeight; battery is the only
+' surviving weight. Added the audit columns the entity actually carries.
+' Verified against wes/src/cargo/dispatch-policy.service.ts and entities/dispatch-policy.entity.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-6-1-class-dispatch-policy.puml
+!include _style.iuml
+
+class DispatchPolicyController <<Controller>> {
+  @UseGuards(JwtAuthGuard, RolesGuard) @Roles('admin')
+  +list()
+  +create(dto: CreateDispatchPolicyDto, user)
+  +update(id, dto: UpdateDispatchPolicyDto)
+  +activate(id)
+  +deactivate(id)
+}
+
+class DispatchPolicyService <<Service>> {
+  +getActiveWeights(): ActiveDispatchWeights?
+  +list(): DispatchPolicyView[]
+  +create(input, createdBy): DispatchPolicyView
+  +update(id, input): DispatchPolicyView
+  +activate(id): DispatchPolicyView
+  +deactivate(id): DispatchPolicyView
+  -findOrThrow(id): DispatchPolicyEntity
+  -toView(row): DispatchPolicyView
+}
+
+class AssignmentEngineService <<Engine>>
+
+class DispatchPolicyEntity <<Entity: dispatch_policies>> {
+  +id: uuid
+  +name: string
+  +weightBattery: double precision
+  +maxAgvPerBlock: smallint
+  +isActive: boolean
+  +createdBy: string?
+  +createdAt: timestamptz
+  +updatedAt: timestamptz
+  --
+  UNIQUE(is_active) WHERE is_active
+  (ux_dispatch_policies_single_active)
+}
+
+interface ActiveDispatchWeights {
+  battery: number
+}
+
+DispatchPolicyController --> DispatchPolicyService
+AssignmentEngineService --> DispatchPolicyService : getActiveWeights()\n(per flush, no cache)
+DispatchPolicyService --> DispatchPolicyEntity
+DispatchPolicyService ..> ActiveDispatchWeights
+
+note bottom of ActiveDispatchWeights
+  battery -> per-pair cost scaling in the task x vehicle
+  matrix. There is no urgency term: task selection is
+  plain FIFO by createdAt, and lane blocking is a hard
+  constraint in PickupDependencyService, not a score.
+end note
+
+@enduml

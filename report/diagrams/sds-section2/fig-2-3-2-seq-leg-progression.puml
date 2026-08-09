@@ -1,0 +1,68 @@
+@startuml fig-2-3-2-seq-leg-progression
+' SDS Figure II-2.3.2 — Leg progression: TO1 -> TO2 -> TO3 (+ retreat)
+' Fixed 2026-08-09: TO3 now carries the retreat steps (dropOffDestinations()
+' returns [dropOff, ...retreatSteps]); added the fms.dropoff.unloaded branch;
+' corrected pg_advisory_xact_lock and several method-name typos.
+' Verified against wes/src/cargo/transport-task.saga.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-3-2-seq-leg-progression.puml
+!include _style.iuml
+
+actor "openTCS / FMS kernel" as Kernel
+participant KernelEventListener as Listener
+participant TransportTaskSaga as Saga
+participant ApproachPointService as Approach
+participant DeliverySlotEngine as Slots
+participant RetreatPointService as Retreat
+participant "KernelApiService\n(ACL -> kernel)" as ACL
+database PostgreSQL
+participant TransportTaskService as TTS
+
+Kernel -> Listener: SSE — transport order FINISHED\n(order props: wes:taskId, wes:leg)
+Listener -> Saga: emit fms.transport-order.finished(taskId, leg)
+Saga -> Saga: single-flight guard (processing set)
+
+alt leg = PICKUP
+  Saga -> PostgreSQL: load task (PICKING_UP)
+  opt metadata.to2Name already set
+    Saga -> Saga: ignore duplicate TO1 finished
+  end
+  Saga -> Approach: pickFor(zone, vehicle)
+  Approach -> ACL: computeRoutes(vehicle, feederPoints)
+  Approach --> Saga: nearest reachable approach point
+  Saga -> ACL: createTransportOrder(APPROACH-uuid, MOVE, vehicle)
+  Saga -> TTS: changeStatus(task, DELIVERING)
+
+else leg = APPROACH  (TO2 barrier)
+  Saga -> PostgreSQL: load task (DELIVERING)
+  opt metadata.to3Name already set
+    Saga -> Saga: ignore duplicate
+  end
+  opt cargo.destinationLocationName is null
+    Saga -> PostgreSQL: transaction + pg_advisory_xact_lock(zoneId)
+    Saga -> Slots: findSlot(zone) — cascading depth-first fill (BR-11)
+    Slots --> Saga: slot | null
+    Saga -> PostgreSQL: UPDATE cargos.destination_location_name = slot
+  end
+  Saga -> Retreat: pathFor(slot)
+  Retreat --> Saga: retreat path | null
+  Saga -> ACL: createTransportOrder(DROPOFF-uuid,\n[unload @ slot, MOVE @ retreat steps], vehicle)
+  Saga -> PostgreSQL: save metadata.to3Name, metadata.retreatPointName\n(task stays DELIVERING)
+
+else leg = DROPOFF
+  Saga -> PostgreSQL: load task (DELIVERING)
+  Saga -> TTS: changeStatus(task, DELIVERY_COMPLETED)
+  Saga -> PostgreSQL: UPDATE cargos.status = DELIVERED
+end
+
+== unload observed mid-TO3 ==
+
+Kernel -> Listener: SSE — unload operation done
+Listener -> Saga: emit fms.dropoff.unloaded(taskId)
+Saga -> PostgreSQL: save metadata.unloadedAt\n(retreat leg still running)
+
+note over Saga, ACL
+  TO2 is a plain MOVE to the drop-off zone's feeder head —
+  it is not an openTCS NOP operation.
+end note
+
+@enduml

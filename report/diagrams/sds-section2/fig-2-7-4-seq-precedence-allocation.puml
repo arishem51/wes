@@ -1,0 +1,54 @@
+@startuml fig-2-7-4-seq-precedence-allocation
+' SDS Figure II-2.7.4 — Precedence-ordered allocation
+' Verified 2026-08-09 against opentcs-integration-FMS
+' .../fms/kernel/mapf/MapfPrecedenceModule.java and scheduling/BlockCrossings.java.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-7-4-seq-precedence-allocation.puml
+!include _style.iuml
+
+participant DefaultScheduler as Scheduler
+participant MapfPrecedenceModule as Module
+participant MapfCoordinator as Coordinator
+participant BlockCrossings as Blocks
+
+Scheduler -> Module: mayAllocate(client, resources)
+Module -> Coordinator: precedence()  (byPoint, routes, generation)
+
+alt no precedence yet
+  Module --> Scheduler: true (allow)
+else have plan
+  Module -> Module: prune() if generation changed
+
+  loop each Point resource requested
+    Module -> Blocks: is the point in a single-vehicle block this client drives into?
+
+    alt block rule owns it
+      Module -> Module: clearVeto — step aside (block module decides)
+    else contested point on the coordinated plan
+      Module -> Module: find my visit index (step >= my next step)
+      Module -> Module: scan predecessors with an earlier visit
+
+      alt a predecessor has NOT yet passed this point
+        Module -> Module: deferred = true  (log "waits at P for pred")
+      else all predecessors passed
+        Module -> Module: clearVeto — genuine allow
+      end
+    end
+  end
+
+  Module --> Scheduler: !deferred
+end
+
+== on progress ==
+
+Scheduler -> Module: setAllocationState(client, alloc, remaining)
+Module -> Module: claims[vehicle] = remaining route (advances nextStep)
+Scheduler -> Module: allocationReleased(client, resources)
+Module -> Module: clearVeto(point, vehicle)
+
+note over Scheduler, Module
+  openTCS's own collision-freedom (DefaultScheduler) is kept
+  intact; MAPF only adds precedence, expressed as allocation
+  denial rather than as extra waypoints.
+end note
+
+@enduml
