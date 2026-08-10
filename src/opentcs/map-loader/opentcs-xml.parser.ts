@@ -74,6 +74,7 @@ export interface VisualLayoutDto {
   scaleY: number;
   layers: LayerDto[];
   layerGroups: LayerGroupDto[];
+  properties: PropertyDto[];
 }
 
 export interface LayerDto {
@@ -183,6 +184,7 @@ interface RawVisualLayout {
   '@_scaleY': string;
   layer?: RawLayer[];
   layerGroup?: RawLayerGroup[];
+  property?: RawProperty[];
 }
 
 interface RawModel {
@@ -316,6 +318,7 @@ export function parseOpenTcsXml(xmlContent: string): PlantModelDto {
       name: lg['@_name'],
       visible: lg['@_visible'] === 'true',
     })),
+    properties: toProperties(vl.property),
   };
 
   return {

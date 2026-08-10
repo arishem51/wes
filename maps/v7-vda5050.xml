@@ -6408,6 +6408,7 @@
     <visualLayout name="VLayout" scaleX="10.0" scaleY="10.0">
         <layer id="0" ordinal="0" visible="true" name="Default layer" groupId="0"/>
         <layerGroup id="0" name="Default layer group" visible="true"/>
+        <property name="fms:displayRotation" value="0"/>
     </visualLayout>
     <property name="tcs:modelFileLastModified" value="2026-07-28T14:49:06Z"/>
 </model>

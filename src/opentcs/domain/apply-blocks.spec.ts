@@ -45,6 +45,7 @@ function modelWithDeadEndLane(): PlantModelDto {
       scaleY: 1,
       layers: [],
       layerGroups: [],
+      properties: [],
     },
   };
 }
