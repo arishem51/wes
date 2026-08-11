@@ -141,6 +141,59 @@ describe('LegReconcileService', () => {
     }
   });
 
+  it('recovers instead of failing when the vehicle reports lost navigation', async () => {
+    for (const bad of ['FAILED', 'UNROUTABLE']) {
+      const { svc, taskRepo, store, kernel, transportTask, emitter } = setup();
+      taskRepo.find.mockResolvedValue([
+        task(TaskStatus.DELIVERING, {
+          assignedVehicleName: 'V1',
+          to2Name: 'APPROACH-1',
+          to3Name: 'DROPOFF-1',
+        }),
+      ]);
+      store.get.mockReturnValue({
+        transportOrder: null,
+        errors: { fatal: ['adapterLostNavigation'], warning: [] },
+      });
+      kernel.getTransportOrderState.mockResolvedValue(bad);
+
+      await svc.run();
+
+      expect(transportTask.changeStatus).not.toHaveBeenCalled();
+      expect(emitter.emit).toHaveBeenCalledWith(
+        FMS_EVENTS.TRANSPORT_ORDER_LOST_NAVIGATION,
+        expect.objectContaining({
+          orderName: 'DROPOFF-1',
+          leg: 'DROPOFF',
+          vehicleName: 'V1',
+        }),
+      );
+    }
+  });
+
+  it('still fails the task when the vehicle carries a different fatal error', async () => {
+    const { svc, taskRepo, store, kernel, transportTask, emitter } = setup();
+    const t = task(TaskStatus.PICKING_UP, {
+      assignedVehicleName: 'V1',
+      to1Name: 'PICKUP-1',
+    });
+    taskRepo.find.mockResolvedValue([t]);
+    store.get.mockReturnValue({
+      transportOrder: null,
+      errors: { fatal: ['eStop'], warning: [] },
+    });
+    kernel.getTransportOrderState.mockResolvedValue('FAILED');
+
+    await svc.run();
+
+    expect(transportTask.changeStatus).toHaveBeenCalledWith(
+      t,
+      TaskStatus.FAILED,
+      expect.objectContaining({ trigger: 'LEG_RECONCILE' }),
+    );
+    expect(emitter.emit).not.toHaveBeenCalled();
+  });
+
   it('does nothing while the expected order is still BEING_PROCESSED', async () => {
     const { svc, taskRepo, store, kernel, transportTask, emitter } = setup();
     taskRepo.find.mockResolvedValue([

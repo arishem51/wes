@@ -8,6 +8,14 @@ export const VEHICLE_ERROR_PROPERTY_KEYS = {
   WARNING: 'vda5050:errors.warning',
 } as const;
 
+export const ADAPTER_LOST_NAVIGATION = 'adapterLostNavigation';
+
+export function hasLostNavigation(
+  errors: KernelVehicleErrors | undefined,
+): boolean {
+  return errors?.fatal.includes(ADAPTER_LOST_NAVIGATION) ?? false;
+}
+
 export function emptyVehicleErrors(): KernelVehicleErrors {
   return { fatal: [], warning: [] };
 }

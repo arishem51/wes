@@ -19,10 +19,13 @@ import {
   FMS_EVENTS,
   FmsDropOffUnloadedEvent,
   FmsTransportOrderFinishedEvent,
+  FmsTransportOrderLostNavigationEvent,
   ORDER_PROP,
   TaskLeg,
 } from './domain/events';
 import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
+
+const MAX_LOST_NAVIGATION_RETRIES = 3;
 
 @Injectable()
 export class TransportTaskSaga {
@@ -67,6 +70,160 @@ export class TransportTaskSaga {
     } finally {
       this.processing.delete(event.taskId);
     }
+  }
+
+  @OnEvent(FMS_EVENTS.TRANSPORT_ORDER_LOST_NAVIGATION)
+  async onLegLostNavigation(
+    event: FmsTransportOrderLostNavigationEvent,
+  ): Promise<void> {
+    if (this.processing.has(event.taskId)) return;
+    this.processing.add(event.taskId);
+    try {
+      const task = await this.taskRepo.findOne({ where: { id: event.taskId } });
+      if (!task) return;
+
+      const retries = (task.metadata?.lostNavigationRetries ?? 0) + 1;
+      if (retries > MAX_LOST_NAVIGATION_RETRIES) {
+        this.logger.error(
+          `Task ${task.id}: ${event.leg} lost navigation ${MAX_LOST_NAVIGATION_RETRIES} times on ${event.vehicleName} — giving up`,
+        );
+        await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
+          trigger: 'SAGA',
+          vehicleName: event.vehicleName,
+          reason: `${event.leg} lost navigation ${MAX_LOST_NAVIGATION_RETRIES} times`,
+        });
+        return;
+      }
+      task.metadata = { ...task.metadata, lostNavigationRetries: retries };
+
+      switch (event.leg) {
+        case 'PICKUP':
+          await this.requeueAfterLostNavigation(task, event, retries);
+          break;
+        case 'APPROACH':
+          await this.recreateApproach(task, event, retries);
+          break;
+        case 'DROPOFF':
+          await this.recreateDropOff(task, event, retries);
+          break;
+      }
+    } finally {
+      this.processing.delete(event.taskId);
+    }
+  }
+
+  private async requeueAfterLostNavigation(
+    task: TransportTaskEntity,
+    event: FmsTransportOrderLostNavigationEvent,
+    retries: number,
+  ): Promise<void> {
+    task.metadata = {
+      ...task.metadata,
+      to1Name: undefined,
+      assignedVehicleName: undefined,
+    };
+    task.assignedAt = null;
+    task.startedAt = null;
+    await this.transportTask.changeStatus(task, TaskStatus.READY_TO_ASSIGN, {
+      trigger: 'SAGA',
+      vehicleName: event.vehicleName,
+      context: {
+        lostNavigation: true,
+        retries,
+        withdrawnOrder: event.orderName,
+      },
+    });
+    this.logger.log(
+      `Task ${task.id} → READY_TO_ASSIGN: ${event.vehicleName} lost navigation while picking up (retry ${retries}/${MAX_LOST_NAVIGATION_RETRIES})`,
+    );
+  }
+
+  private async recreateApproach(
+    task: TransportTaskEntity,
+    event: FmsTransportOrderLostNavigationEvent,
+    retries: number,
+  ): Promise<void> {
+    const approachPoint = task.metadata?.approachPointName;
+    if (!approachPoint) {
+      this.logger.warn(
+        `Task ${task.id}: no recorded approach point to re-issue — leaving it to the reconcile backstop`,
+      );
+      return;
+    }
+
+    const to2Name = buildOrderName(
+      ORDER_TYPE.APPROACH,
+      event.vehicleName,
+      approachPoint,
+      randomUUID(),
+    );
+    const created = await this.createNextOrder(
+      to2Name,
+      [{ locationName: approachPoint, operation: 'MOVE' }],
+      event.vehicleName,
+      { taskId: task.id, leg: 'APPROACH' },
+    );
+    if (!created) return;
+
+    task.metadata = { ...task.metadata, to2Name };
+    await this.taskRepo.save(task);
+    this.logger.log(
+      `Task ${task.id}: re-issued approach as ${to2Name} for ${event.vehicleName} (retry ${retries}/${MAX_LOST_NAVIGATION_RETRIES})`,
+    );
+  }
+
+  private async recreateDropOff(
+    task: TransportTaskEntity,
+    event: FmsTransportOrderLostNavigationEvent,
+    retries: number,
+  ): Promise<void> {
+    const cargo = await this.cargoOf(task);
+    const slot = cargo?.destinationLocationName;
+    if (!slot) {
+      this.logger.warn(
+        `Task ${task.id}: no committed drop-off slot to re-issue — leaving it to the reconcile backstop`,
+      );
+      return;
+    }
+
+    const retreatPath = await this.retreatPoint.pathFor(slot);
+    const alreadyUnloaded = Boolean(task.metadata?.unloadedAt);
+    const destinations = alreadyUnloaded
+      ? (retreatPath ?? []).map((cell) => ({
+          locationName: cell,
+          operation: 'MOVE',
+        }))
+      : this.dropOffDestinations(slot, retreatPath);
+
+    if (destinations.length === 0) {
+      this.logger.log(
+        `Task ${task.id}: cargo already unloaded at ${slot} and no retreat leg left — completing`,
+      );
+      await this.onDropOffFinished(task.id);
+      return;
+    }
+
+    const to3Name = buildOrderName(
+      ORDER_TYPE.DROPOFF,
+      event.vehicleName,
+      slot,
+      randomUUID(),
+    );
+    const created = await this.createNextOrder(
+      to3Name,
+      destinations,
+      event.vehicleName,
+      { taskId: task.id, leg: 'DROPOFF' },
+    );
+    if (!created) return;
+
+    task.metadata = { ...task.metadata, to3Name };
+    await this.taskRepo.save(task);
+    this.logger.log(
+      `Task ${task.id}: re-issued drop-off as ${to3Name} at ${slot} for ${event.vehicleName}${
+        alreadyUnloaded ? ' (retreat only — cargo already unloaded)' : ''
+      } (retry ${retries}/${MAX_LOST_NAVIGATION_RETRIES})`,
+    );
   }
 
   @OnEvent(FMS_EVENTS.DROPOFF_UNLOADED)

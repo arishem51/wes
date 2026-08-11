@@ -10,8 +10,13 @@ import { KernelApiService } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { TransportTaskService } from './transport-task.service';
 import {
+  ADAPTER_LOST_NAVIGATION,
+  hasLostNavigation,
+} from '../opentcs/domain/vehicle-errors';
+import {
   FMS_EVENTS,
   FmsTransportOrderFinishedEvent,
+  FmsTransportOrderLostNavigationEvent,
   TaskLeg,
 } from './domain/events';
 
@@ -87,6 +92,21 @@ export class LegReconcileService {
         ),
       );
     } else if (state === 'FAILED' || state === 'UNROUTABLE') {
+      if (vehicleName && this.lostNavigation(vehicleName)) {
+        this.logger.warn(
+          `Leg reconcile: task ${task.id} ${expected.leg} order ${state} while ${vehicleName} reports ${ADAPTER_LOST_NAVIGATION} — recovering instead of failing`,
+        );
+        this.eventEmitter.emit(
+          FMS_EVENTS.TRANSPORT_ORDER_LOST_NAVIGATION,
+          new FmsTransportOrderLostNavigationEvent(
+            expected.orderName,
+            task.id,
+            expected.leg,
+            vehicleName,
+          ),
+        );
+        return;
+      }
       this.logger.warn(
         `Leg reconcile: task ${task.id} ${expected.leg} order ${state} — failing task`,
       );
@@ -97,6 +117,10 @@ export class LegReconcileService {
     }
     // RAW/DISPATCHABLE/BEING_PROCESSED/WITHDRAWN/null → not a settled outcome
     // yet; leave the task alone and re-check next cycle.
+  }
+
+  private lostNavigation(vehicleName: string): boolean {
+    return hasLostNavigation(this.vehicleStore.get(vehicleName)?.errors);
   }
 
   /**

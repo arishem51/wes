@@ -27,6 +27,7 @@ export interface TaskMetadata {
   unloadedAt?: string;
   blockedReason?: string;
   swapCount?: number;
+  lostNavigationRetries?: number;
 }
 
 @Entity('transport_requests')

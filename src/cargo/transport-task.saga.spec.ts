@@ -1,5 +1,8 @@
 import { TransportTaskSaga } from './transport-task.saga';
-import { FmsTransportOrderFinishedEvent } from './domain/events';
+import {
+  FmsTransportOrderFinishedEvent,
+  FmsTransportOrderLostNavigationEvent,
+} from './domain/events';
 import { CargoStatus } from './entities/cargo.entity';
 import { TaskStatus } from './entities/transport-task.entity';
 
@@ -347,5 +350,151 @@ describe('TransportTaskSaga drop-off completion', () => {
     expect(cargoRepo.update).toHaveBeenCalledWith('cargo-1', {
       status: CargoStatus.DELIVERED,
     });
+  });
+});
+
+describe('TransportTaskSaga lost-navigation recovery', () => {
+  function makeSaga(task: Record<string, unknown>, cargo: unknown = null) {
+    const taskRepo = {
+      findOne: jest.fn().mockResolvedValue(task),
+      save: jest.fn().mockResolvedValue(task),
+    };
+    const cargoRepo = {
+      findOne: jest.fn().mockResolvedValue(cargo),
+      update: jest.fn(),
+    };
+    const kernelApi = {
+      createTransportOrder: jest.fn().mockResolvedValue(undefined),
+      unloadOperation: 'UNLOAD',
+    };
+    const transportTask = { changeStatus: jest.fn() };
+    const retreatPoint = { pathFor: jest.fn().mockResolvedValue(['3002']) };
+    const saga = new TransportTaskSaga(
+      taskRepo as never,
+      cargoRepo as never,
+      {} as never,
+      {} as never,
+      kernelApi as never,
+      transportTask as never,
+      {} as never,
+      {} as never,
+      retreatPoint as never,
+    );
+    return { saga, taskRepo, cargoRepo, kernelApi, transportTask, retreatPoint };
+  }
+
+  const lost = (leg: 'PICKUP' | 'APPROACH' | 'DROPOFF', orderName: string) =>
+    new FmsTransportOrderLostNavigationEvent(orderName, 'task-1', leg, 'V1');
+
+  it('sends a lost pickup back to the queue for any vehicle', async () => {
+    const task = {
+      id: 'task-1',
+      status: TaskStatus.PICKING_UP,
+      metadata: { assignedVehicleName: 'V1', to1Name: 'PICKUP-1' },
+      assignedAt: new Date(),
+      startedAt: new Date(),
+    };
+    const { saga, transportTask } = makeSaga(task);
+
+    await saga.onLegLostNavigation(lost('PICKUP', 'PICKUP-1'));
+
+    expect(task.metadata).toMatchObject({
+      to1Name: undefined,
+      assignedVehicleName: undefined,
+      lostNavigationRetries: 1,
+    });
+    expect(task.assignedAt).toBeNull();
+    expect(transportTask.changeStatus).toHaveBeenCalledWith(
+      task,
+      TaskStatus.READY_TO_ASSIGN,
+      expect.objectContaining({ trigger: 'SAGA', vehicleName: 'V1' }),
+    );
+  });
+
+  it('re-issues the approach to the same vehicle at the recorded point', async () => {
+    const task = {
+      id: 'task-1',
+      status: TaskStatus.DELIVERING,
+      metadata: {
+        assignedVehicleName: 'V1',
+        to2Name: 'APPROACH-1',
+        approachPointName: '3073',
+      },
+    };
+    const { saga, kernelApi } = makeSaga(task);
+
+    await saga.onLegLostNavigation(lost('APPROACH', 'APPROACH-1'));
+
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
+      expect.stringContaining('APPROACH-V1-3073'),
+      [{ locationName: '3073', operation: 'MOVE' }],
+      'V1',
+      expect.objectContaining({ 'wes:leg': 'APPROACH' }),
+    );
+  });
+
+  it('re-issues the drop-off at the slot already committed on the cargo', async () => {
+    const task = {
+      id: 'task-1',
+      status: TaskStatus.DELIVERING,
+      metadata: { assignedVehicleName: 'V1', to3Name: 'DROPOFF-1' },
+      cargoId: 'cargo-1',
+    };
+    const cargo = { id: 'cargo-1', destinationLocationName: 'location_3003' };
+    const { saga, kernelApi } = makeSaga(task, cargo);
+
+    await saga.onLegLostNavigation(lost('DROPOFF', 'DROPOFF-1'));
+
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
+      expect.stringContaining('DROPOFF-V1-location_3003'),
+      [
+        { locationName: 'location_3003', operation: 'UNLOAD' },
+        { locationName: '3002', operation: 'MOVE' },
+      ],
+      'V1',
+      expect.objectContaining({ 'wes:leg': 'DROPOFF' }),
+    );
+  });
+
+  it('re-issues only the retreat when the cargo was already unloaded', async () => {
+    const task = {
+      id: 'task-1',
+      status: TaskStatus.DELIVERING,
+      metadata: {
+        assignedVehicleName: 'V1',
+        to3Name: 'DROPOFF-1',
+        unloadedAt: '2026-08-11T00:00:00.000Z',
+      },
+      cargoId: 'cargo-1',
+    };
+    const cargo = { id: 'cargo-1', destinationLocationName: 'location_3003' };
+    const { saga, kernelApi } = makeSaga(task, cargo);
+
+    await saga.onLegLostNavigation(lost('DROPOFF', 'DROPOFF-1'));
+
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
+      expect.any(String),
+      [{ locationName: '3002', operation: 'MOVE' }],
+      'V1',
+      expect.anything(),
+    );
+  });
+
+  it('gives up once the retry cap is reached', async () => {
+    const task = {
+      id: 'task-1',
+      status: TaskStatus.DELIVERING,
+      metadata: { assignedVehicleName: 'V1', lostNavigationRetries: 3 },
+    };
+    const { saga, transportTask, kernelApi } = makeSaga(task);
+
+    await saga.onLegLostNavigation(lost('DROPOFF', 'DROPOFF-1'));
+
+    expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
+    expect(transportTask.changeStatus).toHaveBeenCalledWith(
+      task,
+      TaskStatus.FAILED,
+      expect.objectContaining({ trigger: 'SAGA' }),
+    );
   });
 });
