@@ -7,11 +7,17 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ZoneService } from './zone.service';
-import { CreateZoneDto, UpdateZoneDto } from './zone.dto';
+import {
+  AssignZoneMapDto,
+  CreateZoneDto,
+  ListZonesQueryDto,
+  UpdateZoneDto,
+} from './zone.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('zones')
@@ -19,8 +25,8 @@ export class ZoneController {
   constructor(private readonly zones: ZoneService) {}
 
   @Get()
-  list() {
-    return this.zones.list();
+  list(@Query() query: ListZonesQueryDto) {
+    return this.zones.list({ allMaps: query.allMaps ?? false });
   }
 
   @Post()
@@ -42,5 +48,11 @@ export class ZoneController {
   @Post('sync')
   sync() {
     return this.zones.sync();
+  }
+
+  @Post('assign-map')
+  @HttpCode(200)
+  assignMap(@Body() dto: AssignZoneMapDto) {
+    return this.zones.assignToLoadedMap(dto.zoneIds);
   }
 }

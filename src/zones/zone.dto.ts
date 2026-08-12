@@ -1,12 +1,14 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Min,
   ValidateNested,
@@ -47,6 +49,20 @@ export class CreateZoneDto {
   @ValidateNested({ each: true })
   @Type(() => ZoneMemberDto)
   members!: ZoneMemberDto[];
+}
+
+export class AssignZoneMapDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  zoneIds!: string[];
+}
+
+export class ListZonesQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  allMaps?: boolean;
 }
 
 export class UpdateZoneDto {

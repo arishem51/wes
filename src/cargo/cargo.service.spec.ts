@@ -108,6 +108,7 @@ function setup(options: SetupOptions = {}) {
 
   const kernelApi = {
     findPickupLocationForPoint: jest.fn().mockResolvedValue('loc-B'),
+    getPlantModelName: jest.fn().mockResolvedValue('runtime-map'),
   };
   const transportTask = { publishCreated: jest.fn() };
   const laneSafety = {

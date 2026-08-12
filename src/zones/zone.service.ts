@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { ZoneEntity, ZoneStatus, ZoneType } from './entities/zone.entity';
 import { ZoneMemberEntity } from './entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
@@ -23,11 +23,6 @@ import { checkZoneReachability } from './domain/zone-topology';
 
 export const LOCATION_PREFIX = 'location_';
 
-/**
- * Curated, contrast-safe hues used to color zones on the map. When an operator
- * creates a zone without picking a color we auto-assign the least-used hue so
- * two active zones never collide (and never land on a washed-out random value).
- */
 export const ZONE_COLOR_PALETTE = [
   '#2563eb', // blue
   '#dc2626', // red
@@ -52,10 +47,18 @@ export const ZONE_COLOR_PALETTE = [
 ] as const;
 
 export interface SyncResult {
+  plantModelName: string | null;
   total: number;
   markedStale: number;
   markedActive: number;
+  skippedOtherMaps: number;
+  unassigned: number;
   kernelUnreachable: boolean;
+}
+
+export interface AssignMapResult {
+  plantModelName: string;
+  assigned: number;
 }
 
 @Injectable()
@@ -74,8 +77,16 @@ export class ZoneService {
   async create(dto: CreateZoneDto): Promise<ZoneEntity> {
     this.validateMembers(dto);
 
+    const topology = await readPlantTopology(this.kernelApi);
+    if (!topology) {
+      throw new ServiceUnavailableException(
+        'Không thể đọc bản đồ đang tải trên kernel — chưa xác định được khu vực thuộc bản đồ nào.',
+      );
+    }
+
     if (dto.type === ZoneType.DROPOFF) {
-      await this.assertDropoffZoneReachable(
+      this.assertDropoffZoneReachable(
+        topology,
         dto.members.map((member) => member.locationName),
       );
     }
@@ -100,6 +111,7 @@ export class ZoneService {
         type: dto.type,
         color,
         kernelId,
+        plantModelName: topology.name,
         status: ZoneStatus.ACTIVE,
       });
 
@@ -143,10 +155,6 @@ export class ZoneService {
     return this.zoneRepo.save(zone);
   }
 
-  /**
-   * Picks the palette hue least used by ACTIVE zones so a fresh zone stays
-   * visually distinct. Ties resolve to palette order (deterministic).
-   */
   private async pickDefaultColor(): Promise<string> {
     const zones = await this.zoneRepo.find({
       where: { status: ZoneStatus.ACTIVE },
@@ -212,20 +220,10 @@ export class ZoneService {
       : locationName;
   }
 
-  /**
-   * Rejects a dropoff zone whose layout would strand a vehicle: every member
-   * slot must be forward-reachable from the zone's feeder (approach) points on
-   * the kernel path graph. Reachable-but-long-detour only warns. A missing model
-   * throws ServiceUnavailableException — it must not be read as "unreachable".
-   */
-  private async assertDropoffZoneReachable(
+  private assertDropoffZoneReachable(
+    topology: PlantTopology,
     memberLocationNames: string[],
-  ): Promise<void> {
-    const topology = await readPlantTopology(this.kernelApi);
-    if (!topology) {
-      throw new ServiceUnavailableException('Không thể kết nối kernel.');
-    }
-
+  ): void {
     const pointToLocation = new Map(
       memberLocationNames.map((name) => [
         this.getPointNameFromLocation(name),
@@ -260,13 +258,19 @@ export class ZoneService {
     }
   }
 
-  async list(): Promise<
+  async list(
+    options: { allMaps?: boolean } = {},
+  ): Promise<
     Array<ZoneEntity & { occupiedSlotCount: number; totalSlotCount: number }>
   > {
-    const zones = await this.zoneRepo.find({
+    const allZones = await this.zoneRepo.find({
       relations: { members: true },
       order: { createdAt: 'DESC' },
     });
+
+    const zones = options.allMaps
+      ? allZones
+      : await this.onlyZonesOfLoadedMap(allZones);
 
     if (zones.length === 0) return [];
 
@@ -305,14 +309,76 @@ export class ZoneService {
       throw new NotFoundException('Khu vực không tồn tại.');
     }
 
-    await this.removeZoneLocationsFromKernel(zone);
+    if (await this.belongsToLoadedMap(zone)) {
+      await this.removeZoneLocationsFromKernel(zone);
+    }
     await this.zoneRepo.softDelete(id);
+  }
+
+  private async belongsToLoadedMap(zone: ZoneEntity): Promise<boolean> {
+    const loadedMapName = await this.kernelApi.getPlantModelName();
+    return loadedMapName !== null && zone.plantModelName === loadedMapName;
+  }
+
+  private async onlyZonesOfLoadedMap(
+    zones: ZoneEntity[],
+  ): Promise<ZoneEntity[]> {
+    if (zones.length === 0) return [];
+    const loadedMapName = await this.kernelApi.getPlantModelName();
+    if (loadedMapName === null) return [];
+    return zones.filter((zone) => zone.plantModelName === loadedMapName);
+  }
+
+  /**
+   * Stamps zones with the loaded plant model. This is deliberately an explicit
+   * operator action: maps routinely share point names, so a zone whose points
+   * all exist in the loaded map is NOT evidence that it was drawn there.
+   */
+  async assignToLoadedMap(zoneIds: string[]): Promise<AssignMapResult> {
+    const topology = await readPlantTopology(this.kernelApi);
+    if (!topology) {
+      throw new ServiceUnavailableException(
+        'Không thể đọc bản đồ đang tải trên kernel.',
+      );
+    }
+
+    const zones = await this.zoneRepo.find({
+      where: { id: In(zoneIds) },
+      relations: { members: true },
+    });
+    if (zones.length === 0) {
+      throw new NotFoundException('Không tìm thấy khu vực nào để gán.');
+    }
+
+    const offMap = zones.filter(
+      (zone) => !this.canRepairZone(zone, topology.pointNames),
+    );
+    if (offMap.length > 0) {
+      const names = offMap.map((zone) => `"${zone.name}"`).join(', ');
+      throw new BadRequestException(
+        `Không thể gán ${names} vào bản đồ "${topology.name}": khu vực có vị trí không tồn tại trên bản đồ này.`,
+      );
+    }
+
+    for (const zone of zones) {
+      zone.plantModelName = topology.name;
+      await this.zoneRepo.save(zone);
+      this.logger.log(
+        `Zone "${zone.name}" (${zone.id}) assigned to map "${topology.name}"`,
+      );
+    }
+
+    return { plantModelName: topology.name, assigned: zones.length };
   }
 
   /**
    * Reconciles WES zones with the kernel's current map.
    *
    * Rules:
+   * - Only zones belonging to the loaded plant model are reconciled. Zones drawn
+   *   on another map — and zones not assigned to any map yet — are left
+   *   untouched, so switching maps never invalidates them (STALE is one-way, see
+   *   below) and no zone is ever silently claimed by the wrong map.
    * - A member location may belong to at most one ACTIVE zone.
    * - Sync never resurrects a STALE zone: only currently-ACTIVE zones are
    *   candidates to stay ACTIVE.
@@ -331,24 +397,29 @@ export class ZoneService {
     if (!topology) {
       this.logger.warn('Sync skipped: kernel unreachable');
       return {
+        plantModelName: null,
         total: 0,
         markedStale: 0,
         markedActive: 0,
+        skippedOtherMaps: 0,
+        unassigned: 0,
         kernelUnreachable: true,
       };
     }
 
-    const zones = await this.zoneRepo.find({ relations: { members: true } });
+    const allZones = await this.zoneRepo.find({ relations: { members: true } });
+    const zones = allZones.filter(
+      (zone) => zone.plantModelName === topology.name,
+    );
+    const unassigned = allZones.filter((zone) => !zone.plantModelName).length;
+    const skippedOtherMaps = allZones.length - zones.length - unassigned;
 
-    // Candidates: currently ACTIVE and still repairable (member points exist).
     const candidates = zones.filter(
       (zone) =>
         zone.status === ZoneStatus.ACTIVE &&
         this.canRepairZone(zone, topology.pointNames),
     );
 
-    // Any member location claimed by two+ candidates disqualifies every zone
-    // touching it (both-active conflict → STALE).
     const claimants = new Map<string, ZoneEntity[]>();
     for (const zone of candidates) {
       for (const locationName of this.zoneMemberLocationNames(zone)) {
@@ -368,7 +439,6 @@ export class ZoneService {
       (zone) => !conflictedZoneIds.has(zone.id),
     );
 
-    // Everything starts STALE; winners are promoted back to ACTIVE below.
     const desiredStatus = new Map<string, ZoneStatus>(
       zones.map((zone) => [zone.id, ZoneStatus.STALE]),
     );
@@ -377,7 +447,6 @@ export class ZoneService {
     for (const zone of winners) {
       desiredStatus.set(zone.id, ZoneStatus.ACTIVE);
       if (!this.isZoneValid(zone, topology)) {
-        // Locations missing but repairable → queue a rebuild.
         rebuildSpecs.push(
           ...this.toMemberSpecs(
             this.zoneMemberLocationNames(zone),
@@ -392,9 +461,6 @@ export class ZoneService {
       try {
         await upsertMemberLocations(this.kernelApi, rebuildSpecs);
       } catch (err) {
-        // Kernel refused the write (read-only / OPERATING) — can't restore now.
-        // Winners that were already valid keep ACTIVE; only those needing a
-        // rebuild fall back to STALE.
         for (const zone of toRebuild) {
           desiredStatus.set(zone.id, ZoneStatus.STALE);
         }
@@ -426,9 +492,12 @@ export class ZoneService {
     }
 
     return {
+      plantModelName: topology.name,
       total: zones.length,
       markedStale,
       markedActive,
+      skippedOtherMaps,
+      unassigned,
       kernelUnreachable: false,
     };
   }

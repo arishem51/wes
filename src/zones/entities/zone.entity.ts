@@ -38,6 +38,15 @@ export class ZoneEntity {
   @Column({ name: 'kernel_id', type: 'integer', nullable: true, unique: true })
   kernelId!: number | null;
 
+  /** openTCS plant model this zone was drawn on. NULL for zones created before map scoping. */
+  @Column({
+    name: 'plant_model_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  plantModelName!: string | null;
+
   @Column({
     type: 'enum',
     enum: ZoneStatus,

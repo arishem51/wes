@@ -12,6 +12,7 @@ export interface MemberLocationSpec {
 }
 
 export interface PlantTopology {
+  name: string;
   pointNames: Set<string>;
   locationLinks: Map<string, Set<string>>;
   paths: KernelPath[];
@@ -111,6 +112,7 @@ export async function readPlantTopology(
   const paths = recordArray(model.paths);
   const vehicles = recordArray(model.vehicles);
   const modelName = typeof model.name === 'string' ? model.name : null;
+  if (modelName === null) return null;
   if (
     modelName === 'unnamed' &&
     points.length === 0 &&
@@ -133,7 +135,12 @@ export async function readPlantTopology(
     locationLinks.set(location.name, extractLinkedPointNames(location.links));
   }
 
-  return { pointNames, locationLinks, paths: paths as unknown as KernelPath[] };
+  return {
+    name: modelName,
+    pointNames,
+    locationLinks,
+    paths: paths as unknown as KernelPath[],
+  };
 }
 
 export async function upsertMemberLocations(

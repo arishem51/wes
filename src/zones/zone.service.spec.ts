@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { ZoneService } from './zone.service';
@@ -11,6 +12,7 @@ const makeZone = (overrides: Partial<ZoneEntity> = {}): ZoneEntity => ({
   type: ZoneType.DROPOFF,
   color: '#2563eb',
   kernelId: 1,
+  plantModelName: 'runtime-map',
   status: ZoneStatus.ACTIVE,
   members: [],
   createdAt: new Date('2026-01-01'),
@@ -67,6 +69,7 @@ describe('ZoneService.sync', () => {
   let memberRepo: RepoMock;
   let kernelApi: {
     getRawPlantModel: jest.Mock;
+    getPlantModelName: jest.Mock;
     invalidatePlantModelCache: jest.Mock;
     putRawPlantModel: jest.Mock;
   };
@@ -76,6 +79,7 @@ describe('ZoneService.sync', () => {
     memberRepo = makeRepo();
     kernelApi = {
       getRawPlantModel: jest.fn(),
+      getPlantModelName: jest.fn().mockResolvedValue('runtime-map'),
       invalidatePlantModelCache: jest.fn(),
       // Default: kernel accepts the write (MODELLING). OPERATING cases override
       // this with a rejection.
@@ -134,9 +138,12 @@ describe('ZoneService.sync', () => {
     const result = await service.sync();
 
     expect(result).toEqual({
+      plantModelName: 'runtime-map',
       total: 1,
       markedStale: 0,
       markedActive: 0,
+      skippedOtherMaps: 0,
+      unassigned: 0,
       kernelUnreachable: false,
     });
     expect(zoneRepo.save).not.toHaveBeenCalled();
@@ -180,9 +187,12 @@ describe('ZoneService.sync', () => {
     const result = await service.sync();
 
     expect(result).toEqual({
+      plantModelName: 'runtime-map',
       total: 1,
       markedStale: 0,
       markedActive: 0,
+      skippedOtherMaps: 0,
+      unassigned: 0,
       kernelUnreachable: false,
     });
     expect(zoneRepo.save).not.toHaveBeenCalled();
@@ -285,12 +295,155 @@ describe('ZoneService.sync', () => {
     const result = await service.sync();
 
     expect(result).toEqual({
+      plantModelName: null,
       total: 0,
       markedStale: 0,
       markedActive: 0,
+      skippedOtherMaps: 0,
+      unassigned: 0,
       kernelUnreachable: true,
     });
     expect(zoneRepo.find).not.toHaveBeenCalled();
     expect(zoneRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('leaves a zone belonging to another map completely untouched', async () => {
+    const otherMap = makeZone({
+      id: 'z-other',
+      plantModelName: 'another-map',
+      status: ZoneStatus.ACTIVE,
+      members: [makeMember('location_P1', 0)],
+    });
+    zoneRepo.find.mockResolvedValue([otherMap]);
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1'], locations: [] }),
+    );
+
+    const result = await service.sync();
+
+    expect(result.total).toBe(0);
+    expect(result.skippedOtherMaps).toBe(1);
+    expect(result.markedStale).toBe(0);
+    expect(zoneRepo.save).not.toHaveBeenCalled();
+    expect(kernelApi.putRawPlantModel).not.toHaveBeenCalled();
+  });
+
+  it('never pushes another map’s locations into the loaded map', async () => {
+    const loaded = makeZone({
+      id: 'z-loaded',
+      status: ZoneStatus.ACTIVE,
+      members: [makeMember('location_P1', 0)],
+    });
+    const otherMap = makeZone({
+      id: 'z-other',
+      plantModelName: 'another-map',
+      status: ZoneStatus.ACTIVE,
+      members: [makeMember('location_P2', 0)],
+    });
+    zoneRepo.find.mockResolvedValue([loaded, otherMap]);
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1', 'P2'], locations: [] }),
+    );
+
+    await service.sync();
+
+    expect(kernelApi.putRawPlantModel).toHaveBeenCalledTimes(1);
+    const pushed = kernelApi.putRawPlantModel.mock.calls[0][0] as {
+      locations: Array<{ name: string }>;
+    };
+    expect(pushed.locations.map((location) => location.name)).toEqual([
+      'location_P1',
+    ]);
+  });
+
+  it('never claims an unassigned zone, even when all its points exist here', async () => {
+    const unassigned = makeZone({
+      plantModelName: null,
+      status: ZoneStatus.ACTIVE,
+      members: [makeMember('location_P1', 0)],
+    });
+    zoneRepo.find.mockResolvedValue([unassigned]);
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1'], locations: [] }),
+    );
+
+    const result = await service.sync();
+
+    expect(result.unassigned).toBe(1);
+    expect(result.total).toBe(0);
+    expect(result.skippedOtherMaps).toBe(0);
+    expect(unassigned.plantModelName).toBeNull();
+    expect(zoneRepo.save).not.toHaveBeenCalled();
+    expect(kernelApi.putRawPlantModel).not.toHaveBeenCalled();
+  });
+});
+
+describe('ZoneService.assignToLoadedMap', () => {
+  let service: ZoneService;
+  let zoneRepo: RepoMock;
+  let kernelApi: { getRawPlantModel: jest.Mock };
+
+  beforeEach(async () => {
+    zoneRepo = makeRepo();
+    kernelApi = { getRawPlantModel: jest.fn() };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ZoneService,
+        { provide: getDataSourceToken(), useValue: { query: jest.fn() } },
+        { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
+        { provide: getRepositoryToken(ZoneMemberEntity), useValue: makeRepo() },
+        { provide: KernelApiService, useValue: kernelApi },
+      ],
+    }).compile();
+
+    service = module.get(ZoneService);
+  });
+
+  it('stamps the loaded map onto the requested zones', async () => {
+    const zone = makeZone({
+      plantModelName: null,
+      members: [makeMember('location_P1', 0)],
+    });
+    zoneRepo.find.mockResolvedValue([zone]);
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1'], locations: [] }),
+    );
+
+    const result = await service.assignToLoadedMap(['zone-1']);
+
+    expect(result).toEqual({ plantModelName: 'runtime-map', assigned: 1 });
+    expect(zone.plantModelName).toBe('runtime-map');
+  });
+
+  it('refuses a zone whose points are not on the loaded map', async () => {
+    const zone = makeZone({
+      plantModelName: null,
+      members: [makeMember('location_P9', 0)],
+    });
+    zoneRepo.find.mockResolvedValue([zone]);
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1'], locations: [] }),
+    );
+
+    await expect(service.assignToLoadedMap(['zone-1'])).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(zoneRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('reassigns a zone that was stamped with the wrong map', async () => {
+    const zone = makeZone({
+      plantModelName: 'wrong-map',
+      members: [makeMember('location_P1', 0)],
+    });
+    zoneRepo.find.mockResolvedValue([zone]);
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1'], locations: [] }),
+    );
+
+    await service.assignToLoadedMap(['zone-1']);
+
+    expect(zone.plantModelName).toBe('runtime-map');
   });
 });

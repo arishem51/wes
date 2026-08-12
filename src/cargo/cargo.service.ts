@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
@@ -154,21 +155,26 @@ export class CargoService {
       );
     }
 
+    const loadedMapName = await this.loadedMapName();
     const zone = await this.zoneRepo.findOne({
       where: {
         id: dto.destinationZoneId,
         type: ZoneType.DROPOFF,
         status: ZoneStatus.ACTIVE,
+        plantModelName: loadedMapName,
       },
       relations: { members: true },
     });
     if (!zone) {
       throw new BadRequestException(
-        'Khu trả hàng không tồn tại hoặc không hoạt động.',
+        'Khu trả hàng không tồn tại, không hoạt động, hoặc không thuộc bản đồ đang tải.',
       );
     }
 
-    const sourceZoneId = await this.resolvePickupZoneId(pickupLocationName);
+    const sourceZoneId = await this.resolvePickupZoneId(
+      pickupLocationName,
+      loadedMapName,
+    );
 
     await this.assertZoneHasRoom(this.cargoRepo, zone);
 
@@ -401,8 +407,19 @@ export class CargoService {
     }
   }
 
+  private async loadedMapName(): Promise<string> {
+    const name = await this.kernelApi.getPlantModelName();
+    if (!name) {
+      throw new ServiceUnavailableException(
+        'Không thể đọc bản đồ đang tải trên kernel.',
+      );
+    }
+    return name;
+  }
+
   private async resolvePickupZoneId(
     pickupLocationName: string,
+    loadedMapName: string,
   ): Promise<string | null> {
     const zone = await this.zoneRepo
       .createQueryBuilder('z')
@@ -411,6 +428,7 @@ export class CargoService {
       })
       .where('z.type = :type', { type: ZoneType.PICKUP })
       .andWhere('z.status = :status', { status: ZoneStatus.ACTIVE })
+      .andWhere('z.plantModelName = :map', { map: loadedMapName })
       .getOne();
     return zone?.id ?? null;
   }

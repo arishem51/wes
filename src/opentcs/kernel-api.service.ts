@@ -72,14 +72,10 @@ export class KernelApiService {
   }
 
   async getPlantModelName(): Promise<string | null> {
-    try {
-      const res = await axios.get<{ name: string }>(
-        `${this.baseUrl}/v1/plantModel`,
-      );
-      return res.data.name;
-    } catch {
-      return null;
-    }
+    const raw = await this.getRawPlantModel();
+    if (!raw || typeof raw !== 'object') return null;
+    const name = (raw as { name?: unknown }).name;
+    return typeof name === 'string' ? name : null;
   }
 
   invalidatePlantModelCache(): void {
