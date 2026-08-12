@@ -11,6 +11,7 @@ import { CargoController } from './cargo.controller';
 import { DispatchPolicyService } from './dispatch-policy.service';
 import { DispatchPolicyController } from './dispatch-policy.controller';
 import { TransportTaskService } from './transport-task.service';
+import { TaskTerminationService } from './task-termination.service';
 import { ReleaseEngineService } from './release-engine.service';
 import { AssignmentEngineService } from './assignment-engine.service';
 import { ChargeEngineService } from './charge-engine.service';
@@ -46,6 +47,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
   providers: [
     CargoService,
     TransportTaskService,
+    TaskTerminationService,
     DeliverySlotEngine,
     ZoneGeometryService,
     PickupDependencyService,

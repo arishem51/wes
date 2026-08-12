@@ -18,13 +18,19 @@ const VALID: Record<TaskStatus, TaskStatus[]> = {
     TaskStatus.READY_TO_ASSIGN,
     TaskStatus.BLOCKED,
     TaskStatus.CANCELLED,
+    TaskStatus.FAILED,
   ],
   [TaskStatus.READY_TO_ASSIGN]: [
     TaskStatus.PICKING_UP,
     TaskStatus.BLOCKED,
     TaskStatus.CANCELLED,
+    TaskStatus.FAILED,
   ],
-  [TaskStatus.BLOCKED]: [TaskStatus.READY_TO_ASSIGN, TaskStatus.CANCELLED],
+  [TaskStatus.BLOCKED]: [
+    TaskStatus.READY_TO_ASSIGN,
+    TaskStatus.CANCELLED,
+    TaskStatus.FAILED,
+  ],
   [TaskStatus.PICKING_UP]: [
     TaskStatus.DELIVERING,
     TaskStatus.READY_TO_ASSIGN,

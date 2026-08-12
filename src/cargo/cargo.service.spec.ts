@@ -10,7 +10,9 @@ import { TaskStatusTransitionEntity } from './entities/task-status-transition.en
 import { ZoneEntity, ZoneType } from '../zones/entities/zone.entity';
 import type { ZoneMemberEntity } from '../zones/entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { TransportTaskService } from './transport-task.service';
+import { TaskTerminationService } from './task-termination.service';
 import { LaneSafetyService } from './lane-safety.service';
 import type { CreateCargoDto, ListCargosQueryDto } from './cargo.dto';
 
@@ -121,6 +123,8 @@ function setup(options: SetupOptions = {}) {
     kernelApi as unknown as KernelApiService,
     transportTask as unknown as TransportTaskService,
     laneSafety as unknown as LaneSafetyService,
+    {} as unknown as VehicleStateStore,
+    {} as unknown as TaskTerminationService,
   );
 
   return {
@@ -271,6 +275,8 @@ function listSetup(
     kernelApi as unknown as KernelApiService,
     {} as unknown as TransportTaskService,
     {} as unknown as LaneSafetyService,
+    {} as unknown as VehicleStateStore,
+    {} as unknown as TaskTerminationService,
   );
 
   const listWith = (query: ListCargosQueryDto = {}) => svc.list(query);
@@ -431,6 +437,8 @@ function decisionSetup(options: DecisionSetupOptions = {}) {
     {} as unknown as KernelApiService,
     {} as unknown as TransportTaskService,
     {} as unknown as LaneSafetyService,
+    {} as unknown as VehicleStateStore,
+    {} as unknown as TaskTerminationService,
   );
 
   return { svc, transitionRepo };
@@ -538,5 +546,216 @@ describe('CargoService.getAssignmentDecision', () => {
     await expect(svc.getAssignmentDecision('c-1')).rejects.toThrow(
       /not been assigned/,
     );
+  });
+});
+
+const DROP_SLOT = 'drop-1';
+const DROP_POINT = 'P-D1';
+
+interface RemoveSetupOptions {
+  cargo?: CargoEntity | null;
+  task?: TransportTaskEntity | null;
+  allocated?: string[][] | null;
+  connected?: boolean;
+}
+
+function removeSetup(options: RemoveSetupOptions = {}) {
+  const cargo =
+    options.cargo === undefined ? storedCargo('c-1', 'BOX-1') : options.cargo;
+  const task = options.task ?? null;
+
+  const cargoRepo = {
+    findOne: jest.fn().mockResolvedValue(cargo),
+    softDelete: jest.fn().mockResolvedValue(undefined),
+  };
+  const taskRepo = { findOne: jest.fn().mockResolvedValue(task) };
+  const kernelApi = {
+    findPointForLocation: jest.fn().mockResolvedValue(DROP_POINT),
+    getVehicleStates: jest.fn().mockResolvedValue([]),
+  };
+  const vehicleStore = {
+    isConnected: jest.fn().mockReturnValue(options.connected ?? true),
+    get: jest
+      .fn()
+      .mockReturnValue(
+        options.allocated === null
+          ? undefined
+          : { allocatedResources: options.allocated ?? [] },
+      ),
+  };
+  const taskTermination = { terminate: jest.fn().mockResolvedValue(undefined) };
+
+  const svc = new CargoService(
+    cargoRepo as unknown as Repository<CargoEntity>,
+    taskRepo as unknown as Repository<TransportTaskEntity>,
+    {} as unknown as Repository<TaskStatusTransitionEntity>,
+    {} as unknown as Repository<ZoneEntity>,
+    {} as unknown as DataSource,
+    kernelApi as unknown as KernelApiService,
+    {} as unknown as TransportTaskService,
+    {} as unknown as LaneSafetyService,
+    vehicleStore as unknown as VehicleStateStore,
+    taskTermination as unknown as TaskTerminationService,
+  );
+
+  return { svc, cargoRepo, taskRepo, taskTermination, kernelApi };
+}
+
+const droppingOffTask = (metadata: TransportTaskEntity['metadata'] = {}) =>
+  storedTask('c-1', TaskStatus.DELIVERING, {
+    assignedVehicleName: 'V1',
+    to3Name: 'DROPOFF-V1-drop-1-uuid',
+    ...metadata,
+  });
+
+const cargoHeadingTo = (slot: string): CargoEntity => ({
+  ...storedCargo('c-1', 'BOX-1'),
+  destinationLocationName: slot,
+});
+
+describe('CargoService.remove', () => {
+  it('deletes a cargo that never got a transport request', async () => {
+    const { svc, cargoRepo, taskTermination } = removeSetup();
+
+    await expect(svc.remove('c-1')).resolves.toEqual({
+      message: 'Cargo deleted.',
+    });
+
+    expect(taskTermination.terminate).not.toHaveBeenCalled();
+    expect(cargoRepo.softDelete).toHaveBeenCalledWith('c-1');
+  });
+
+  it('rejects a cargo that does not exist', async () => {
+    const { svc, cargoRepo } = removeSetup({ cargo: null });
+
+    await expect(svc.remove('c-1')).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(cargoRepo.softDelete).not.toHaveBeenCalled();
+  });
+
+  it('fails the newest task of the cargo', async () => {
+    const { svc, taskRepo, taskTermination } = removeSetup({
+      task: storedTask('c-1', TaskStatus.READY_TO_ASSIGN),
+    });
+
+    await svc.remove('c-1');
+
+    expect(taskRepo.findOne).toHaveBeenCalledWith({
+      where: { cargoId: 'c-1' },
+      order: { createdAt: 'DESC' },
+    });
+    expect(taskTermination.terminate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'task-c-1' }),
+      TaskStatus.FAILED,
+      { trigger: 'API', reason: 'cargo deleted' },
+    );
+  });
+
+  it('deletes while the AGV is still driving to the pickup point', async () => {
+    const { svc, cargoRepo, taskTermination } = removeSetup({
+      task: storedTask('c-1', TaskStatus.PICKING_UP, {
+        assignedVehicleName: 'V1',
+      }),
+      allocated: [['P-Z'], ['P-Z --- P-Y']],
+    });
+
+    await svc.remove('c-1');
+
+    expect(taskTermination.terminate).toHaveBeenCalled();
+    expect(cargoRepo.softDelete).toHaveBeenCalledWith('c-1');
+  });
+
+  it('refuses once the AGV holds the pickup point', async () => {
+    const { svc, cargoRepo, taskTermination } = removeSetup({
+      task: storedTask('c-1', TaskStatus.PICKING_UP, {
+        assignedVehicleName: 'V1',
+      }),
+      allocated: [['P-B']],
+    });
+
+    await expect(svc.remove('c-1')).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(taskTermination.terminate).not.toHaveBeenCalled();
+    expect(cargoRepo.softDelete).not.toHaveBeenCalled();
+  });
+
+  it('refuses once the AGV holds the drop-off point', async () => {
+    const { svc, cargoRepo } = removeSetup({
+      cargo: cargoHeadingTo(DROP_SLOT),
+      task: droppingOffTask(),
+      allocated: [[DROP_POINT]],
+    });
+
+    await expect(svc.remove('c-1')).rejects.toThrow(/V1/);
+
+    expect(cargoRepo.softDelete).not.toHaveBeenCalled();
+  });
+
+  it('deletes once the load is down and the retreat leg is running', async () => {
+    const { svc, cargoRepo } = removeSetup({
+      cargo: cargoHeadingTo(DROP_SLOT),
+      task: droppingOffTask({ unloadedAt: '2026-08-12T10:00:00.000Z' }),
+      allocated: [[DROP_POINT]],
+    });
+
+    await svc.remove('c-1');
+
+    expect(cargoRepo.softDelete).toHaveBeenCalledWith('c-1');
+  });
+
+  it('reads a path resource as a path, not as the point it leads to', async () => {
+    const { svc, cargoRepo } = removeSetup({
+      task: storedTask('c-1', TaskStatus.PICKING_UP, {
+        assignedVehicleName: 'V1',
+      }),
+      allocated: [['P-A --- P-B']],
+    });
+
+    await svc.remove('c-1');
+
+    expect(cargoRepo.softDelete).toHaveBeenCalledWith('c-1');
+  });
+
+  it('deletes when the fleet state cannot be read at all', async () => {
+    const { svc, cargoRepo } = removeSetup({
+      task: storedTask('c-1', TaskStatus.PICKING_UP, {
+        assignedVehicleName: 'V1',
+      }),
+      allocated: null,
+    });
+
+    await svc.remove('c-1');
+
+    expect(cargoRepo.softDelete).toHaveBeenCalledWith('c-1');
+  });
+
+  it('falls back to the kernel when the event stream is down', async () => {
+    const { svc, cargoRepo, kernelApi } = removeSetup({
+      task: storedTask('c-1', TaskStatus.PICKING_UP, {
+        assignedVehicleName: 'V1',
+      }),
+      connected: false,
+    });
+    kernelApi.getVehicleStates.mockResolvedValue([
+      { name: 'V1', allocatedResources: [['P-B']] },
+    ]);
+
+    await expect(svc.remove('c-1')).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(cargoRepo.softDelete).not.toHaveBeenCalled();
+  });
+
+  it('deletes when the kernel cannot be reached either', async () => {
+    const { svc, cargoRepo, kernelApi } = removeSetup({
+      task: storedTask('c-1', TaskStatus.PICKING_UP, {
+        assignedVehicleName: 'V1',
+      }),
+      connected: false,
+    });
+    kernelApi.getVehicleStates.mockRejectedValue(new Error('kernel down'));
+
+    await svc.remove('c-1');
+
+    expect(cargoRepo.softDelete).toHaveBeenCalledWith('c-1');
   });
 });

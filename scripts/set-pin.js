@@ -62,7 +62,7 @@ function config() {
     username: process.env.MQTT_USER || 'fms',
     password: process.env.MQTT_PASS || 'Aubot@2025',
     manufacturer: process.env.VDA5050_MANUFACTURER || 'AUBOT',
-    prefix: process.env.VDA5050_TOPIC_PREFIX || 'aubotagv/v2',
+    prefix: process.env.VDA5050_TOPIC_PREFIX || 'aubotagv/2.0.0',
     discoverMs: Number(process.env.DISCOVER_MS || 1500),
     verifyMs: Number(process.env.VERIFY_MS || 2500),
   };

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -12,9 +13,11 @@ import {
 } from './entities/transport-task.entity';
 import { TaskStatusTransitionEntity } from './entities/task-status-transition.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { TransportTaskService } from './transport-task.service';
+import { TaskTerminationService } from './task-termination.service';
 import { LaneSafetyService } from './lane-safety.service';
-import { TransportTaskStateMachine } from './domain/transport-task.state-machine';
+import { allocationReachesPoints } from './domain/lane-safety.policy';
 import type { DispatchMatcher } from './domain/dispatch.policy';
 import {
   ZoneEntity,
@@ -109,6 +112,8 @@ function toAssignmentDecision(
 
 @Injectable()
 export class CargoService {
+  private readonly logger = new Logger(CargoService.name);
+
   constructor(
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
@@ -123,6 +128,8 @@ export class CargoService {
     private readonly kernelApi: KernelApiService,
     private readonly transportTask: TransportTaskService,
     private readonly laneSafety: LaneSafetyService,
+    private readonly vehicleStore: VehicleStateStore,
+    private readonly taskTermination: TaskTerminationService,
   ) {}
 
   async create(dto: CreateCargoDto, userId: string): Promise<CargoEntity> {
@@ -303,33 +310,74 @@ export class CargoService {
     const cargo = await this.cargoRepo.findOne({ where: { id } });
     if (!cargo) throw new NotFoundException('Cargo not found.');
 
-    const task = await this.taskRepo.findOne({ where: { cargoId: id } });
+    const task = await this.taskRepo.findOne({
+      where: { cargoId: id },
+      order: { createdAt: 'DESC' },
+    });
 
     if (task) {
-      if (task.status === TaskStatus.DELIVERING) {
-        throw new BadRequestException(
-          'Cannot delete cargo: the AGV is currently carrying this item to its destination.',
-        );
-      }
-
-      if (task.status === TaskStatus.PICKING_UP) {
-        const toName = task.metadata?.to1Name;
-        if (toName) {
-          await this.kernelApi.withdrawTransportOrder(toName);
-        }
-      }
-
-      if (TransportTaskStateMachine.isCancellable(task.status)) {
-        task.cancelledAt = new Date();
-        await this.transportTask.changeStatus(task, TaskStatus.CANCELLED, {
-          trigger: 'API',
-          reason: 'cargo deleted',
-        });
-      }
+      await this.assertVehicleIsNotHandlingTheLoad(task, cargo);
+      await this.taskTermination.terminate(task, TaskStatus.FAILED, {
+        trigger: 'API',
+        reason: 'cargo deleted',
+      });
     }
 
     await this.cargoRepo.softDelete(id);
     return { message: 'Cargo deleted.' };
+  }
+
+  private async assertVehicleIsNotHandlingTheLoad(
+    task: TransportTaskEntity,
+    cargo: CargoEntity,
+  ): Promise<void> {
+    const vehicleName = task.metadata?.assignedVehicleName;
+    if (!vehicleName) return;
+
+    const actionPoint = await this.loadActionPointOf(task, cargo);
+    if (!actionPoint) return;
+
+    const allocated = await this.allocatedResourcesOf(vehicleName);
+    if (!allocationReachesPoints(allocated, new Set([actionPoint]))) return;
+
+    throw new BadRequestException(
+      `Không thể xóa hàng: xe ${vehicleName} đang lấy/trả hàng tại ${actionPoint}. Thử lại khi thao tác kết thúc.`,
+    );
+  }
+
+  private async loadActionPointOf(
+    task: TransportTaskEntity,
+    cargo: CargoEntity,
+  ): Promise<string | null> {
+    if (task.status === TaskStatus.PICKING_UP) {
+      return cargo.sourcePointName;
+    }
+    const droppingOff =
+      task.status === TaskStatus.DELIVERING &&
+      Boolean(task.metadata?.to3Name) &&
+      !task.metadata?.unloadedAt;
+    if (droppingOff && cargo.destinationLocationName) {
+      return this.kernelApi.findPointForLocation(cargo.destinationLocationName);
+    }
+    return null;
+  }
+
+  private async allocatedResourcesOf(vehicleName: string): Promise<string[][]> {
+    if (this.vehicleStore.isConnected()) {
+      return this.vehicleStore.get(vehicleName)?.allocatedResources ?? [];
+    }
+    try {
+      const states = await this.kernelApi.getVehicleStates();
+      return (
+        states.find((state) => state.name === vehicleName)
+          ?.allocatedResources ?? []
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not read allocated resources for ${vehicleName} — allowing the deletion: ${(err as Error).message}`,
+      );
+      return [];
+    }
   }
 
   async getTaskByCargo(cargoId: string): Promise<TransportTaskEntity | null> {

@@ -10,27 +10,27 @@ export class InvalidTransportTaskTransitionError extends Error {
   }
 }
 
-/**
- * The single source of truth for the transport task lifecycle.
- * Read this table to know the whole flow — nothing else assigns `task.status`.
- */
 const TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
   [TaskStatus.CREATED]: [
     TaskStatus.READY_TO_ASSIGN,
     TaskStatus.BLOCKED,
     TaskStatus.CANCELLED,
+    TaskStatus.FAILED,
   ],
   [TaskStatus.READY_TO_ASSIGN]: [
     TaskStatus.PICKING_UP,
     TaskStatus.BLOCKED,
     TaskStatus.CANCELLED,
+    TaskStatus.FAILED,
   ],
-  // BLOCKED → READY_TO_ASSIGN when the blocking cargo leaves its pickup point.
-  [TaskStatus.BLOCKED]: [TaskStatus.READY_TO_ASSIGN, TaskStatus.CANCELLED],
+  [TaskStatus.BLOCKED]: [
+    TaskStatus.READY_TO_ASSIGN,
+    TaskStatus.CANCELLED,
+    TaskStatus.FAILED,
+  ],
   [TaskStatus.PICKING_UP]: [
     TaskStatus.DELIVERING,
     TaskStatus.READY_TO_ASSIGN,
-    // Preempt: an outer same-lane cargo appeared; withdraw TO1 and re-block.
     TaskStatus.BLOCKED,
     TaskStatus.CANCELLED,
     TaskStatus.FAILED,
@@ -54,7 +54,6 @@ export class TransportTaskStateMachine {
     return this.canTransition(status, TaskStatus.CANCELLED);
   }
 
-  /** The ONLY place that mutates `task.status`. */
   static transition(task: TransportTaskEntity, to: TaskStatus): void {
     if (!this.canTransition(task.status, to)) {
       throw new InvalidTransportTaskTransitionError(task.status, to);
