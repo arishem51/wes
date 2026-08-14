@@ -6109,6 +6109,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6126,6 +6127,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6143,6 +6145,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6160,6 +6163,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6177,6 +6181,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6194,6 +6199,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6211,6 +6217,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6228,6 +6235,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6245,6 +6253,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6262,6 +6271,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6279,6 +6289,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6296,6 +6307,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6313,6 +6325,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6330,6 +6343,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -6347,6 +6361,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>

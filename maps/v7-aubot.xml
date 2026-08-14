@@ -3661,7 +3661,7 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <vehicle name="B300_3_8" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
-        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <boundingBox length="840" width="425" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
         <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
         <property name="vda5050:deviationTheta" value="10"/>
@@ -3669,6 +3669,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -3678,7 +3679,7 @@
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="B300_3_14" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
-        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <boundingBox length="840" width="425" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
         <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
         <property name="vda5050:deviationTheta" value="10"/>
@@ -3686,6 +3687,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -3695,7 +3697,7 @@
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="B300_3_15" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
-        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <boundingBox length="840" width="425" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
         <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
         <property name="vda5050:deviationTheta" value="10"/>
@@ -3703,6 +3705,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -3712,7 +3715,7 @@
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="B300_3_16" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
-        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <boundingBox length="840" width="425" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
         <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
         <property name="vda5050:deviationTheta" value="10"/>
@@ -3720,6 +3723,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -3729,7 +3733,7 @@
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="B300_3_17" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
-        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <boundingBox length="840" width="425" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
         <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
         <property name="vda5050:deviationTheta" value="10"/>
@@ -3737,6 +3741,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
@@ -3746,7 +3751,7 @@
         <vehicleLayout color="#00FF00"/>
     </vehicle>
     <vehicle name="B300_3_18" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
-        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <boundingBox length="840" width="425" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
         <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
         <property name="vda5050:deviationTheta" value="10"/>
@@ -3754,6 +3759,7 @@
         <property name="vda5050:interfaceName" value="aubotagv"/>
         <property name="vda5050:manufacturer" value="AUBOT"/>
         <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
         <property name="vda5050:maxStepsBase" value="2"/>
         <property name="vda5050:maxStepsHorizon" value="0"/>
         <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
