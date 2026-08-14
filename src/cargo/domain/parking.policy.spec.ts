@@ -32,8 +32,13 @@ describe('parking.policy', () => {
       expect(needsParking(candidate(), parks, true)).toBe(false);
     });
 
+    it('accepts a dispatch-disabled AGV — it can never take the pending cargo', () => {
+      expect(
+        needsParking(candidate({ dispatchEnabled: false }), parks, true),
+      ).toBe(true);
+    });
+
     it.each([
-      ['dispatch disabled', { dispatchEnabled: false }],
       ['ignored', { ignored: true }],
       ['not idle in FMS', { idleAvailable: false }],
       ['already on an order', { onOrder: true }],

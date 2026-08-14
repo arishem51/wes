@@ -105,7 +105,6 @@ export class ChargeEngineService {
   ): ChargeVehicleCandidate {
     return {
       name: agv.name,
-      dispatchEnabled: agv.isDispatchEnabled,
       ignored: agv.isIgnored,
       idleAvailable: isIdleAvailable(fms),
       charging: fms?.state === 'CHARGING',

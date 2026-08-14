@@ -9,13 +9,14 @@ import { RoutingService } from './routing.service';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import type { AgvEntity } from '../agvs/entities/agv.entity';
 
-const agv = (name: string): AgvEntity =>
+const agv = (name: string, overrides: Partial<AgvEntity> = {}): AgvEntity =>
   ({
     name,
     isDispatchEnabled: true,
     isIgnored: false,
     criticalBatteryThreshold: 20,
     sufficientBatteryThreshold: 40,
+    ...overrides,
   }) as AgvEntity;
 
 const flat = (name: string, position: string): KernelVehicleState => ({
@@ -51,10 +52,12 @@ const graph = buildRoadGraph([
 
 async function setup(
   states: KernelVehicleState[],
-  options: { kernelUnreachable?: boolean } = {},
+  options: { kernelUnreachable?: boolean; agvs?: AgvEntity[] } = {},
 ) {
   const taskRepo = { find: jest.fn().mockResolvedValue([]) };
-  const agvRepo = { find: jest.fn().mockResolvedValue([agv('V1')]) };
+  const agvRepo = {
+    find: jest.fn().mockResolvedValue(options.agvs ?? [agv('V1')]),
+  };
   const kernelApi = {
     getChargeLocations: jest
       .fn()
@@ -118,6 +121,31 @@ describe('ChargeEngineService', () => {
       'V1',
       { 'wes:leg': 'CHARGE' },
     );
+  });
+
+  it('charges a flat vehicle that has been taken off dispatch', async () => {
+    const { svc, kernelApi } = await setup([flat('V1', 'P1')], {
+      agvs: [agv('V1', { isDispatchEnabled: false })],
+    });
+
+    await svc.run();
+
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
+      expect.stringMatching(/^CHARGE-V1-CHG-1-/),
+      [{ locationName: 'CHG-1', operation: 'startCharging' }],
+      'V1',
+      { 'wes:leg': 'CHARGE' },
+    );
+  });
+
+  it('leaves an ignored vehicle flat — BR-06 excludes it from forced charging', async () => {
+    const { svc, kernelApi } = await setup([flat('V1', 'P1')], {
+      agvs: [agv('V1', { isIgnored: true })],
+    });
+
+    await svc.run();
+
+    expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
   });
 
   it('skips the no-slot park fallback while the park claim ledger is unavailable', async () => {

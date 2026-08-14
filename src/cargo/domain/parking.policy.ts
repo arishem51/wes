@@ -28,9 +28,8 @@ export function needsParking(
   parkingPointNames: ReadonlySet<string>,
   hasPendingWork: boolean,
 ): boolean {
-  if (hasPendingWork) return false;
+  if (hasPendingWork && c.dispatchEnabled) return false;
   return (
-    c.dispatchEnabled &&
     !c.ignored &&
     c.idleAvailable &&
     !c.onOrder &&

@@ -12,8 +12,13 @@ import {
 } from './entities/transport-task.entity';
 import type { AgvEntity } from '../agvs/entities/agv.entity';
 
-const agv = (name: string): AgvEntity =>
-  ({ name, isDispatchEnabled: true, isIgnored: false }) as AgvEntity;
+const agv = (name: string, overrides: Partial<AgvEntity> = {}): AgvEntity =>
+  ({
+    name,
+    isDispatchEnabled: true,
+    isIgnored: false,
+    ...overrides,
+  }) as AgvEntity;
 
 const idleAt = (name: string, position: string): KernelVehicleState => ({
   name,
@@ -153,6 +158,35 @@ describe('ParkingEngineService', () => {
     expect(taskRepo.count).toHaveBeenCalledWith({
       where: { status: In([TaskStatus.READY_TO_ASSIGN]) },
     });
+    expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
+  });
+
+  it('parks a vehicle taken off dispatch even while cargo waits — it can never take that work', async () => {
+    const { svc, taskRepo, kernelApi } = await setup(
+      [idleAt('V1', 'P1')],
+      [agv('V1', { isDispatchEnabled: false })],
+    );
+    taskRepo.count.mockResolvedValue(1);
+
+    await svc.run();
+
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
+      expect.stringMatching(/^PARK-V1-PARK-1-/),
+      [{ locationName: 'PARK-1', operation: 'MOVE' }],
+      'V1',
+      { 'wes:leg': 'PARK' },
+      { dispensable: true },
+    );
+  });
+
+  it('leaves an ignored vehicle where it stands — BR-06 excludes it from parking', async () => {
+    const { svc, kernelApi } = await setup(
+      [idleAt('V1', 'P1')],
+      [agv('V1', { isIgnored: true })],
+    );
+
+    await svc.run();
+
     expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
   });
 

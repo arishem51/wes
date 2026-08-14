@@ -379,6 +379,91 @@ describe('AgvsService', () => {
     });
   });
 
+  describe('setAcceptance', () => {
+    const byId = (agvs: AgvEntity[]) => (options: { where: { id: string } }) =>
+      Promise.resolve(agvs.find((a) => a.id === options.where.id) ?? null);
+
+    it('reports a no-op as unchanged instead of failing the batch', async () => {
+      repo.findOne.mockImplementation(
+        byId([
+          makeAgv({ id: 'a', isDispatchEnabled: true }),
+          makeAgv({ id: 'b', isDispatchEnabled: false }),
+        ]),
+      );
+      repo.save.mockImplementation((entity) => Promise.resolve(entity));
+
+      const { results } = await service.setAcceptance({
+        ids: ['a', 'b'],
+        action: 'disable',
+      });
+
+      expect(results).toEqual([
+        { id: 'a', outcome: 'changed', reason: null },
+        { id: 'b', outcome: 'unchanged', reason: 'AGV đã ngừng nhận việc.' },
+      ]);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps going past an AGV the action cannot apply to', async () => {
+      repo.findOne.mockImplementation(
+        byId([
+          makeAgv({ id: 'a', isIgnored: true }),
+          makeAgv({ id: 'b', isDispatchEnabled: true }),
+        ]),
+      );
+      repo.save.mockImplementation((entity) => Promise.resolve(entity));
+
+      const { results } = await service.setAcceptance({
+        ids: ['a', 'b', 'missing'],
+        action: 'disable',
+      });
+
+      expect(results.map((r) => r.outcome)).toEqual([
+        'failed',
+        'changed',
+        'failed',
+      ]);
+      expect(results[0].reason).toContain('Khôi phục');
+      expect(results[2].reason).toBe('AGV không tồn tại.');
+    });
+
+    it('reports a kernel failure per AGV without aborting the rest', async () => {
+      repo.findOne.mockImplementation(
+        byId([makeAgv({ id: 'a' }), makeAgv({ id: 'b' })]),
+      );
+      repo.save.mockImplementation((entity) => Promise.resolve(entity));
+      kernelApi.setVehicleIntegrationLevel
+        .mockRejectedValueOnce(new Error('kernel down'))
+        .mockResolvedValueOnce(undefined);
+
+      const { results } = await service.setAcceptance({
+        ids: ['a', 'b'],
+        action: 'ignore',
+      });
+
+      expect(results).toEqual([
+        { id: 'a', outcome: 'failed', reason: 'kernel down' },
+        { id: 'b', outcome: 'changed', reason: null },
+      ]);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('applies a repeated id only once', async () => {
+      repo.findOne.mockImplementation(
+        byId([makeAgv({ id: 'a', isDispatchEnabled: true })]),
+      );
+      repo.save.mockImplementation((entity) => Promise.resolve(entity));
+
+      const { results } = await service.setAcceptance({
+        ids: ['a', 'a'],
+        action: 'disable',
+      });
+
+      expect(results).toHaveLength(1);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('remove', () => {
     it('throws NotFoundException when AGV does not exist', async () => {
       repo.findOne.mockResolvedValue(null);

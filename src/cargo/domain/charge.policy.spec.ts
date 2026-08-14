@@ -11,7 +11,6 @@ const candidate = (
   overrides: Partial<ChargeVehicleCandidate> = {},
 ): ChargeVehicleCandidate => ({
   name: 'V1',
-  dispatchEnabled: true,
   ignored: false,
   idleAvailable: true,
   charging: false,
@@ -44,10 +43,7 @@ describe('charge.policy', () => {
       );
     });
 
-    it('is false when disabled, ignored, not idle, on an order, or unlocalized', () => {
-      expect(
-        needsCharging(candidate({ dispatchEnabled: false }), CHARGE_POINTS),
-      ).toBe(false);
+    it('is false when ignored, not idle, on an order, or unlocalized', () => {
       expect(needsCharging(candidate({ ignored: true }), CHARGE_POINTS)).toBe(
         false,
       );

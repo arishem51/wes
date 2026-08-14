@@ -1,5 +1,8 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsIn,
@@ -8,6 +11,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
 } from 'class-validator';
@@ -169,6 +173,41 @@ export type AgvKernelStatus =
   | 'unknown';
 
 export type AgvAcceptanceStatus = 'ENABLED' | 'DISABLED' | 'IGNORED';
+
+export const AGV_ACCEPTANCE_ACTIONS = [
+  'enable',
+  'disable',
+  'ignore',
+  'restore',
+] as const;
+
+export type AgvAcceptanceAction = (typeof AGV_ACCEPTANCE_ACTIONS)[number];
+
+export const MAX_ACCEPTANCE_BATCH = 200;
+
+export class SetAgvAcceptanceDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(MAX_ACCEPTANCE_BATCH)
+  @IsUUID('4', { each: true })
+  ids!: string[];
+
+  @IsIn(AGV_ACCEPTANCE_ACTIONS)
+  action!: AgvAcceptanceAction;
+}
+
+export type AgvAcceptanceOutcome = 'changed' | 'unchanged' | 'failed';
+
+export interface AgvAcceptanceResultDto {
+  id: string;
+  outcome: AgvAcceptanceOutcome;
+  reason: string | null;
+}
+
+export interface AgvAcceptanceResponse {
+  action: AgvAcceptanceAction;
+  results: AgvAcceptanceResultDto[];
+}
 
 export interface AgvDto {
   id: string;

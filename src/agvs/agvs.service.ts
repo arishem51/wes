@@ -10,16 +10,52 @@ import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type {
+  AgvAcceptanceAction,
+  AgvAcceptanceResponse,
+  AgvAcceptanceResultDto,
   AgvDto,
   AgvListResponse,
   CreateAgvDto,
   ListAgvsQueryDto,
+  SetAgvAcceptanceDto,
   UpdateAgvDto,
 } from './dto/agvs.dto';
 import { resolveKernelStatus, toAgvDto } from './agvs.mapper';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
+
+const IGNORED_USE_RESTORE = 'AGV đang bị bỏ qua — hãy dùng Khôi phục.';
+
+function acceptanceBlocker(
+  agv: AgvEntity,
+  action: AgvAcceptanceAction,
+): string | null {
+  switch (action) {
+    case 'enable':
+      if (agv.isIgnored) return IGNORED_USE_RESTORE;
+      return agv.isDispatchEnabled ? 'AGV đã ở trạng thái nhận việc.' : null;
+    case 'disable':
+      if (agv.isIgnored) return IGNORED_USE_RESTORE;
+      return agv.isDispatchEnabled ? null : 'AGV đã ngừng nhận việc.';
+    case 'ignore':
+      return agv.isIgnored ? 'AGV đã bị bỏ qua.' : null;
+    case 'restore':
+      return agv.isIgnored ? null : 'AGV không ở trạng thái bỏ qua.';
+  }
+}
+
+function isNoOp(agv: AgvEntity, action: AgvAcceptanceAction): boolean {
+  switch (action) {
+    case 'enable':
+    case 'restore':
+      return !agv.isIgnored && agv.isDispatchEnabled;
+    case 'disable':
+      return !agv.isIgnored && !agv.isDispatchEnabled;
+    case 'ignore':
+      return agv.isIgnored;
+  }
+}
 
 @Injectable()
 export class AgvsService {
@@ -148,60 +184,84 @@ export class AgvsService {
     await this.kernelApi.setVehicleAdapterEnabled(agv.name, false);
   }
 
-  async enable(id: string): Promise<AgvDto> {
-    const agv = await this.repo.findOne({ where: { id } });
-    if (!agv) throw new NotFoundException('AGV không tồn tại.');
-    if (agv.isIgnored) {
-      throw new ConflictException('AGV đang bị bỏ qua — hãy dùng Khôi phục.');
-    }
-    if (agv.isDispatchEnabled) {
-      throw new ConflictException('AGV đã ở trạng thái nhận việc.');
-    }
-    agv.isDispatchEnabled = true;
-    const saved = await this.repo.save(agv);
-    return this.toDto(saved);
+  enable(id: string): Promise<AgvDto> {
+    return this.runAcceptance(id, 'enable');
   }
 
-  async disable(id: string): Promise<AgvDto> {
-    const agv = await this.repo.findOne({ where: { id } });
-    if (!agv) throw new NotFoundException('AGV không tồn tại.');
-    if (agv.isIgnored) {
-      throw new ConflictException('AGV đang bị bỏ qua — hãy dùng Khôi phục.');
-    }
-    if (!agv.isDispatchEnabled) {
-      throw new ConflictException('AGV đã ngừng nhận việc.');
-    }
-    agv.isDispatchEnabled = false;
-    const saved = await this.repo.save(agv);
-    return this.toDto(saved);
+  disable(id: string): Promise<AgvDto> {
+    return this.runAcceptance(id, 'disable');
   }
 
-  async ignore(id: string): Promise<AgvDto> {
-    const agv = await this.repo.findOne({ where: { id } });
-    if (!agv) throw new NotFoundException('AGV không tồn tại.');
-    if (agv.isIgnored) {
-      throw new ConflictException('AGV đã bị bỏ qua.');
-    }
-    await this.kernelApi.setVehicleIntegrationLevel(
-      agv.name,
-      'TO_BE_RESPECTED',
-    );
-    agv.isIgnored = true;
-    const saved = await this.repo.save(agv);
-    return this.toDto(saved);
+  ignore(id: string): Promise<AgvDto> {
+    return this.runAcceptance(id, 'ignore');
   }
 
-  async restore(id: string): Promise<AgvDto> {
+  restore(id: string): Promise<AgvDto> {
+    return this.runAcceptance(id, 'restore');
+  }
+
+  async setAcceptance(
+    dto: SetAgvAcceptanceDto,
+  ): Promise<AgvAcceptanceResponse> {
+    const results: AgvAcceptanceResultDto[] = [];
+    for (const id of [...new Set(dto.ids)]) {
+      results.push({ id, ...(await this.tryAcceptance(id, dto.action)) });
+    }
+    return { action: dto.action, results };
+  }
+
+  private async runAcceptance(
+    id: string,
+    action: AgvAcceptanceAction,
+  ): Promise<AgvDto> {
     const agv = await this.repo.findOne({ where: { id } });
     if (!agv) throw new NotFoundException('AGV không tồn tại.');
-    if (!agv.isIgnored) {
-      throw new ConflictException('AGV không ở trạng thái bỏ qua.');
+    const blocker = acceptanceBlocker(agv, action);
+    if (blocker) throw new ConflictException(blocker);
+    return this.toDto(await this.applyAcceptance(agv, action));
+  }
+
+  private async tryAcceptance(
+    id: string,
+    action: AgvAcceptanceAction,
+  ): Promise<Omit<AgvAcceptanceResultDto, 'id'>> {
+    const agv = await this.repo.findOne({ where: { id } });
+    if (!agv) return { outcome: 'failed', reason: 'AGV không tồn tại.' };
+
+    const blocker = acceptanceBlocker(agv, action);
+    if (blocker) {
+      return {
+        outcome: isNoOp(agv, action) ? 'unchanged' : 'failed',
+        reason: blocker,
+      };
     }
-    await this.kernelApi.setVehicleIntegrationLevel(agv.name, 'TO_BE_UTILIZED');
-    agv.isIgnored = false;
-    agv.isDispatchEnabled = true;
-    const saved = await this.repo.save(agv);
-    return this.toDto(saved);
+
+    try {
+      await this.applyAcceptance(agv, action);
+      return { outcome: 'changed', reason: null };
+    } catch (err) {
+      return { outcome: 'failed', reason: (err as Error).message };
+    }
+  }
+
+  private async applyAcceptance(
+    agv: AgvEntity,
+    action: AgvAcceptanceAction,
+  ): Promise<AgvEntity> {
+    if (action === 'ignore' || action === 'restore') {
+      await this.kernelApi.setVehicleIntegrationLevel(
+        agv.name,
+        action === 'ignore' ? 'TO_BE_RESPECTED' : 'TO_BE_UTILIZED',
+      );
+    }
+    if (action === 'enable') agv.isDispatchEnabled = true;
+    if (action === 'disable') agv.isDispatchEnabled = false;
+    if (action === 'ignore') agv.isIgnored = true;
+    if (action === 'restore') {
+      agv.isIgnored = false;
+      agv.isDispatchEnabled = true;
+    }
+    return this.repo.save(agv);
   }
 
   async remove(id: string): Promise<void> {

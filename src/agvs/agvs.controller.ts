@@ -23,6 +23,7 @@ import {
   AgvTaskHistoryQueryDto,
   CreateAgvDto,
   ListAgvsQueryDto,
+  SetAgvAcceptanceDto,
   UpdateAgvDto,
 } from './dto/agvs.dto';
 
@@ -85,6 +86,12 @@ export class AgvsController {
   @HttpCode(204)
   disconnect(@Param('id') id: string) {
     return this.service.disconnect(id);
+  }
+
+  @Post('acceptance')
+  @HttpCode(200)
+  setAcceptance(@Body() dto: SetAgvAcceptanceDto) {
+    return this.service.setAcceptance(dto);
   }
 
   @Post(':id/enable')

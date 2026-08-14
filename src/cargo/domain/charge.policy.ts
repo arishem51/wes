@@ -5,7 +5,6 @@ export interface ChargeLocation {
 
 export interface ChargeVehicleCandidate {
   readonly name: string;
-  readonly dispatchEnabled: boolean;
   readonly ignored: boolean;
   readonly idleAvailable: boolean;
   readonly charging: boolean;
@@ -22,7 +21,6 @@ export function needsCharging(
   chargePointNames: ReadonlySet<string>,
 ): boolean {
   return (
-    c.dispatchEnabled &&
     !c.ignored &&
     c.idleAvailable &&
     !c.onOrder &&
