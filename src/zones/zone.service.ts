@@ -80,7 +80,7 @@ export class ZoneService {
     const topology = await readPlantTopology(this.kernelApi);
     if (!topology) {
       throw new ServiceUnavailableException(
-        'Không thể đọc bản đồ đang tải trên kernel — chưa xác định được khu vực thuộc bản đồ nào.',
+        'Không thể đọc bản đồ đang tải trên hệ thống điều khiển — chưa xác định được khu vực thuộc bản đồ nào.',
       );
     }
 
@@ -338,7 +338,7 @@ export class ZoneService {
     const topology = await readPlantTopology(this.kernelApi);
     if (!topology) {
       throw new ServiceUnavailableException(
-        'Không thể đọc bản đồ đang tải trên kernel.',
+        'Không thể đọc bản đồ đang tải trên hệ thống điều khiển.',
       );
     }
 

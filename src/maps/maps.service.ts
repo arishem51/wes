@@ -67,7 +67,7 @@ export class MapsService {
     } catch (err) {
       const msg = (err as AxiosError).message;
       throw new ServiceUnavailableException(
-        `Không thể chuyển chế độ kernel: ${msg}`,
+        `Không thể chuyển chế độ hệ thống điều khiển: ${msg}`,
       );
     }
 

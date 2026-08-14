@@ -13,8 +13,8 @@ export async function savePlantModel(
     const status = axiosErr.response?.status;
     const msg =
       status === 400 || status === 409
-        ? 'Kernel đang ở chế độ Vận hành, không thể cập nhật bản đồ. Hãy chuyển sang chế độ Thiết kế trước.'
-        : `Không thể kết nối kernel: ${axiosErr.message}`;
+        ? 'Hệ thống điều khiển đang ở chế độ Vận hành, không thể cập nhật bản đồ. Hãy chuyển sang chế độ Thiết kế trước.'
+        : `Không thể kết nối hệ thống điều khiển: ${axiosErr.message}`;
     throw new ServiceUnavailableException(msg);
   }
 }

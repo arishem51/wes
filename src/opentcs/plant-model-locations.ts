@@ -30,7 +30,9 @@ function recordArray(value: unknown): Record<string, unknown>[] {
 
 function requireModel(rawModel: unknown): Record<string, unknown> {
   if (!rawModel || typeof rawModel !== 'object') {
-    throw new ServiceUnavailableException('Không thể kết nối kernel.');
+    throw new ServiceUnavailableException(
+      'Không thể kết nối hệ thống điều khiển.',
+    );
   }
   return rawModel as Record<string, unknown>;
 }

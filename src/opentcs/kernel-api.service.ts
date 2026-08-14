@@ -23,6 +23,7 @@ import {
   unusablePlantModelEntries,
 } from './domain/kernel-mappers';
 import { vehicleOperationsFor } from './domain/vehicle-operations';
+import { toVehicleCommandException } from './vehicle-command-error';
 
 @Injectable()
 export class KernelApiService {
@@ -401,10 +402,10 @@ export class KernelApiService {
     vehicleName: string,
     enabled: boolean,
   ): Promise<void> {
-    await axios.put(
-      `${this.baseUrl}/v1/vehicles/${encodeURIComponent(vehicleName)}/commAdapter/enabled?newValue=${enabled}`,
-      null,
-      { timeout: 5_000 },
+    await this.putVehicleCommand(
+      vehicleName,
+      `commAdapter/enabled?newValue=${enabled}`,
+      enabled ? 'kích hoạt' : 'ngừng kết nối',
     );
   }
 
@@ -416,11 +417,27 @@ export class KernelApiService {
       | 'TO_BE_RESPECTED'
       | 'TO_BE_UTILIZED',
   ): Promise<void> {
-    await axios.put(
-      `${this.baseUrl}/v1/vehicles/${encodeURIComponent(vehicleName)}/integrationLevel?newValue=${level}`,
-      null,
-      { timeout: 5_000 },
+    await this.putVehicleCommand(
+      vehicleName,
+      `integrationLevel?newValue=${level}`,
+      'đổi mức tích hợp',
     );
+  }
+
+  private async putVehicleCommand(
+    vehicleName: string,
+    pathAndQuery: string,
+    action: string,
+  ): Promise<void> {
+    try {
+      await axios.put(
+        `${this.baseUrl}/v1/vehicles/${encodeURIComponent(vehicleName)}/${pathAndQuery}`,
+        null,
+        { timeout: 5_000 },
+      );
+    } catch (err) {
+      throw toVehicleCommandException(err, vehicleName, action);
+    }
   }
 
   async initializeVehiclesForOperation(): Promise<void> {

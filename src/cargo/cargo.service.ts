@@ -411,7 +411,7 @@ export class CargoService {
     const name = await this.kernelApi.getPlantModelName();
     if (!name) {
       throw new ServiceUnavailableException(
-        'Không thể đọc bản đồ đang tải trên kernel.',
+        'Không thể đọc bản đồ đang tải trên hệ thống điều khiển.',
       );
     }
     return name;
