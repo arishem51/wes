@@ -1,4 +1,19 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "frontend", "**/*spec.ts"]
+  "include": ["src"],
+  "exclude": ["node_modules", "test", "dist", "frontend", "**/*spec.ts"],
+  "watchOptions": {
+    "excludeDirectories": [
+      "**/node_modules",
+      "dist",
+      ".git",
+      "report",
+      "slide",
+      "maps",
+      "database",
+      "scripts",
+      "mqtt",
+      ".agents"
+    ]
+  }
 }
