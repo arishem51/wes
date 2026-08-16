@@ -12,7 +12,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Observable } from 'rxjs';
+import { Observable, interval, merge } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { MapsService } from './maps.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -23,6 +23,8 @@ import { IsIn } from 'class-validator';
 import type { AuthUser } from '../auth/jwt-payload';
 import type { KernelMode } from './maps.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
+
+const SSE_HEARTBEAT_MS = 15_000;
 
 interface UploadFile {
   buffer: Buffer;
@@ -78,8 +80,13 @@ export class MapsController {
 
   @Sse('kernel/sse')
   vehicleStream(): Observable<MessageEvent> {
-    return this.vehicleStateStore.vehicleUpdates.pipe(
-      map((vehicle) => ({ data: vehicle })),
+    return merge(
+      this.vehicleStateStore.vehicleUpdates.pipe(
+        map((vehicle) => ({ data: vehicle })),
+      ),
+      interval(SSE_HEARTBEAT_MS).pipe(
+        map(() => ({ type: 'heartbeat', data: '' })),
+      ),
     );
   }
 
