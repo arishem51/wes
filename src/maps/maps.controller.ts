@@ -24,7 +24,7 @@ import type { AuthUser } from '../auth/jwt-payload';
 import type { KernelMode } from './maps.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 
-const SSE_HEARTBEAT_MS = 15_000;
+const SSE_HEARTBEAT_MS = 5_000;
 
 interface UploadFile {
   buffer: Buffer;
