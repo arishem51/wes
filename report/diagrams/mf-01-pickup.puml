@@ -1,0 +1,79 @@
+@startuml mf-01-pickup
+' SRS Section II.1.2.1 — Main Workflow: Pickup
+' Continues in mf-02a-reserve-aim.puml
+' The tail of this flow changed with the dynamic drop-off: the pick-up no longer
+' hands over to an approach order (TO2); WES reserves a concrete drop-off slot
+' and aims the drop-off order (TO3) straight at it.
+' Business-level vocabulary only; implementation detail belongs in the SDS.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng mf-01-pickup.puml
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam swimlaneWidth 260
+skinparam ArrowColor #000000
+skinparam ActivityBorderColor #000000
+skinparam ActivityBackgroundColor #7ACFF4
+skinparam ActivityDiamondBorderColor #000000
+skinparam ActivityDiamondBackgroundColor #7ACFF4
+skinparam NoteBackgroundColor #7ACFF4
+skinparam NoteBorderColor #000000
+
+|Scanner|
+|WES|
+|FMS (openTCS)|
+|AGV|
+
+|Scanner|
+start
+:Create cargo;
+note right: source point\n+ destination zone
+
+|WES|
+:Validate request\n(source point, drop-off zone);
+if (Valid?) then (No)
+  :Request reject;
+  stop
+else (Yes)
+endif
+:Check pickup lane safety;
+if (A vehicle is already ordered\ndeeper into the same lane?) then (Yes)
+  :Reject request;
+  stop
+else (No)
+endif
+:Withdraw the orders of deeper tasks\nthat have not set off yet -> BLOCKED;
+:Create Cargo and Task -> CREATED;
+:Debounce 1.5s;
+:Release Engine: check in-lane dependency\n(outer cargo goes before inner);
+if (Blocked by an outer cargo?) then (Yes)
+  :Task -> BLOCKED until the\nouter cargo leaves its source;
+  stop
+else (No)
+endif
+:Task -> READY_TO_ASSIGN;
+:Assignment Engine Hungarian\nover distance and battery cost;
+if (A suitable free vehicle?) then (No)
+  :Tasks wait for the\nnext dispatch cycle;
+  stop
+else (Yes)
+endif
+:Call openTCS to create TO1\n(intendedVehicle = matched AGV);
+:Task -> PICKING_UP;
+
+|FMS (openTCS)|
+:Receive TO1, route the vehicle\nto the pickup location;
+:Send the order to the AGV;
+
+|AGV|
+:Drive -> Load cargo -> Report finished;
+
+|FMS (openTCS)|
+:Call back TO1 FINISHED to WES;
+
+|WES|
+:Reserve a concrete drop-off slot\nin the destination zone (BR-11);
+:Call openTCS to create TO3\n(DROP_OFF aimed at the reserved slot);
+:Task -> DELIVERING (continues in MF-02);
+stop
+
+@enduml

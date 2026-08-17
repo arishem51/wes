@@ -4,7 +4,11 @@
 '   + dispatch_policies and vehicle_error_events (the schema has 18 tables, not 16)
 '   ~ agvs: operational_/charging_battery_threshold -> critical_/sufficient_battery_threshold
 '   ~ cargos : transport_requests is 1:1, not 1:N
-' Render: java -jar plantuml.jar -tpng erd-v2.puml   (requires Graphviz dot)
+' 2026-08-17: cargos gained reserved_location_name and slot_decision_seq
+'   (migration AddCargoSlotReservation) for the dynamic drop-off;
+'   zones.approach_location_name is gone with the approach leg — the columns
+'   the entity actually carries are color and plant_model_name.
+' Render: java -jar plantuml.jar -Playout=smetana -tpng erd-v2.puml
 
 hide circle
 hide empty methods
@@ -142,8 +146,9 @@ entity "zones" as zones {
   --
   * name : varchar(255)
   * type : zone_type_enum
+  color : varchar(9)
   kernel_id : integer <<UN>>
-  approach_location_name : varchar(255)
+  plant_model_name : varchar(255)
   * status : zone_status_enum
   * created_at : timestamptz
   * updated_at : timestamptz
@@ -179,6 +184,8 @@ entity "cargos" as cargos {
   source_point_name : varchar(255)
   source_pickup_location_name : varchar(255)
   destination_location_name : varchar(255)
+  reserved_location_name : varchar(255)
+  * slot_decision_seq : int
   source_zone_id : uuid <<FK>>
   destination_zone_id : uuid <<FK>>
   * status : cargo_status_enum
