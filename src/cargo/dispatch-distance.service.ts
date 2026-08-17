@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { CargoEntity } from './entities/cargo.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { RoutingService } from './routing.service';
-import { ApproachPointService } from './approach-point.service';
+import { DeliverySlotEngine } from './delivery-slot.engine';
 import { shortestDistancesFrom } from './domain/routing';
 
 export interface DispatchDistances {
@@ -18,7 +18,7 @@ export class DispatchDistanceService {
     @InjectRepository(ZoneEntity)
     private readonly zoneRepo: Repository<ZoneEntity>,
     private readonly routing: RoutingService,
-    private readonly approachPoint: ApproachPointService,
+    private readonly deliverySlotEngine: DeliverySlotEngine,
   ) {}
 
   async open(): Promise<DispatchDistances> {
@@ -44,7 +44,10 @@ export class DispatchDistanceService {
         where: { id: zoneId },
         relations: { members: true },
       });
-      const feeders = zone ? await this.approachPoint.feederPointsOf(zone) : [];
+      const layout = zone
+        ? await this.deliverySlotEngine.layoutFor(zone)
+        : null;
+      const feeders = layout?.entryPoints ?? [];
       feederCache.set(zoneId, feeders);
       return feeders;
     };

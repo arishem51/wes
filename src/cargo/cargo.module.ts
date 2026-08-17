@@ -21,11 +21,13 @@ import { LegReconcileService } from './leg-reconcile.service';
 import { TransportTaskSaga } from './transport-task.saga';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
+import { SlotReservationService } from './slot-reservation.service';
+import { DropoffOrderService } from './dropoff-order.service';
+import { DropoffCommitLoop } from './dropoff-commit.loop';
 import { ZoneGeometryService } from './zone-geometry.service';
 import { PickupDependencyService } from './pickup-dependency.service';
 import { LaneSafetyService } from './lane-safety.service';
 import { RoutingService } from './routing.service';
-import { ApproachPointService } from './approach-point.service';
 import { RetreatPointService } from './retreat-point.service';
 import { DispatchDistanceService } from './dispatch-distance.service';
 import { VehicleCandidateService } from './vehicle-candidate.service';
@@ -49,12 +51,14 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     TransportTaskService,
     TaskTerminationService,
     DeliverySlotEngine,
+    SlotReservationService,
+    DropoffOrderService,
+    DropoffCommitLoop,
     ZoneGeometryService,
     PickupDependencyService,
     LaneSafetyService,
     RoutingService,
     DispatchPolicyService,
-    ApproachPointService,
     RetreatPointService,
     ParkClaimStore,
     DispatchDistanceService,

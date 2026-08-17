@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import {
@@ -36,6 +36,8 @@ export interface PickupDecision {
  */
 @Injectable()
 export class PickupDependencyService {
+  private readonly logger = new Logger(PickupDependencyService.name);
+
   constructor(
     @InjectRepository(TransportTaskEntity)
     private readonly taskRepo: Repository<TransportTaskEntity>,
@@ -111,11 +113,12 @@ export class PickupDependencyService {
         ? await this.zoneGeometry.computeMemberAxes(zone)
         : null;
 
-      // Geometry unavailable → can't rank, treat all as unblocked.
       if (!geometry) {
-        for (const e of entries) {
-          decisions.push({ task: e.task, blocked: false, reason: null });
-        }
+        this.logger.error(
+          `Zone "${zone?.name ?? zoneId}": no geometry, holding ${entries.length} task(s) where` +
+            ' they are. Releasing them would let a vehicle drive into a lane behind cargo that' +
+            ' has not been collected yet.',
+        );
         continue;
       }
 

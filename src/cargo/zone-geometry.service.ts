@@ -46,15 +46,21 @@ export class ZoneGeometryService {
     let depthDirX = 0;
     let depthDirY = 0;
     for (const path of plantModel.paths) {
-      const dest = path.destPointName;
-      const src = path.srcPointName;
-      if (!memberPointNames.has(dest) || memberPointNames.has(src)) continue;
-      const srcCoords = pointMap.get(src);
-      const destCoords = pointMap.get(dest);
-      if (!srcCoords || !destCoords) continue;
-      aisleRefCoords.push(srcCoords);
-      depthDirX += destCoords.x - srcCoords.x;
-      depthDirY += destCoords.y - srcCoords.y;
+      const srcInside = memberPointNames.has(path.srcPointName);
+      const destInside = memberPointNames.has(path.destPointName);
+      if (srcInside === destInside) continue;
+
+      const outside = pointMap.get(
+        srcInside ? path.destPointName : path.srcPointName,
+      );
+      const inside = pointMap.get(
+        srcInside ? path.srcPointName : path.destPointName,
+      );
+      if (!outside || !inside) continue;
+
+      aisleRefCoords.push(outside);
+      depthDirX += inside.x - outside.x;
+      depthDirY += inside.y - outside.y;
     }
 
     if (aisleRefCoords.length === 0) {

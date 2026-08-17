@@ -59,7 +59,7 @@ it lives, and the one rule that keeps it intact.
 | **State Machine** | `cargo/domain/transport-task.state-machine.ts` | The transition table is the single source of truth for the task lifecycle and the only code that assigns `task.status` (§4). |
 | **Single write choke point** | `cargo/transport-task.service.ts` | `TransportTaskService.changeStatus()` is the only path to transition: validate (state machine) → persist → emit. Set other fields before calling it. |
 | **In-process Event Bus** | `cargo/domain/events.ts` + `@nestjs/event-emitter` | Producers `emit`, consumers `@OnEvent`. Never call another service's method to trigger a reaction — emit an event (§3). |
-| **Saga / Process Manager** | `cargo/transport-task.saga.ts` | Owns the TO1→TO2→TO3 leg progression reacting to `fms.transport-order.finished`. Keep multi-leg flow here, not scattered. |
+| **Saga / Process Manager** | `cargo/transport-task.saga.ts` | Owns the TO1→TO3 leg progression reacting to `fms.transport-order.finished`. Keep multi-leg flow here, not scattered. |
 | **Specification / Strategy** | `cargo/domain/dispatch.policy.ts`, `cargo/domain/row-dependency.policy.ts` | Fleet eligibility, vehicle pick, and row-dependency are pure functions. The engine feeds data in; the policy decides. No hardcoded vehicles (§6). |
 | **Anti-Corruption Layer** | `src/opentcs/` | All openTCS REST/SSE + types stay here; never leak openTCS types into business modules (§5). |
 | **Repository + DTO** | every module | TypeORM repos for persistence; map entities → DTO before returning from controllers. |
@@ -94,11 +94,14 @@ src/cargo/
   cargo.dto.ts
   cargo.module.ts
   transport-task.service.ts      # ⭐ single write choke point for task.status
-  transport-task.saga.ts         # ⭐ TO1→TO2→TO3 orchestration (@OnEvent)
+  transport-task.saga.ts         # ⭐ TO1→TO3 orchestration (@OnEvent)
   release-engine.service.ts      # CREATED → READY_TO_ASSIGN | BLOCKED
   assignment-engine.service.ts   # READY_TO_ASSIGN → PICKING_UP (+ creates TO1)
   dispatch-scheduler.service.ts  # debounced flush: release → assign (@OnEvent)
-  delivery-slot.engine.ts        # picks a free drop-off slot in a zone (at the TO2 barrier)
+  delivery-slot.engine.ts        # zone slot layout + cascading fill order (BR-11)
+  slot-reservation.service.ts    # reserve / commit / swap a drop-off slot
+  dropoff-commit.loop.ts         # 500ms loop: commits a reservation at the zone gate
+  dropoff-order.service.ts       # issues and re-aims the drop-off transport order
   domain/                        # PURE — no NestJS, no TypeORM
     events.ts                    # event names + payload classes
     transport-task.state-machine.ts
@@ -183,7 +186,7 @@ VehicleErrorService        ← @OnEvent('fms.vehicle.error-changed')
                              inserts one row into vehicle_error_events (§6.6)
 
 TransportTaskSaga          ← @OnEvent('fms.transport-order.finished')
-                             advances TO1 → TO2 → TO3,
+                             advances TO1 → TO3,
                              changes status via TransportTaskService
 
 TransportTaskService        = the only writer of task.status; on each change
@@ -225,23 +228,27 @@ it — they persist in the same write.
 CREATED ──► READY_TO_ASSIGN ──► PICKING_UP ──► DELIVERING ──► DELIVERY_COMPLETED
   ReleaseEngine     AssignmentEngine    saga          saga
   passes dep →      picks AGV, creates  TO1 FINISHED  TO3 FINISHED →
-  READY else        TO1 (PICK_UP)       → create TO2  DELIVERY_COMPLETED
-  BLOCKED                               (approach MOVE) + cargo = DELIVERED
+  READY else        TO1 (PICK_UP)       → reserve a   DELIVERY_COMPLETED
+  BLOCKED                               drop-off slot + cargo = DELIVERED
+                                        → create TO3
+                                        (DROP_OFF) aimed at it
                                         → DELIVERING.
-                                        TO2 FINISHED → create TO3
-                                        (DROP_OFF), stays DELIVERING.
 
 CANCELLED ◄── from CREATED, BLOCKED, READY_TO_ASSIGN, PICKING_UP, DELIVERING
-FAILED    ◄── from PICKING_UP, DELIVERING  (missing approach/destination
-                                            location or assigned vehicle)
+FAILED    ◄── from PICKING_UP, DELIVERING  (missing destination zone or
+                                            assigned vehicle)
 Terminal (no exits): DELIVERY_COMPLETED, CANCELLED, FAILED
 ```
 
-There are **three** openTCS transport orders per task: `TO1` = pick-up, `TO2` =
-approach (a `MOVE` to a specific feeder-head point, with no load operation),
-`TO3` = drop-off. The order-name prefix (`TO1-`/`TO2-`/`TO3-`) tells the saga
-which leg finished; the names are stored in
-`task.metadata.{to1Name,to2Name,to3Name}`.
+There are **two** openTCS transport orders per task: `TO1` = pick-up, `TO3` =
+drop-off. There is no approach leg and no shared approach point — a vehicle
+drives from the pick-up straight to the slot reserved for its cargo. The leg
+property on the order (`wes:leg`) tells the saga which one finished; the names
+are stored in `task.metadata.{to1Name,to3Name}`.
+
+The `APPROACH` leg and `to2Name` are retired. `TaskLeg` still carries the
+`'APPROACH'` member so an order issued by an older build finishes cleanly
+instead of throwing; the saga simply has no branch for it.
 
 **TO3 carries two drive orders, not one.** After the unload operation the vehicle
 must back out of the drop-off cell, so TO3's destination list is
@@ -259,21 +266,51 @@ slot from the live plant model; the rule itself is pure in
 `cargo/domain/retreat-point.ts` — same x, smallest positive Δy, traversable path
 at every hop, never turning and never skipping a missing hop. An unresolvable
 retreat logs a warning and TO3 goes out with the drop-off destination alone: a
-topology gap must not block a delivery. It is resolved **outside**
-`commitDropoffSlot`, because that method holds the per-zone advisory lock and no
-HTTP call may run inside it (§6.3).
+topology gap must not block a delivery. It is resolved by `DropoffOrderService`,
+**outside** any advisory lock: no HTTP call may run inside one (§6.3).
 
-**Drop-off slot is late-bound.** Creating a request only *reserves a seat* in the
-destination zone (`cargo.destination_zone_id`, capacity-checked against the zone's
-member count); `cargo.destination_location_name` stays null. The concrete slot is
-committed at the **TO2 barrier** (`TransportTaskSaga.commitDropoffSlot` →
-`DeliverySlotEngine.findSlot`), under a per-zone advisory lock, when the vehicle is
-parked at the zone's approach head and occupancy reflects physical reality — this
-keeps the fill order correct on one-way lanes. `TO1` (pick-up) therefore only needs
-the source location. TO2's target is chosen at dispatch:
-`ApproachPointService.pickFor(zone, vehicle)` returns the **nearest reachable
-feeder-head point** (an aisle head from which all slots stay forward-reachable),
-and TO2 is a `MOVE` to that point — no `zone_<id>` approach location is involved.
+**Drop-off slot: reserve, commit, swap.** A slot moves through two states on the
+cargo row, and only the second one is binding:
+
+| state | column | set by | can be taken away |
+|---|---|---|---|
+| reserved | `cargo.reserved_location_name` | `SlotReservationService.reserve` when TO1 finishes | yes |
+| committed | `cargo.destination_location_name` | `SlotReservationService.commit` at the zone gate | never |
+
+Creating a request still only *reserves a seat* in the destination zone
+(`cargo.destination_zone_id`, capacity-checked in `assertZoneHasRoom` against the
+count of slots that can actually reach the exit). When TO1 finishes, the saga
+reserves a **concrete slot** and aims TO3 at it, so **no two vehicles ever carry
+the same MAPF goal** — that is the invariant the whole design exists to hold.
+
+`DropoffCommitLoop` polls every 500 ms and turns a reservation into a commit at
+the point of no return:
+
+- vehicle standing on a zone **entry point** (`ZoneSlotLayout.entryPoints`, i.e.
+  the feeder heads) → commit, and a swap is allowed;
+- vehicle already on a **member point** → commit its own reservation, no swap:
+  it is past the last vertex from which it could still pick another column;
+- anywhere else → nothing happens.
+
+A **swap** fires when the vehicle at the gate finds that the best uncommitted
+slot belongs to a cargo that has not committed yet. It takes that slot, the
+displaced cargo is re-reserved from what is left, and both drop-off orders are
+withdrawn and re-issued. Termination is structural: a commit is irreversible and
+every swap ends in one, so a slot can be stolen at most once and a cargo can be
+displaced at most `fleet size − 1` times per trip. `assertZoneHasRoom` keeps
+`#cargo ≤ #slots`, so a displaced cargo always has somewhere to go.
+
+Late is safe, not wrong: if the loop misses the tick where the vehicle sits on
+the gate, the commit still happens once it is inside the zone — it just loses the
+right to swap. The gate is a quality gradient, never a deadline.
+
+`DeliverySlotEngine` splits the static from the live. `layoutFor(zone)` builds a
+`ZoneSlotLayout` (columns ordered farthest-from-exit first, each ordered from the
+far end of the rack inwards, plus the entry points) and caches it per zone behind
+a 30 s plant-model TTL. `rank(layout, occupied)` is pure — it replays the
+cascading depth-first fill (BR-11) and returns every free slot in the order it
+would be filled. Callers prepare the layout **before** opening the transaction,
+which is what keeps HTTP out of the advisory lock.
 
 ### 4.3 State machine interface
 
@@ -410,10 +447,10 @@ vehicle name are ambiguous, so that name is excluded from the cycle and logged.
 `dispatch_policies` row carrying `weight_battery > 0`, a reachable pair costs
 `(d_pickup + d_approach) × (1 + weight_battery × (1 − energyLevel/100))`, where
 `d_approach` is the distance from the cargo's source point to the cheapest
-approach point of its destination zone (`ApproachPointService.feederPointsOf`,
-same feeder the saga commits at the TO2 barrier — §6.3). The destination *zone*
-is known at request creation; only the concrete slot waits for TO2. The
-drop-off leg is deliberately excluded: its point is unknown until that barrier.
+entry point of its destination zone (`ZoneSlotLayout.entryPoints`, the same
+gate the commit loop watches — §4.2). The destination *zone* is known at request
+creation; the concrete slot is reserved only once the pick-up finishes. The
+drop-off leg is deliberately excluded: its point is unknown at dispatch time.
 
 `d_approach` never enters the unweighted cost, and must not be added there: it
 is constant across a matrix row, and adding a constant to a row cannot change

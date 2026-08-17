@@ -45,6 +45,17 @@ export class CargoEntity {
   })
   destinationLocationName!: string | null;
 
+  @Column({
+    name: 'reserved_location_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  reservedLocationName!: string | null;
+
+  @Column({ name: 'slot_decision_seq', type: 'int', default: 0 })
+  slotDecisionSeq!: number;
+
   @Column({ name: 'source_zone_id', type: 'uuid', nullable: true })
   sourceZoneId!: string | null;
 

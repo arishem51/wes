@@ -18,6 +18,7 @@ import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { TransportTaskService } from './transport-task.service';
 import { TaskTerminationService } from './task-termination.service';
 import { LaneSafetyService } from './lane-safety.service';
+import { DeliverySlotEngine } from './delivery-slot.engine';
 import { allocationReachesPoints } from './domain/lane-safety.policy';
 import type { DispatchMatcher } from './domain/dispatch.policy';
 import {
@@ -131,6 +132,7 @@ export class CargoService {
     private readonly laneSafety: LaneSafetyService,
     private readonly vehicleStore: VehicleStateStore,
     private readonly taskTermination: TaskTerminationService,
+    private readonly deliverySlotEngine: DeliverySlotEngine,
   ) {}
 
   async create(dto: CreateCargoDto, userId: string): Promise<CargoEntity> {
@@ -400,7 +402,10 @@ export class CargoService {
         status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]),
       },
     });
-    if (occupied >= zone.members.length) {
+    const reachableCapacity =
+      await this.deliverySlotEngine.usableCapacityOf(zone);
+    const capacity = reachableCapacity || zone.members.length;
+    if (occupied >= capacity) {
       throw new BadRequestException(
         'Khu trả hàng đã đầy, không còn vị trí trống.',
       );

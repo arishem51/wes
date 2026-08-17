@@ -1,6 +1,9 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { DataSource, EntityManager, Repository } from 'typeorm';
 import { CargoService } from './cargo.service';
+import { DeliverySlotEngine } from './delivery-slot.engine';
+
+const deliverySlotEngine = { usableCapacityOf: jest.fn().mockResolvedValue(0) };
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import {
   TaskStatus,
@@ -126,6 +129,7 @@ function setup(options: SetupOptions = {}) {
     laneSafety as unknown as LaneSafetyService,
     {} as unknown as VehicleStateStore,
     {} as unknown as TaskTerminationService,
+    deliverySlotEngine as unknown as DeliverySlotEngine,
   );
 
   return {
@@ -278,6 +282,7 @@ function listSetup(
     {} as unknown as LaneSafetyService,
     {} as unknown as VehicleStateStore,
     {} as unknown as TaskTerminationService,
+    deliverySlotEngine as unknown as DeliverySlotEngine,
   );
 
   const listWith = (query: ListCargosQueryDto = {}) => svc.list(query);
@@ -440,6 +445,7 @@ function decisionSetup(options: DecisionSetupOptions = {}) {
     {} as unknown as LaneSafetyService,
     {} as unknown as VehicleStateStore,
     {} as unknown as TaskTerminationService,
+    deliverySlotEngine as unknown as DeliverySlotEngine,
   );
 
   return { svc, transitionRepo };
@@ -597,6 +603,7 @@ function removeSetup(options: RemoveSetupOptions = {}) {
     {} as unknown as LaneSafetyService,
     vehicleStore as unknown as VehicleStateStore,
     taskTermination as unknown as TaskTerminationService,
+    deliverySlotEngine as unknown as DeliverySlotEngine,
   );
 
   return { svc, cargoRepo, taskRepo, taskTermination, kernelApi };

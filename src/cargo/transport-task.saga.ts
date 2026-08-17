@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { DataSource, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import {
   TransportTaskEntity,
   TaskStatus,
@@ -12,8 +12,8 @@ import { ZoneEntity } from '../zones/entities/zone.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { TransportOrderDestination as OrderDestination } from '../opentcs/domain/kernel-model';
 import { TransportTaskService } from './transport-task.service';
-import { DeliverySlotEngine } from './delivery-slot.engine';
-import { ApproachPointService } from './approach-point.service';
+import { SlotReservationService } from './slot-reservation.service';
+import { DropoffOrderService } from './dropoff-order.service';
 import { RetreatPointService } from './retreat-point.service';
 import {
   FMS_EVENTS,
@@ -40,12 +40,10 @@ export class TransportTaskSaga {
     private readonly cargoRepo: Repository<CargoEntity>,
     @InjectRepository(ZoneEntity)
     private readonly zoneRepo: Repository<ZoneEntity>,
-    @InjectDataSource()
-    private readonly dataSource: DataSource,
     private readonly kernelApi: KernelApiService,
     private readonly transportTask: TransportTaskService,
-    private readonly deliverySlotEngine: DeliverySlotEngine,
-    private readonly approachPoint: ApproachPointService,
+    private readonly slotReservation: SlotReservationService,
+    private readonly dropoffOrder: DropoffOrderService,
     private readonly retreatPoint: RetreatPointService,
   ) {}
 
@@ -59,9 +57,6 @@ export class TransportTaskSaga {
       switch (event.leg) {
         case 'PICKUP':
           await this.onPickupFinished(event.taskId);
-          break;
-        case 'APPROACH':
-          await this.onApproachFinished(event.taskId);
           break;
         case 'DROPOFF':
           await this.onDropOffFinished(event.taskId);
@@ -100,9 +95,6 @@ export class TransportTaskSaga {
         case 'PICKUP':
           await this.requeueAfterLostNavigation(task, event, retries);
           break;
-        case 'APPROACH':
-          await this.recreateApproach(task, event, retries);
-          break;
         case 'DROPOFF':
           await this.recreateDropOff(task, event, retries);
           break;
@@ -138,47 +130,13 @@ export class TransportTaskSaga {
     );
   }
 
-  private async recreateApproach(
-    task: TransportTaskEntity,
-    event: FmsTransportOrderLostNavigationEvent,
-    retries: number,
-  ): Promise<void> {
-    const approachPoint = task.metadata?.approachPointName;
-    if (!approachPoint) {
-      this.logger.warn(
-        `Task ${task.id}: no recorded approach point to re-issue — leaving it to the reconcile backstop`,
-      );
-      return;
-    }
-
-    const to2Name = buildOrderName(
-      ORDER_TYPE.APPROACH,
-      event.vehicleName,
-      approachPoint,
-      randomUUID(),
-    );
-    const created = await this.createNextOrder(
-      to2Name,
-      [{ locationName: approachPoint, operation: 'MOVE' }],
-      event.vehicleName,
-      { taskId: task.id, leg: 'APPROACH' },
-    );
-    if (!created) return;
-
-    task.metadata = { ...task.metadata, to2Name };
-    await this.taskRepo.save(task);
-    this.logger.log(
-      `Task ${task.id}: re-issued approach as ${to2Name} for ${event.vehicleName} (retry ${retries}/${MAX_LOST_NAVIGATION_RETRIES})`,
-    );
-  }
-
   private async recreateDropOff(
     task: TransportTaskEntity,
     event: FmsTransportOrderLostNavigationEvent,
     retries: number,
   ): Promise<void> {
     const cargo = await this.cargoOf(task);
-    const slot = cargo?.destinationLocationName;
+    const slot = cargo?.destinationLocationName ?? cargo?.reservedLocationName;
     if (!slot) {
       this.logger.warn(
         `Task ${task.id}: no committed drop-off slot to re-issue — leaving it to the reconcile backstop`,
@@ -251,9 +209,9 @@ export class TransportTaskSaga {
     const task = await this.findTask(taskId, TaskStatus.PICKING_UP);
     if (!task) return;
 
-    if (task.metadata?.to2Name) {
+    if (task.metadata?.to3Name) {
       this.logger.debug(
-        `Task ${task.id}: TO2 already created — ignoring duplicate TO1 finished`,
+        `Task ${task.id}: drop-off order already created — ignoring duplicate TO1 finished`,
       );
       return;
     }
@@ -272,7 +230,7 @@ export class TransportTaskSaga {
 
     const cargo = await this.cargoOf(task);
     const zone = cargo ? await this.destinationZoneOf(cargo) : null;
-    if (!zone) {
+    if (!cargo || !zone) {
       this.logger.warn(
         `Task ${task.id} has no destination zone — marking FAILED`,
       );
@@ -283,39 +241,27 @@ export class TransportTaskSaga {
       return;
     }
 
-    const approachPoint = await this.approachPoint.pickFor(zone, vehicle);
-    if (!approachPoint) {
+    const reservedSlot = await this.slotReservation.reserve(cargo.id, zone);
+    if (!reservedSlot) {
       this.logger.warn(
-        `Task ${task.id}: no reachable approach point for ${vehicle} — leaving PICKING_UP for the reconcile backstop to retry`,
+        `Task ${task.id}: zone "${zone.name}" offered no slot to reserve — leaving PICKING_UP for the reconcile backstop to retry`,
       );
       return;
     }
 
-    const to2Name = buildOrderName(
-      ORDER_TYPE.APPROACH,
+    const orderName = await this.dropoffOrder.issue(
+      task,
       vehicle,
-      approachPoint,
-      randomUUID(),
+      reservedSlot,
     );
-    const created = await this.createNextOrder(
-      to2Name,
-      [{ locationName: approachPoint, operation: 'MOVE' }],
-      vehicle,
-      { taskId: task.id, leg: 'APPROACH' },
-    );
-    if (!created) return;
+    if (!orderName) return;
 
-    task.metadata = {
-      ...task.metadata,
-      to2Name,
-      approachPointName: approachPoint,
-    };
     await this.transportTask.changeStatus(task, TaskStatus.DELIVERING, {
       trigger: 'SAGA',
-      context: { to2Name },
+      context: { to3Name: orderName, reservedSlot },
     });
     this.logger.log(
-      `Task ${task.id} → DELIVERING, created ${to2Name} (approach → ${approachPoint})`,
+      `Task ${task.id} → DELIVERING, created ${orderName} (reserved ${reservedSlot})`,
     );
   }
 
@@ -338,86 +284,6 @@ export class TransportTaskSaga {
     return zone;
   }
 
-  private async onApproachFinished(taskId: string): Promise<void> {
-    const task = await this.findTask(taskId, TaskStatus.DELIVERING);
-    if (!task) return;
-
-    if (task.metadata?.to3Name) {
-      this.logger.debug(
-        `Task ${task.id}: TO3 already created — ignoring duplicate TO2 finished`,
-      );
-      return;
-    }
-
-    const cargo = await this.cargoOf(task);
-    if (!cargo) {
-      this.logger.warn(`Task ${task.id} has no cargo — marking FAILED`);
-      await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
-        trigger: 'SAGA',
-        reason: 'no cargo',
-      });
-      return;
-    }
-
-    const vehicle = this.vehicleOf(task);
-    if (!vehicle) {
-      this.logger.warn(
-        `Task ${task.id} has no assigned vehicle — marking FAILED`,
-      );
-      await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
-        trigger: 'SAGA',
-        reason: 'no assigned vehicle at approach finish',
-      });
-      return;
-    }
-
-    let slot = cargo.destinationLocationName;
-    if (!slot) {
-      slot = await this.commitDropoffSlot(cargo);
-      if (!slot) {
-        this.logger.warn(
-          `Task ${task.id}: no drop-off slot available at barrier — marking FAILED`,
-        );
-        await this.transportTask.changeStatus(task, TaskStatus.FAILED, {
-          trigger: 'SAGA',
-          reason: 'no drop-off slot available at barrier',
-        });
-        return;
-      }
-    }
-
-    const retreatPath = await this.retreatPoint.pathFor(slot);
-    if (!retreatPath) {
-      this.logger.warn(
-        `Task ${task.id}: no retreat point behind ${slot} — drop-off goes out without the retreat leg`,
-      );
-    }
-
-    const to3Name = buildOrderName(
-      ORDER_TYPE.DROPOFF,
-      vehicle,
-      slot,
-      randomUUID(),
-    );
-    const created = await this.createNextOrder(
-      to3Name,
-      this.dropOffDestinations(slot, retreatPath),
-      vehicle,
-      { taskId: task.id, leg: 'DROPOFF' },
-    );
-    if (!created) return;
-
-    const retreatPoint = retreatPath?.at(-1);
-    task.metadata = { ...task.metadata, to3Name };
-    if (retreatPoint) task.metadata.retreatPointName = retreatPoint;
-    await this.taskRepo.save(task);
-    this.logger.log(
-      `Task ${task.id}: created ${to3Name} (drop-off at ${slot}${
-        retreatPath ? `, retreat via ${retreatPath.join(' → ')}` : ''
-      })`,
-    );
-  }
-
   private dropOffDestinations(
     slot: string,
     retreatPath: readonly string[] | null,
@@ -431,29 +297,6 @@ export class TransportTaskSaga {
       operation: 'MOVE',
     }));
     return [dropOff, ...retreatSteps];
-  }
-
-  private async commitDropoffSlot(cargo: CargoEntity): Promise<string | null> {
-    const zone = await this.destinationZoneOf(cargo);
-    if (!zone) return null;
-
-    return this.dataSource.transaction(async (manager) => {
-      await manager.query(
-        'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
-        [cargo.destinationZoneId],
-      );
-      const repo = manager.getRepository(CargoEntity);
-      const fresh = await repo.findOne({ where: { id: cargo.id } });
-      if (fresh?.destinationLocationName) {
-        cargo.destinationLocationName = fresh.destinationLocationName;
-        return fresh.destinationLocationName;
-      }
-      const slot = await this.deliverySlotEngine.findSlot(zone);
-      if (!slot) return null;
-      await repo.update(cargo.id, { destinationLocationName: slot });
-      cargo.destinationLocationName = slot;
-      return slot;
-    });
   }
 
   private async onDropOffFinished(taskId: string): Promise<void> {

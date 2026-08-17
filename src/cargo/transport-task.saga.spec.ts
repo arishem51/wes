@@ -14,13 +14,10 @@ function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
   return { promise, resolve };
 }
 
-/** Build a saga with only taskRepo.findOne wired — the single-flight guard drops
- *  the duplicate before any other dependency is touched. */
 function makeSaga(findOne: jest.Mock): TransportTaskSaga {
   const taskRepo = { findOne };
   return new TransportTaskSaga(
     taskRepo as never,
-    {} as never,
     {} as never,
     {} as never,
     {} as never,
@@ -40,13 +37,13 @@ describe('TransportTaskSaga single-flight', () => {
     const findOne = jest.fn().mockReturnValue(d.promise);
     const saga = makeSaga(findOne);
 
-    const p1 = saga.onTransportOrderFinished(event()); // enters, awaits findOne
-    const p2 = saga.onTransportOrderFinished(event()); // sees in-flight → returns
+    const p1 = saga.onTransportOrderFinished(event());
+    const p2 = saga.onTransportOrderFinished(event());
 
     await p2;
-    expect(findOne).toHaveBeenCalledTimes(1); // duplicate never reached findTask
+    expect(findOne).toHaveBeenCalledTimes(1);
 
-    d.resolve(null); // task "not found" → first handler returns
+    d.resolve(null);
     await p1;
   });
 
@@ -57,7 +54,7 @@ describe('TransportTaskSaga single-flight', () => {
 
     const p1 = saga.onTransportOrderFinished(event());
     d1.resolve(null);
-    await p1; // lock released
+    await p1;
 
     const d2 = deferred<null>();
     findOne.mockReturnValue(d2.promise);
@@ -65,7 +62,7 @@ describe('TransportTaskSaga single-flight', () => {
     d2.resolve(null);
     await p2;
 
-    expect(findOne).toHaveBeenCalledTimes(2); // second, non-overlapping event ran
+    expect(findOne).toHaveBeenCalledTimes(2);
   });
 
   it('releases the lock even if handling throws', async () => {
@@ -78,37 +75,32 @@ describe('TransportTaskSaga single-flight', () => {
     await expect(saga.onTransportOrderFinished(event())).rejects.toThrow(
       'boom',
     );
-    // Lock must have been released in `finally`, so the next event is handled.
     await saga.onTransportOrderFinished(event());
     expect(findOne).toHaveBeenCalledTimes(2);
   });
 });
 
 const SLOT = 'location_3003';
-const RETREAT_PATH = ['3002', '3001'];
-const RETREAT_POINT = RETREAT_PATH[RETREAT_PATH.length - 1];
 
-function makeDropOffSaga(
+function makeDeliverySaga(
   options: {
     task?: Record<string, unknown>;
-    cargo?: Record<string, unknown>;
-    retreatPath?: string[] | null;
-    freeSlot?: string | null;
+    cargo?: Record<string, unknown> | null;
+    zone?: Record<string, unknown> | null;
+    reservedSlot?: string | null;
   } = {},
 ) {
   const task = {
     id: 'task-1',
-    status: TaskStatus.DELIVERING,
+    status: TaskStatus.PICKING_UP,
     cargoId: 'cargo-1',
-    metadata: { assignedVehicleName: 'V1', to2Name: 'APPROACH-V1-0091-x' },
+    metadata: { assignedVehicleName: 'V1', to1Name: 'PICKUP-V1-x' },
     ...options.task,
   };
-  const cargo = {
-    id: 'cargo-1',
-    destinationZoneId: 'zone-1',
-    destinationLocationName: SLOT,
-    ...options.cargo,
-  };
+  const cargo =
+    options.cargo === null
+      ? null
+      : { id: 'cargo-1', destinationZoneId: 'zone-1', ...options.cargo };
 
   const taskRepo = {
     findOne: jest.fn().mockResolvedValue(task),
@@ -119,58 +111,36 @@ function makeDropOffSaga(
     update: jest.fn().mockResolvedValue(undefined),
   };
   const zoneRepo = {
-    findOne: jest.fn().mockResolvedValue({ id: 'zone-1', name: 'zone_1' }),
-  };
-  const retreatPoint = {
-    pathFor: jest
+    findOne: jest
       .fn()
       .mockResolvedValue(
-        options.retreatPath === undefined ? RETREAT_PATH : options.retreatPath,
+        options.zone === null ? null : { id: 'zone-1', name: 'zone_1' },
       ),
   };
-
-  const lockedManagerRepo = {
-    findOne: jest.fn().mockResolvedValue({ ...cargo, ...options.cargo }),
-    update: jest.fn().mockResolvedValue(undefined),
-  };
-  const retreatCallsWhileLocked = { count: -1 };
-  const dataSource = {
-    transaction: jest.fn(
-      async (run: (manager: unknown) => Promise<unknown>) => {
-        const result = await run({
-          query: jest.fn().mockResolvedValue(undefined),
-          getRepository: jest.fn().mockReturnValue(lockedManagerRepo),
-        });
-        retreatCallsWhileLocked.count = retreatPoint.pathFor.mock.calls.length;
-        return result;
-      },
-    ),
-  };
-
-  const kernelApi = {
-    unloadOperation: 'liftDown',
-    createTransportOrder: jest.fn().mockResolvedValue({}),
-  };
+  const kernelApi = { unloadOperation: 'liftDown' };
   const transportTask = {
     changeStatus: jest.fn().mockResolvedValue(undefined),
   };
-  const deliverySlotEngine = {
-    findSlot: jest
+  const slotReservation = {
+    reserve: jest
       .fn()
       .mockResolvedValue(
-        options.freeSlot === undefined ? SLOT : options.freeSlot,
+        options.reservedSlot === undefined ? SLOT : options.reservedSlot,
       ),
   };
+  const dropoffOrder = {
+    issue: jest.fn().mockResolvedValue('DROPOFF-V1-location_3003-y'),
+  };
+  const retreatPoint = { pathFor: jest.fn().mockResolvedValue(['3002']) };
 
   const saga = new TransportTaskSaga(
     taskRepo as never,
     cargoRepo as never,
     zoneRepo as never,
-    dataSource as never,
     kernelApi as never,
     transportTask as never,
-    deliverySlotEngine as never,
-    {} as never,
+    slotReservation as never,
+    dropoffOrder as never,
     retreatPoint as never,
   );
 
@@ -179,153 +149,94 @@ function makeDropOffSaga(
     task,
     taskRepo,
     cargoRepo,
-    dataSource,
-    kernelApi,
     transportTask,
-    deliverySlotEngine,
-    lockedManagerRepo,
-    retreatPoint,
-    retreatCallsWhileLocked,
+    slotReservation,
+    dropoffOrder,
   };
 }
 
-const approachFinished = () =>
-  new FmsTransportOrderFinishedEvent(
-    'APPROACH-V1-0091-x',
-    'task-1',
-    'APPROACH',
-  );
+const pickupFinished = () =>
+  new FmsTransportOrderFinishedEvent('PICKUP-V1-x', 'task-1', 'PICKUP');
 
-describe('TransportTaskSaga drop-off retreat', () => {
-  it('creates TO3 with the drop-off then one MOVE per retreat cell, in that order', async () => {
-    const { saga, kernelApi } = makeDropOffSaga();
+describe('TransportTaskSaga pick-up finished', () => {
+  it('reserves a drop-off slot and aims the drop-off order straight at it', async () => {
+    const { saga, slotReservation, dropoffOrder, task } = makeDeliverySaga();
 
-    await saga.onTransportOrderFinished(approachFinished());
+    await saga.onTransportOrderFinished(pickupFinished());
 
-    const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
-    expect(destinations).toEqual([
-      { locationName: SLOT, operation: 'liftDown' },
-      { locationName: '3002', operation: 'MOVE' },
-      { locationName: '3001', operation: 'MOVE' },
-    ]);
+    expect(slotReservation.reserve).toHaveBeenCalledWith('cargo-1', {
+      id: 'zone-1',
+      name: 'zone_1',
+    });
+    expect(dropoffOrder.issue).toHaveBeenCalledWith(task, 'V1', SLOT);
   });
 
-  it('never collapses the retreat into a single destination at the far cell', async () => {
-    const { saga, kernelApi } = makeDropOffSaga({
-      retreatPath: ['3002', '3001', '0091'],
+  it('moves the task to DELIVERING once the drop-off order is out', async () => {
+    const { saga, transportTask, task } = makeDeliverySaga();
+
+    await saga.onTransportOrderFinished(pickupFinished());
+
+    expect(transportTask.changeStatus).toHaveBeenCalledWith(
+      task,
+      TaskStatus.DELIVERING,
+      expect.objectContaining({ trigger: 'SAGA' }),
+    );
+  });
+
+  it('never sends the vehicle to a shared approach point first', async () => {
+    const { saga, dropoffOrder } = makeDeliverySaga();
+
+    await saga.onTransportOrderFinished(pickupFinished());
+
+    expect(dropoffOrder.issue).toHaveBeenCalledTimes(1);
+    const [, , slot] = dropoffOrder.issue.mock.calls[0] as [
+      unknown,
+      string,
+      string,
+    ];
+    expect(slot).toBe(SLOT);
+  });
+
+  it('holds the task in PICKING_UP when the zone offers no slot to reserve', async () => {
+    const { saga, transportTask, dropoffOrder } = makeDeliverySaga({
+      reservedSlot: null,
     });
 
-    await saga.onTransportOrderFinished(approachFinished());
+    await saga.onTransportOrderFinished(pickupFinished());
 
-    const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
-    expect(destinations).toHaveLength(4);
-    expect(
-      (destinations as { locationName: string }[]).map((d) => d.locationName),
-    ).toEqual([SLOT, '3002', '3001', '0091']);
+    expect(dropoffOrder.issue).not.toHaveBeenCalled();
+    expect(transportTask.changeStatus).not.toHaveBeenCalled();
   });
 
-  it('keeps TO3 on the DROPOFF leg and pins the assigned vehicle', async () => {
-    const { saga, kernelApi } = makeDropOffSaga();
-
-    await saga.onTransportOrderFinished(approachFinished());
-
-    const [orderName, , vehicle, properties] =
-      kernelApi.createTransportOrder.mock.calls[0];
-    expect(orderName).toMatch(/^DROPOFF-V1-/);
-    expect(vehicle).toBe('V1');
-    expect(properties).toEqual({
-      'wes:taskId': 'task-1',
-      'wes:leg': 'DROPOFF',
-    });
-  });
-
-  it('records the last retreat cell on the task metadata', async () => {
-    const { saga, taskRepo } = makeDropOffSaga();
-
-    await saga.onTransportOrderFinished(approachFinished());
-
-    const saved = taskRepo.save.mock.calls[0][0] as {
-      metadata: Record<string, string>;
-    };
-    expect(saved.metadata.retreatPointName).toBe(RETREAT_POINT);
-    expect(saved.metadata.to3Name).toMatch(/^DROPOFF-V1-/);
-  });
-
-  it('still delivers with a single destination when no retreat path resolves', async () => {
-    const { saga, kernelApi, taskRepo } = makeDropOffSaga({
-      retreatPath: null,
+  it('fails the task when the cargo has no destination zone', async () => {
+    const { saga, transportTask, dropoffOrder } = makeDeliverySaga({
+      zone: null,
     });
 
-    await saga.onTransportOrderFinished(approachFinished());
+    await saga.onTransportOrderFinished(pickupFinished());
 
-    const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
-    expect(destinations).toEqual([
-      { locationName: SLOT, operation: 'liftDown' },
-    ]);
-    const saved = taskRepo.save.mock.calls[0][0] as {
-      metadata: Record<string, string | undefined>;
-    };
-    expect(saved.metadata.retreatPointName).toBeUndefined();
-    expect(saved.metadata.to3Name).toMatch(/^DROPOFF-V1-/);
-  });
-
-  it('never resolves the retreat path inside the slot-commit transaction', async () => {
-    const { saga, dataSource, retreatCallsWhileLocked, retreatPoint } =
-      makeDropOffSaga({ cargo: { destinationLocationName: null } });
-
-    await saga.onTransportOrderFinished(approachFinished());
-
-    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
-    expect(retreatCallsWhileLocked.count).toBe(0);
-    expect(retreatPoint.pathFor).toHaveBeenCalledTimes(1);
-  });
-
-  it('commits a slot at the barrier and retreats from the committed slot', async () => {
-    const { saga, lockedManagerRepo, retreatPoint, kernelApi } =
-      makeDropOffSaga({ cargo: { destinationLocationName: null } });
-
-    await saga.onTransportOrderFinished(approachFinished());
-
-    expect(lockedManagerRepo.update).toHaveBeenCalledWith('cargo-1', {
-      destinationLocationName: SLOT,
-    });
-    expect(retreatPoint.pathFor).toHaveBeenCalledWith(SLOT);
-    const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
-    expect(destinations).toHaveLength(1 + RETREAT_PATH.length);
-  });
-
-  it('fails the task when the barrier finds no free slot', async () => {
-    const { saga, transportTask, kernelApi, retreatPoint } = makeDropOffSaga({
-      cargo: { destinationLocationName: null },
-      freeSlot: null,
-    });
-
-    await saga.onTransportOrderFinished(approachFinished());
-
+    expect(dropoffOrder.issue).not.toHaveBeenCalled();
     expect(transportTask.changeStatus).toHaveBeenCalledWith(
       expect.anything(),
       TaskStatus.FAILED,
       expect.objectContaining({ trigger: 'SAGA' }),
     );
-    expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
-    expect(retreatPoint.pathFor).not.toHaveBeenCalled();
   });
 
-  it('ignores a duplicate approach-finished once TO3 exists', async () => {
-    const { saga, kernelApi, retreatPoint } = makeDropOffSaga({
+  it('ignores a duplicate pick-up finished once the drop-off order exists', async () => {
+    const { saga, slotReservation, dropoffOrder } = makeDeliverySaga({
       task: {
         metadata: {
           assignedVehicleName: 'V1',
-          to2Name: 'APPROACH-V1-0091-x',
           to3Name: 'DROPOFF-V1-location_3003-y',
         },
       },
     });
 
-    await saga.onTransportOrderFinished(approachFinished());
+    await saga.onTransportOrderFinished(pickupFinished());
 
-    expect(kernelApi.createTransportOrder).not.toHaveBeenCalled();
-    expect(retreatPoint.pathFor).not.toHaveBeenCalled();
+    expect(slotReservation.reserve).not.toHaveBeenCalled();
+    expect(dropoffOrder.issue).not.toHaveBeenCalled();
   });
 });
 
@@ -338,7 +249,9 @@ describe('TransportTaskSaga drop-off completion', () => {
     );
 
   it('completes the task and marks the cargo delivered after the retreat', async () => {
-    const { saga, transportTask, cargoRepo, task } = makeDropOffSaga();
+    const { saga, transportTask, cargoRepo, task } = makeDeliverySaga({
+      task: { status: TaskStatus.DELIVERING },
+    });
 
     await saga.onTransportOrderFinished(dropOffFinished());
 
@@ -373,17 +286,23 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       taskRepo as never,
       cargoRepo as never,
       {} as never,
-      {} as never,
       kernelApi as never,
       transportTask as never,
       {} as never,
       {} as never,
       retreatPoint as never,
     );
-    return { saga, taskRepo, cargoRepo, kernelApi, transportTask, retreatPoint };
+    return {
+      saga,
+      taskRepo,
+      cargoRepo,
+      kernelApi,
+      transportTask,
+      retreatPoint,
+    };
   }
 
-  const lost = (leg: 'PICKUP' | 'APPROACH' | 'DROPOFF', orderName: string) =>
+  const lost = (leg: 'PICKUP' | 'DROPOFF', orderName: string) =>
     new FmsTransportOrderLostNavigationEvent(orderName, 'task-1', leg, 'V1');
 
   it('sends a lost pickup back to the queue for any vehicle', async () => {
@@ -411,28 +330,6 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
     );
   });
 
-  it('re-issues the approach to the same vehicle at the recorded point', async () => {
-    const task = {
-      id: 'task-1',
-      status: TaskStatus.DELIVERING,
-      metadata: {
-        assignedVehicleName: 'V1',
-        to2Name: 'APPROACH-1',
-        approachPointName: '3073',
-      },
-    };
-    const { saga, kernelApi } = makeSaga(task);
-
-    await saga.onLegLostNavigation(lost('APPROACH', 'APPROACH-1'));
-
-    expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
-      expect.stringContaining('APPROACH-V1-3073'),
-      [{ locationName: '3073', operation: 'MOVE' }],
-      'V1',
-      expect.objectContaining({ 'wes:leg': 'APPROACH' }),
-    );
-  });
-
   it('re-issues the drop-off at the slot already committed on the cargo', async () => {
     const task = {
       id: 'task-1',
@@ -453,6 +350,32 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       ],
       'V1',
       expect.objectContaining({ 'wes:leg': 'DROPOFF' }),
+    );
+  });
+
+  it('falls back to the reservation when no slot was committed yet', async () => {
+    const task = {
+      id: 'task-1',
+      status: TaskStatus.DELIVERING,
+      metadata: { assignedVehicleName: 'V1', to3Name: 'DROPOFF-1' },
+      cargoId: 'cargo-1',
+    };
+    const cargo = {
+      id: 'cargo-1',
+      destinationLocationName: null,
+      reservedLocationName: 'location_3005',
+    };
+    const { saga, kernelApi } = makeSaga(task, cargo);
+
+    await saga.onLegLostNavigation(lost('DROPOFF', 'DROPOFF-1'));
+
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
+      expect.stringContaining('DROPOFF-V1-location_3005'),
+      expect.arrayContaining([
+        { locationName: 'location_3005', operation: 'UNLOAD' },
+      ]),
+      'V1',
+      expect.anything(),
     );
   });
 
