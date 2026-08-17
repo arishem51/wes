@@ -1,36 +1,79 @@
 @startuml fig-2-3-1-class-saga
-' SDS Figure II-2.3.1 — Class diagram: multi-leg transport order execution (saga)
-' Fixed 2026-08-09: class name was misspelt "AppproachPointService";
-' RetreatPointService, the unloading guard and onDropOffUnloaded were missing.
-' Verified against wes/src/cargo/transport-task.saga.ts.
-' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-3-1-class-saga.puml
+' SDS Figure II-2.3.1 — Class diagram: two-leg transport order execution and
+' the dynamic drop-off (reserve / commit / swap)
+' Rewritten 2026-08-17: the approach leg (TO2) and ApproachPointService are
+' retired. Slot binding moved out of the saga into SlotReservationService and
+' the level-triggered DropoffCommitLoop; DropoffOrderService owns TO3's
+' lifecycle so an order can be re-aimed after a swap.
+' Verified against wes/src/cargo/{transport-task.saga,dropoff-commit.loop,
+' slot-reservation.service,dropoff-order.service,delivery-slot.engine}.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -Playout=smetana -tpng fig-2-3-1-class-saga.puml
 !include _style.iuml
 
 class TransportTaskSaga <<Saga / Process Manager>> {
   -processing: Set<string>
   -unloading: Set<string>
   +onTransportOrderFinished(evt): void
+  +onLegLostNavigation(evt): void
   +onDropOffUnloaded(evt): void
   -onPickupFinished(taskId): void
-  -onApproachFinished(taskId): void
   -onDropOffFinished(taskId): void
-  -commitDropoffSlot(cargo): string?
+  -recreateDropOff(task, evt, retries): void
   -dropOffDestinations(slot, retreatPath): OrderDestination[]
-  -createNextOrder(name, drops, vehicle, props): boolean
 }
 
-class ApproachPointService <<Service>> {
-  +pickFor(zone, vehicleName): string?
-  -feederPointsOf(zone): string[]
+class DropoffCommitLoop <<Loop / level-triggered>> {
+  -timer: Timeout?
+  -ticking: boolean
+  -runnerLock: RunnerLock?
+  +tick(): void
+  -tasksAwaitingCommit(): TransportTaskEntity[]
+  -advance(task): void
+  -applyCommit(task, vehicle, result, swappable): void
+  -reaimDisplaced(result, winner): void
+  -acquireSingleRunnerLock(): RunnerLock?
 }
 
-class RetreatPointService <<Service>> {
-  +pathFor(slot): string[]?
+class SlotReservationService <<Service>> {
+  +reserve(cargoId, zone): string?
+  +commit(cargoId, zone, allowSwap): SlotCommitResult?
+  +release(cargoId): void
+  -chooseSlot(layout, zoneCargos, cargo, allowSwap): string?
+  -reassign(holder, zoneCargos, committer, slot): string?
+  -withZoneLock(zone, work): T
+}
+
+class DropoffOrderService <<Service>> {
+  +issue(task, vehicle, slot): string?
+  +reissue(task, vehicle, slot): string?
 }
 
 class DeliverySlotEngine <<Engine>> {
-  +findSlot(zone): string?
-  +hasAvailableSlot(zone): boolean
+  -layoutByZone: Map<zoneId, CachedLayout>
+  -plantModelFetchedAt: number
+  +layoutFor(zone): ZoneSlotLayout?
+  +rank(layout, occupied): ZoneSlot[]
+  +capacityOf(layout): number
+  +usableCapacityOf(zone): number
+}
+
+class ZoneSlotLayout <<Domain — pure>> {
+  +columns: ZoneSlot[][]
+  +entryPoints: string[]
+  +memberPointNames: Set<string>
+  +strandedLocationNames: string[]
+  ..
+  {static} buildZoneSlotLayout(points, paths, locations, members)
+  {static} rankSlots(layout, occupied): ZoneSlot[]
+  {static} MAX_COLUMN_LEAD = 3
+}
+
+class RetreatPointService <<Service>> {
+  +pathFor(slot, cells): string[]?
+}
+
+class VehicleStateStore <<ACL — live snapshot>> {
+  +get(vehicleName): VehicleSnapshot?
 }
 
 class TransportTaskService <<Service, choke-point>> {
@@ -39,35 +82,58 @@ class TransportTaskService <<Service, choke-point>> {
 
 class KernelApiService <<ACL>> {
   +createTransportOrder(name, drops, vehicle, props)
-  +computeRoutes(vehicle, points): KernelRoute[]
-  +getPlantModel(): PlantModel
+  +withdrawTransportOrder(name)
+  +getPlantModelView(): KernelPlantModel
   +unloadOperation: string
 }
 
-class CargoEntity <<Entity: cargos>>
+class CargoEntity <<Entity: cargos>> {
+  +reservedLocationName: string?
+  +destinationLocationName: string?
+  +slotDecisionSeq: number
+}
 class ZoneEntity <<Entity: zones>>
 
-TransportTaskSaga --> ApproachPointService
+TransportTaskSaga --> SlotReservationService
+TransportTaskSaga --> DropoffOrderService
 TransportTaskSaga --> RetreatPointService
-TransportTaskSaga --> DeliverySlotEngine
 TransportTaskSaga --> TransportTaskService
 TransportTaskSaga --> KernelApiService
 TransportTaskSaga ..> CargoEntity
 TransportTaskSaga ..> ZoneEntity
-ApproachPointService --> KernelApiService
+
+DropoffCommitLoop --> VehicleStateStore
+DropoffCommitLoop --> DeliverySlotEngine
+DropoffCommitLoop --> SlotReservationService
+DropoffCommitLoop --> DropoffOrderService
+DropoffCommitLoop ..> CargoEntity
+
+SlotReservationService --> DeliverySlotEngine
+SlotReservationService ..> CargoEntity
 DeliverySlotEngine --> KernelApiService
+DeliverySlotEngine ..> ZoneSlotLayout
+DropoffOrderService --> RetreatPointService
+DropoffOrderService --> KernelApiService
 
 note right of TransportTaskSaga
   Reacts to fms.transport-order.finished.
-  TO1 PICK_UP -> TO2 approach (MOVE) -> TO3 drop-off + retreat.
-  The concrete drop-off slot is committed late, at the TO2
-  barrier, under a per-zone advisory lock (BR-11).
+  Two kernel orders only: TO1 PICK_UP -> TO3 drop-off + retreat.
+  On TO1 FINISHED it reserves a concrete slot and aims TO3 at it,
+  so no two vehicles ever carry the same MAPF goal.
 end note
 
-note bottom of RetreatPointService
-  TO3 carries the unload destination followed by the
-  retreat MOVE steps, so the AGV clears the slot for the
-  vehicles queued behind it.
+note bottom of DropoffCommitLoop
+  Ticks every 500 ms over the DELIVERING tasks whose cargo has no
+  committed slot. At a zone entry point the commit may swap a slot
+  away from an uncommitted reservation; inside the zone it may not.
+  One instance only, elected by pg_try_advisory_lock.
+end note
+
+note bottom of SlotReservationService
+  Both reserve() and commit() run inside
+  pg_advisory_xact_lock(hashtext(zone.id)).
+  The layout is prepared before the transaction opens,
+  so no HTTP call ever runs inside the lock.
 end note
 
 @enduml

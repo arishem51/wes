@@ -1,0 +1,70 @@
+@startuml mf-02a-reserve-aim
+' SRS Section II.1.2.2 — Main Workflow: Delivery, part A (Reserve & Aim)
+' Continues in mf-02b-commit-dropoff-retreat.puml
+' Supersedes mf-02a-approach.puml: the approach leg (TO2) was retired when the
+' drop-off slot became dynamic — the vehicle is aimed at its own slot instead.
+' Business-level vocabulary only; implementation detail belongs in the SDS.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng mf-02a-reserve-aim.puml
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam swimlaneWidth 260
+skinparam ArrowColor #000000
+skinparam ActivityBorderColor #000000
+skinparam ActivityBackgroundColor #7ACFF4
+skinparam ActivityDiamondBorderColor #000000
+skinparam ActivityDiamondBackgroundColor #7ACFF4
+skinparam NoteBackgroundColor #7ACFF4
+skinparam NoteBorderColor #000000
+
+|FMS (openTCS)|
+|WES|
+|AGV|
+
+|FMS (openTCS)|
+start
+:The pick-up transport order\nreaches FINISHED;
+:Notify WES;
+note left: WES re-checks order state on a heartbeat,\nso a lost notification does not stall the task
+
+|WES|
+:Receive the pick-up completion;
+if (Drop-off order already issued?) then (Yes)
+  :Ignore the duplicate notification;
+  stop
+else (No)
+endif
+if (Assigned vehicle and\ndestination zone both present?) then (No)
+  :Task -> FAILED;
+  stop
+else (Yes)
+endif
+:Take exclusive access\nto the zone's slot map;
+:Reserve one concrete drop-off slot\nby the cascading depth-first fill rule (BR-11),\ncounting the slots already committed\nand the slots already reserved;
+if (Any slot free to reserve?) then (No)
+  :Release the zone;
+  :Stay in PICKING_UP;\nthe periodic re-check retries;
+  stop
+else (Yes)
+endif
+:Record the reserved slot on the cargo;
+:Release the zone;
+note right: A reservation is provisional -\nanother vehicle may still take the slot
+:Resolve the 2-cell retreat path\nbehind the reserved slot;
+if (Retreat path found?) then (No)
+  :Log a warning - the drop-off order\ngoes out without the retreat steps;
+else (Yes)
+endif
+:Issue the drop-off transport order\naimed at the reserved slot:\nunload at the slot, then one move step\nper retreat cell;
+:Task -> DELIVERING;
+note right: Each vehicle drives straight to a slot of its own -\nthere is no shared approach point, so two vehicles\nare never routed to the same destination
+
+|FMS (openTCS)|
+:Route the vehicle\ntowards the reserved slot;
+
+|AGV|
+:Drive towards the destination zone;
+stop
+note right: Continues in part B\n(Commit, Drop-off & Retreat)
+
+@enduml

@@ -1,0 +1,83 @@
+@startuml fig-2-3-3-seq-dropoff-commit-swap
+' SDS Figure II-2.3.3 — Drop-off commit at the zone gate, with slot swap
+' New 2026-08-17. Level-triggered loop: it reads the live vehicle position and
+' turns a provisional reservation into a binding commitment. At an entry point
+' the winner may take a slot another cargo had only reserved; the displaced
+' cargo is re-reserved and its TO3 re-aimed.
+' Verified against wes/src/cargo/{dropoff-commit.loop,slot-reservation.service,
+' dropoff-order.service}.ts.
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng fig-2-3-3-seq-dropoff-commit-swap.puml
+!include _style.iuml
+
+participant DropoffCommitLoop as Loop
+participant VehicleStateStore as Store
+participant DeliverySlotEngine as Slots
+participant SlotReservationService as Reserve
+participant DropoffOrderService as Orders
+participant "KernelApiService\n(ACL -> kernel)" as ACL
+database PostgreSQL
+
+Loop -> PostgreSQL: at start-up: pg_try_advisory_lock(815004711)
+note right of Loop
+  One instance only. A process that does not win the lock
+  stays idle, so two schedulers never commit the same zone.
+end note
+
+loop every 500 ms (re-entrancy guarded by `ticking`)
+  Loop -> PostgreSQL: SELECT tasks WHERE status = DELIVERING AND cargo_id IS NOT NULL
+  Loop -> Store: get(assignedVehicleName)
+  Store --> Loop: currentPosition | null
+  Loop -> PostgreSQL: load cargo (ACTIVE, destination_location_name IS NULL)
+  Loop -> Slots: layoutFor(destination zone)
+  Slots --> Loop: ZoneSlotLayout
+
+  alt position is one of layout.entryPoints
+    Loop -> Reserve: commit(cargoId, zone, allowSwap = true)
+  else position is a member point of the zone
+    Loop -> Reserve: commit(cargoId, zone, allowSwap = false)
+  else anywhere else
+    Loop -> Loop: nothing to do — re-check on the next tick
+  end
+
+  Reserve -> PostgreSQL: BEGIN + pg_advisory_xact_lock(hashtext(zone.id))
+  Reserve -> Slots: rank(layout, committed slots) - BR-11
+  Slots --> Reserve: free slots in fill order
+  alt allowSwap
+    Reserve -> Reserve: chosen = best slot the ranking offers
+  else
+    Reserve -> Reserve: chosen = own reservation, unless already committed
+  end
+  Reserve -> PostgreSQL: UPDATE cargos SET destination_location_name = chosen,\nreserved_location_name = NULL, slot_decision_seq = seq + 1
+
+  opt chosen was another cargo's reservation (swap)
+    Reserve -> Slots: rank(layout, committed + other reservations + chosen)
+    Slots --> Reserve: replacement slot | none
+    Reserve -> PostgreSQL: UPDATE the displaced cargo's reserved_location_name
+  end
+  Reserve -> PostgreSQL: COMMIT (releases the zone lock)
+  Reserve --> Loop: {slot, keptOwnReservation, displaced}
+
+  opt not keptOwnReservation
+    Loop -> Orders: reissue(task, vehicle, slot)
+    Orders -> ACL: withdrawTransportOrder(old TO3)
+    Orders -> ACL: createTransportOrder(new TO3 @ committed slot)
+  end
+
+  opt displaced is present
+    Loop -> PostgreSQL: load the displaced cargo's DELIVERING task
+    Loop -> Orders: reissue(victim task, victim vehicle, replacement slot)
+    Orders -> ACL: withdrawTransportOrder + createTransportOrder
+    Loop -> PostgreSQL: metadata.swapCount = swapCount + 1
+  end
+end
+
+note over Loop, PostgreSQL
+  Termination is structural: a commitment is irreversible and every swap
+  ends in one, so a slot is stolen at most once and a cargo is displaced
+  at most (fleet size − 1) times per trip. The intake capacity check keeps the cargo
+  count at or below the reachable slot count, so a displaced cargo always has a slot left.
+  Missing the tick at the gate is not an error — the commitment simply
+  happens inside the zone and loses the right to swap.
+end note
+
+@enduml
