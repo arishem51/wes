@@ -7,6 +7,7 @@ import type {
   KernelPoint,
   KernelTransportOrder,
   KernelTransportOrderDebug,
+  KernelVehicleGoal,
   KernelVehiclePrecisePosition,
   KernelVehicleState,
 } from './kernel-model';
@@ -53,6 +54,17 @@ export function toAllocatedResources(value: unknown): string[][] {
     .map((group) =>
       group.filter((item): item is string => typeof item === 'string'),
     );
+}
+
+export function unwrapEnumValue(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (isRecord(value)) {
+    for (const [key, inner] of Object.entries(value)) {
+      if (key === 'timestamp') continue;
+      if (typeof inner === 'string') return inner;
+    }
+  }
+  return undefined;
 }
 
 export function orientationAngleFromSsePose(pose: unknown): number | null {
@@ -339,4 +351,87 @@ export function toTransportOrderDebugList(
   value: unknown,
 ): KernelTransportOrderDebug[] {
   return mapArray(value, toTransportOrderDebug);
+}
+
+const SETTLED_ORDER_STATES = new Set([
+  'FINISHED',
+  'FAILED',
+  'UNROUTABLE',
+  'WITHDRAWN',
+]);
+
+export interface VehicleGoalUpdate {
+  vehicleName: string;
+  goal: KernelVehicleGoal | null;
+}
+
+type PendingDestination = Omit<KernelVehicleGoal, 'orderName'>;
+
+function unfinished(value: unknown, from: number): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return from > 0 ? value.slice(from) : value;
+}
+
+function toPendingDestination(
+  destinationName: unknown,
+  operation: unknown,
+): PendingDestination | null {
+  if (typeof destinationName !== 'string') return null;
+  return {
+    destinationName,
+    operation: unwrapEnumValue(operation) ?? '',
+  };
+}
+
+function pendingDriveOrder(
+  driveOrders: unknown,
+  currentIndex: unknown,
+): PendingDestination | null {
+  const from = typeof currentIndex === 'number' ? currentIndex : 0;
+  for (const driveOrder of unfinished(driveOrders, from)) {
+    if (!isRecord(driveOrder)) continue;
+    if (unwrapEnumValue(driveOrder.state) === 'FINISHED') continue;
+    const destination = driveOrder.destination;
+    if (!isRecord(destination)) continue;
+    const pending = toPendingDestination(
+      destination.destination ?? destination.locationName,
+      destination.operation,
+    );
+    if (pending) return pending;
+  }
+  return null;
+}
+
+function pendingDestination(destinations: unknown): PendingDestination | null {
+  if (!Array.isArray(destinations)) return null;
+  for (const destination of destinations) {
+    if (!isRecord(destination)) continue;
+    if (unwrapEnumValue(destination.state) === 'FINISHED') continue;
+    const pending = toPendingDestination(
+      destination.locationName,
+      destination.operation,
+    );
+    if (pending) return pending;
+  }
+  return null;
+}
+
+export function toVehicleGoal(value: unknown): VehicleGoalUpdate | null {
+  if (!isRecord(value) || typeof value.name !== 'string') return null;
+
+  const vehicleName =
+    unwrapEnumValue(value.processingVehicle) ??
+    unwrapEnumValue(value.processingVehicleName);
+  if (!vehicleName) return null;
+
+  const settled = SETTLED_ORDER_STATES.has(unwrapEnumValue(value.state) ?? '');
+  const destination = settled
+    ? null
+    : (pendingDriveOrder(value.driveOrders, value.currentDriveOrderIndex) ??
+      pendingDestination(value.destinations));
+
+  return {
+    vehicleName,
+    goal: destination ? { orderName: value.name, ...destination } : null,
+  };
 }

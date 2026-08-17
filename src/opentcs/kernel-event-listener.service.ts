@@ -22,14 +22,19 @@ import {
   orientationAngleFromSsePose,
   precisePositionFromSsePose,
   toAllocatedResources,
+  toVehicleGoal,
   toVehicleProperties,
+  unwrapEnumValue,
 } from './domain/kernel-mappers';
 import {
   hasVehicleErrors,
   toVehicleErrors,
   vehicleErrorsEqual,
 } from './domain/vehicle-errors';
-import type { KernelVehicleState } from './domain/kernel-model';
+import type {
+  KernelVehicleGoal,
+  KernelVehicleState,
+} from './domain/kernel-model';
 import { VehicleStateStore } from './vehicle-state.store';
 import { FleetTelemetryService } from './fleet-telemetry.service';
 
@@ -47,6 +52,13 @@ interface TCSObjectState {
 interface KernelSsePayload {
   currentObjectState: TCSObjectState;
   previousObjectState?: TCSObjectState;
+}
+
+function goalWhileOnOrder(
+  goal: KernelVehicleGoal | null | undefined,
+  transportOrder: string | null | undefined,
+): KernelVehicleGoal | null {
+  return goal && transportOrder != null ? goal : null;
 }
 
 @Injectable()
@@ -102,7 +114,10 @@ export class KernelEventListenerService
 
     for (const v of vehicles) {
       const existing = this.vehicleStateStore.get(v.name);
-      const next: KernelVehicleState = { ...v };
+      const next: KernelVehicleState = {
+        ...v,
+        goal: goalWhileOnOrder(existing?.goal, v.transportOrder),
+      };
       if (existing?.observedAt) next.observedAt = existing.observedAt;
       this.vehicleStateStore.set(v.name, next);
       this.emitErrorChange(existing, next);
@@ -269,7 +284,10 @@ export class KernelEventListenerService
     const vehicles = await this.kernelApi.getVehicleStates();
     for (const v of vehicles) {
       const existing = this.vehicleStateStore.get(v.name);
-      this.vehicleStateStore.set(v.name, v);
+      this.vehicleStateStore.set(v.name, {
+        ...v,
+        goal: goalWhileOnOrder(existing?.goal, v.transportOrder),
+      });
       this.emitErrorChange(existing, v);
     }
     this.logger.log(`Store seeded with ${vehicles.length} vehicle(s)`);
@@ -311,8 +329,10 @@ export class KernelEventListenerService
     const name = current?.name;
     if (!name) return;
 
+    this.applyVehicleGoal(current);
+
     const seen = this.lastOrderSignature.get(name);
-    const orderState = this.unwrapEnum(current.state) ?? '';
+    const orderState = unwrapEnumValue(current.state) ?? '';
     const driveOrders = this.driveOrderStates(current);
     const signature = `${orderState}|${driveOrders.join(',')}`;
     if (seen === signature) return;
@@ -345,6 +365,25 @@ export class KernelEventListenerService
     }
   }
 
+  private applyVehicleGoal(order: TCSObjectState): void {
+    const update = toVehicleGoal(order);
+    if (!update) return;
+
+    const existing = this.vehicleStateStore.get(update.vehicleName);
+    if (!existing) return;
+
+    const clearingAnotherOrdersGoal =
+      update.goal === null &&
+      existing.goal != null &&
+      existing.goal.orderName !== order.name;
+    if (clearingAnotherOrdersGoal) return;
+
+    this.vehicleStateStore.set(update.vehicleName, {
+      ...existing,
+      goal: update.goal,
+    });
+  }
+
   private dropOffJustUnloaded(
     driveOrders: string[],
     seenSignature: string | undefined,
@@ -362,7 +401,7 @@ export class KernelEventListenerService
     if (!Array.isArray(raw)) return [];
     return raw.map((order) =>
       order && typeof order === 'object'
-        ? (this.unwrapEnum((order as Record<string, unknown>).state) ?? '')
+        ? (unwrapEnumValue((order as Record<string, unknown>).state) ?? '')
         : '',
     );
   }
@@ -384,8 +423,8 @@ export class KernelEventListenerService
     const raw = payload.currentObjectState;
     if (!raw?.name) return;
 
-    const state = this.unwrapEnum(raw.state);
-    const procState = this.unwrapEnum(raw.procState);
+    const state = unwrapEnumValue(raw.state);
+    const procState = unwrapEnumValue(raw.procState);
     const observedAt =
       this.unwrapTimestamp(raw.state) ??
       this.unwrapTimestamp(raw.procState) ??
@@ -396,6 +435,12 @@ export class KernelEventListenerService
       raw.properties !== undefined
         ? toVehicleProperties(raw.properties)
         : undefined;
+    const transportOrder =
+      raw.transportOrder !== undefined
+        ? typeof raw.transportOrder === 'string'
+          ? raw.transportOrder
+          : null
+        : (existing?.transportOrder ?? null);
     const incoming: KernelVehicleState = {
       ...(existing ?? {
         name: raw.name,
@@ -429,10 +474,8 @@ export class KernelEventListenerService
       ...(raw.allocatedResources !== undefined && {
         allocatedResources: toAllocatedResources(raw.allocatedResources),
       }),
-      ...(raw.transportOrder !== undefined && {
-        transportOrder:
-          typeof raw.transportOrder === 'string' ? raw.transportOrder : null,
-      }),
+      transportOrder,
+      goal: goalWhileOnOrder(existing?.goal, transportOrder),
       ...(properties !== undefined && {
         properties,
         errors: toVehicleErrors(properties),
@@ -463,17 +506,6 @@ export class KernelEventListenerService
       (state.procState === 'IDLE' || state.procState === 'AWAITING_ORDER') &&
       state.integrationLevel === 'TO_BE_UTILIZED'
     );
-  }
-
-  private unwrapEnum(value: unknown): string | undefined {
-    if (typeof value === 'string') return value;
-    if (value && typeof value === 'object') {
-      for (const [key, inner] of Object.entries(value)) {
-        if (key === 'timestamp') continue;
-        if (typeof inner === 'string') return inner;
-      }
-    }
-    return undefined;
   }
 
   private unwrapTimestamp(value: unknown): string | undefined {

@@ -8,6 +8,7 @@ import {
   toKernelVehicleState,
   unusablePlantModelEntries,
   toTransportOrderDebugList,
+  toVehicleGoal,
 } from './kernel-mappers';
 
 describe('toKernelPlantModel', () => {
@@ -266,5 +267,155 @@ describe('toTransportOrderDebugList', () => {
         destinations: [{ locationName: 'LOC-1' }],
       },
     ]);
+  });
+});
+
+describe('toVehicleGoal', () => {
+  it('ignores an order no vehicle is processing', () => {
+    expect(
+      toVehicleGoal({ name: 'PICKUP-1', state: 'DISPATCHABLE' }),
+    ).toBeNull();
+  });
+
+  it('picks the first destination the vehicle has not finished yet', () => {
+    expect(
+      toVehicleGoal({
+        name: 'DROPOFF-1',
+        state: 'BEING_PROCESSED',
+        processingVehicle: 'Vehicle-0001',
+        destinations: [
+          { locationName: 'location_3008', operation: 'liftDown', state: 'FINISHED' },
+          { locationName: '3007', operation: 'MOVE', state: 'TRAVELLING' },
+          { locationName: '3006', operation: 'MOVE', state: 'PRISTINE' },
+        ],
+      }),
+    ).toEqual({
+      vehicleName: 'Vehicle-0001',
+      goal: {
+        orderName: 'DROPOFF-1',
+        destinationName: '3007',
+        operation: 'MOVE',
+      },
+    });
+  });
+
+  it('unwraps the SSE enum wrapper around state and operation', () => {
+    expect(
+      toVehicleGoal({
+        name: 'PARK-1',
+        state: { state: 'BEING_PROCESSED', timestamp: 1 },
+        processingVehicle: 'Vehicle-0015',
+        destinations: [
+          { locationName: '0270', operation: { operation: 'MOVE' }, state: { state: 'TRAVELLING' } },
+        ],
+      }),
+    ).toEqual({
+      vehicleName: 'Vehicle-0015',
+      goal: {
+        orderName: 'PARK-1',
+        destinationName: '0270',
+        operation: 'MOVE',
+      },
+    });
+  });
+
+  it('clears the goal once the order settles', () => {
+    for (const state of ['FINISHED', 'FAILED', 'UNROUTABLE', 'WITHDRAWN']) {
+      expect(
+        toVehicleGoal({
+          name: 'PICKUP-1',
+          state,
+          processingVehicle: 'Vehicle-0002',
+          destinations: [
+            { locationName: 'LOC-1', operation: 'liftUp', state: 'TRAVELLING' },
+          ],
+        }),
+      ).toEqual({ vehicleName: 'Vehicle-0002', goal: null });
+    }
+  });
+
+  it('clears the goal when every destination is finished', () => {
+    expect(
+      toVehicleGoal({
+        name: 'PICKUP-1',
+        state: 'BEING_PROCESSED',
+        processingVehicle: 'Vehicle-0002',
+        destinations: [
+          { locationName: 'LOC-1', operation: 'liftUp', state: 'FINISHED' },
+        ],
+      }),
+    ).toEqual({ vehicleName: 'Vehicle-0002', goal: null });
+  });
+});
+
+describe('toVehicleGoal on the SSE object-state shape', () => {
+  it('reads driveOrders — the SSE payload carries no destinations array', () => {
+    expect(
+      toVehicleGoal({
+        name: 'PROBE-GOAL-1',
+        state: 'BEING_PROCESSED',
+        processingVehicle: 'Vehicle-0001',
+        currentDriveOrderIndex: 0,
+        driveOrders: [
+          {
+            state: 'TRAVELLING',
+            destination: { destination: '3008', operation: 'MOVE' },
+          },
+        ],
+      }),
+    ).toEqual({
+      vehicleName: 'Vehicle-0001',
+      goal: {
+        orderName: 'PROBE-GOAL-1',
+        destinationName: '3008',
+        operation: 'MOVE',
+      },
+    });
+  });
+
+  it('follows currentDriveOrderIndex onto the retreat leg of a dropoff', () => {
+    expect(
+      toVehicleGoal({
+        name: 'DROPOFF-1',
+        state: 'BEING_PROCESSED',
+        processingVehicle: 'Vehicle-0003',
+        currentDriveOrderIndex: 1,
+        driveOrders: [
+          {
+            state: 'FINISHED',
+            destination: { destination: 'location_3008', operation: 'liftDown' },
+          },
+          {
+            state: 'TRAVELLING',
+            destination: { destination: '3007', operation: 'MOVE' },
+          },
+          {
+            state: 'PRISTINE',
+            destination: { destination: '3006', operation: 'MOVE' },
+          },
+        ],
+      })?.goal,
+    ).toMatchObject({ destinationName: '3007', operation: 'MOVE' });
+  });
+
+  it('skips finished legs when the kernel has not moved the index yet', () => {
+    expect(
+      toVehicleGoal({
+        name: 'PICKUP-1',
+        state: 'BEING_PROCESSED',
+        processingVehicle: 'Vehicle-0004',
+        currentDriveOrderIndex: -1,
+        driveOrders: [
+          {
+            state: 'FINISHED',
+            destination: { destination: 'LOC-1', operation: 'liftUp' },
+          },
+          {
+            state: 'PRISTINE',
+            destination: { destination: 'LOC-2', operation: 'MOVE' },
+          },
+        ],
+      })?.goal,
+    ).toMatchObject({ destinationName: 'LOC-2' });
   });
 });

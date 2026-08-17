@@ -4,7 +4,10 @@ import { DataSource, EntityManager, In } from 'typeorm';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
 import { DeliverySlotEngine } from './delivery-slot.engine';
-import type { ZoneSlotLayout } from './domain/zone-slot-layout';
+import {
+  columnLocationNames,
+  type ZoneSlotLayout,
+} from './domain/zone-slot-layout';
 
 const OCCUPYING_STATUSES = [CargoStatus.ACTIVE, CargoStatus.DELIVERED];
 
@@ -18,6 +21,11 @@ export interface SlotCommitResult {
   slot: string;
   keptOwnReservation: boolean;
   displaced: DisplacedCargo | null;
+}
+
+export interface SlotCommitOptions {
+  readonly allowSwap: boolean;
+  readonly insideColumnByCargoId: ReadonlyMap<string, number>;
 }
 
 @Injectable()
@@ -60,7 +68,7 @@ export class SlotReservationService {
   async commit(
     cargoId: string,
     zone: ZoneEntity,
-    allowSwap: boolean,
+    options: SlotCommitOptions,
   ): Promise<SlotCommitResult | null> {
     const layout = await this.deliverySlotEngine.layoutFor(zone);
     if (!layout) return null;
@@ -80,7 +88,7 @@ export class SlotReservationService {
 
       const ownReservation = cargo.reservedLocationName;
       const zoneCargos = await this.zoneCargos(manager, zone.id);
-      const chosen = this.chooseSlot(layout, zoneCargos, cargo, allowSwap);
+      const chosen = this.chooseSlot(layout, zoneCargos, cargo, options);
       if (!chosen) {
         this.logger.warn(
           `Cargo ${cargoId}: zone "${zone.name}" offered no slot to commit`,
@@ -136,17 +144,29 @@ export class SlotReservationService {
     layout: ZoneSlotLayout,
     zoneCargos: readonly CargoEntity[],
     cargo: CargoEntity,
-    allowSwap: boolean,
+    options: SlotCommitOptions,
   ): string | null {
-    const committed = committedSlots(zoneCargos);
-    const ranked = this.deliverySlotEngine.rank(layout, committed);
+    const untouchable = untouchableSlots(
+      zoneCargos,
+      cargo,
+      options.insideColumnByCargoId,
+    );
+    const ranked = this.deliverySlotEngine.rank(layout, untouchable);
     if (ranked.length === 0) return null;
 
-    if (allowSwap) return ranked[0].locationName;
+    if (options.allowSwap) return ranked[0].locationName;
 
     const own = cargo.reservedLocationName;
-    if (own && !committed.has(own)) return own;
-    return ranked[0].locationName;
+    if (own && !untouchable.has(own)) return own;
+
+    const ownColumn = options.insideColumnByCargoId.get(cargo.id);
+    if (ownColumn == null) return ranked[0].locationName;
+
+    const ownColumnSlots = columnLocationNames(layout, ownColumn);
+    return (
+      ranked.find((slot) => ownColumnSlots.has(slot.locationName))
+        ?.locationName ?? null
+    );
   }
 
   private async reassign(
@@ -235,6 +255,21 @@ function committedSlots(cargos: readonly CargoEntity[]): Set<string> {
   const slots = new Set<string>();
   for (const cargo of cargos) {
     if (cargo.destinationLocationName) slots.add(cargo.destinationLocationName);
+  }
+  return slots;
+}
+
+function untouchableSlots(
+  cargos: readonly CargoEntity[],
+  committer: CargoEntity,
+  insideColumnByCargoId: ReadonlyMap<string, number>,
+): Set<string> {
+  const slots = committedSlots(cargos);
+  for (const cargo of cargos) {
+    if (cargo.id === committer.id) continue;
+    if (!cargo.reservedLocationName) continue;
+    if (!insideColumnByCargoId.has(cargo.id)) continue;
+    slots.add(cargo.reservedLocationName);
   }
   return slots;
 }

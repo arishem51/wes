@@ -102,6 +102,25 @@ export function usableSlotCount(layout: ZoneSlotLayout): number {
   return layout.columns.reduce((total, column) => total + column.length, 0);
 }
 
+export function columnIndexOfPoint(
+  layout: ZoneSlotLayout,
+  pointName: string,
+): number | null {
+  const index = layout.columns.findIndex((column) =>
+    column.some((slot) => slot.pointName === pointName),
+  );
+  return index === -1 ? null : index;
+}
+
+export function columnLocationNames(
+  layout: ZoneSlotLayout,
+  columnIndex: number,
+): ReadonlySet<string> {
+  return new Set(
+    (layout.columns[columnIndex] ?? []).map((slot) => slot.locationName),
+  );
+}
+
 export function rankSlots(
   layout: ZoneSlotLayout,
   occupiedLocationNames: ReadonlySet<string>,

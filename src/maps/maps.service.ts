@@ -8,9 +8,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AxiosError } from 'axios';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type {
   KernelLocation,
   KernelLocationType,
+  KernelVehicleState,
 } from '../opentcs/domain/kernel-model';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
 import { savePlantModel } from '../opentcs/save-plant-model';
@@ -47,6 +49,7 @@ export class MapsService {
 
   constructor(
     private readonly kernelApi: KernelApiService,
+    private readonly vehicleStateStore: VehicleStateStore,
     @InjectRepository(MapRecordEntity)
     private readonly repo: Repository<MapRecordEntity>,
     @InjectRepository(CargoEntity)
@@ -83,8 +86,12 @@ export class MapsService {
     return this.toPlantModelSummary(plantModel) ? plantModel : null;
   }
 
-  async getKernelVehicles(): Promise<unknown[]> {
-    return this.kernelApi.getVehicleStates();
+  async getKernelVehicles(): Promise<KernelVehicleState[]> {
+    const vehicles = await this.kernelApi.getVehicleStates();
+    return vehicles.map((vehicle) => ({
+      ...vehicle,
+      goal: this.vehicleStateStore.get(vehicle.name)?.goal ?? null,
+    }));
   }
 
   async getKernelDebug(): Promise<unknown> {

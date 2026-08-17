@@ -39,6 +39,13 @@ function cargo(id: string, overrides: Partial<FakeCargo> = {}): FakeCargo {
   };
 }
 
+function options(
+  allowSwap: boolean,
+  insideColumnByCargoId: ReadonlyMap<string, number> = new Map(),
+) {
+  return { allowSwap, insideColumnByCargoId };
+}
+
 function makeService(cargos: FakeCargo[]) {
   const repo = {
     findOne: ({ where }: { where: { id: string } }) =>
@@ -128,7 +135,7 @@ describe('SlotReservationService.commit', () => {
       cargo('c1', { reservedLocationName: 'D3' }),
     ]);
 
-    const result = await service.commit('c1', ZONE, true);
+    const result = await service.commit('c1', ZONE, options(true));
 
     expect(result).toMatchObject({ slot: 'D3', keptOwnReservation: true });
     expect(cargos[0].destinationLocationName).toBe('D3');
@@ -141,7 +148,7 @@ describe('SlotReservationService.commit', () => {
       cargo('c2', { reservedLocationName: 'D2' }),
     ]);
 
-    const result = await service.commit('c2', ZONE, true);
+    const result = await service.commit('c2', ZONE, options(true));
 
     expect(result).toMatchObject({ slot: 'D3', keptOwnReservation: false });
     expect(cargos[1].destinationLocationName).toBe('D3');
@@ -157,7 +164,7 @@ describe('SlotReservationService.commit', () => {
       cargo('c2', { reservedLocationName: 'D2' }),
     ]);
 
-    const result = await service.commit('c2', ZONE, true);
+    const result = await service.commit('c2', ZONE, options(true));
 
     expect(result?.displaced?.replacementSlot).toBe('D2');
     expect(cargos[0].reservedLocationName).toBe('D2');
@@ -169,7 +176,7 @@ describe('SlotReservationService.commit', () => {
       cargo('c2', { reservedLocationName: 'D2' }),
     ]);
 
-    const result = await service.commit('c2', ZONE, false);
+    const result = await service.commit('c2', ZONE, options(false));
 
     expect(result).toMatchObject({ slot: 'D2', keptOwnReservation: true });
     expect(result?.displaced).toBeNull();
@@ -181,7 +188,7 @@ describe('SlotReservationService.commit', () => {
       cargo('c1', { destinationLocationName: 'S2' }),
     ]);
 
-    const result = await service.commit('c1', ZONE, true);
+    const result = await service.commit('c1', ZONE, options(true));
 
     expect(result).toEqual({
       slot: 'S2',
@@ -196,9 +203,51 @@ describe('SlotReservationService.commit', () => {
       cargo('c2', { reservedLocationName: 'D2' }),
     ]);
 
-    const result = await service.commit('c2', ZONE, true);
+    const result = await service.commit('c2', ZONE, options(true));
 
     expect(result?.slot).toBe('D2');
+  });
+
+  it('never takes the slot of a vehicle that already drove into its column', async () => {
+    const { service, cargos } = makeService([
+      cargo('c1', { reservedLocationName: 'D3' }),
+      cargo('c2', { reservedLocationName: 'D2' }),
+    ]);
+
+    const result = await service.commit(
+      'c2',
+      ZONE,
+      options(true, new Map([['c1', 0]])),
+    );
+
+    expect(result).toMatchObject({ slot: 'D2', keptOwnReservation: true });
+    expect(result?.displaced).toBeNull();
+    expect(cargos[0].reservedLocationName).toBe('D3');
+  });
+
+  it('re-picks inside the column the vehicle is already in', async () => {
+    const { service } = makeService([cargo('c1')]);
+
+    const result = await service.commit(
+      'c1',
+      ZONE,
+      options(false, new Map([['c1', 1]])),
+    );
+
+    expect(result).toMatchObject({ slot: 'S3' });
+  });
+
+  it('commits nothing rather than send a vehicle out of its column', async () => {
+    const { service } = makeService([
+      cargo('c1'),
+      cargo('c2', { destinationLocationName: 'D3' }),
+      cargo('c3', { destinationLocationName: 'D2' }),
+      cargo('c4', { destinationLocationName: 'D1' }),
+    ]);
+
+    await expect(
+      service.commit('c1', ZONE, options(false, new Map([['c1', 0]]))),
+    ).resolves.toBeNull();
   });
 
   it('bumps the decision counter on every cargo it touches', async () => {
@@ -207,7 +256,7 @@ describe('SlotReservationService.commit', () => {
       cargo('c2', { reservedLocationName: 'D2', slotDecisionSeq: 7 }),
     ]);
 
-    await service.commit('c2', ZONE, true);
+    await service.commit('c2', ZONE, options(true));
 
     expect(cargos[0].slotDecisionSeq).toBe(5);
     expect(cargos[1].slotDecisionSeq).toBe(8);

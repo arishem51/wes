@@ -1,6 +1,8 @@
 import {
   MAX_COLUMN_LEAD,
   buildZoneSlotLayout,
+  columnIndexOfPoint,
+  columnLocationNames,
   rankSlots,
   usableSlotCount,
   type PlantPoint,
@@ -159,6 +161,32 @@ describe('buildZoneSlotLayout', () => {
 
     expect(layout.strandedLocationNames).toEqual(['location_orphan']);
     expect(usableSlotCount(layout)).toBe(6);
+  });
+});
+
+describe('columnIndexOfPoint', () => {
+  it('tells which column a vehicle standing on a slot is in', () => {
+    const layout = layoutOf(rack(4));
+
+    expect(columnIndexOfPoint(layout, 'D3')).toBe(0);
+    expect(columnIndexOfPoint(layout, 'S3')).toBe(1);
+  });
+
+  it('reports no column for a point outside the rack', () => {
+    const layout = layoutOf(rack(4));
+
+    expect(columnIndexOfPoint(layout, 'A2')).toBeNull();
+  });
+
+  it('lists the slots a vehicle may still take without leaving its column', () => {
+    const layout = layoutOf(rack(4));
+
+    expect([...columnLocationNames(layout, 0)].sort()).toEqual([
+      'location_D2',
+      'location_D3',
+      'location_D4',
+    ]);
+    expect(columnLocationNames(layout, 9).size).toBe(0);
   });
 });
 

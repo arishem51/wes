@@ -6,6 +6,12 @@ export interface KernelVehiclePrecisePosition {
   z: number;
 }
 
+export interface KernelVehicleGoal {
+  orderName: string;
+  destinationName: string;
+  operation: string;
+}
+
 export interface KernelVehicleState {
   name: string;
   state:
@@ -28,6 +34,7 @@ export interface KernelVehicleState {
   orientationAngle?: number | null;
   allocatedResources?: string[][];
   transportOrder?: string | null;
+  goal?: KernelVehicleGoal | null;
   properties?: Record<string, string>;
   errors?: KernelVehicleErrors;
   observedAt?: string;

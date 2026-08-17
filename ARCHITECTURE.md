@@ -304,6 +304,32 @@ Late is safe, not wrong: if the loop misses the tick where the vehicle sits on
 the gate, the commit still happens once it is inside the zone — it just loses the
 right to swap. The gate is a quality gradient, never a deadline.
 
+**A vehicle already inside a column never changes column.** The tick classifies
+every delivering vehicle before it opens any transaction — on a gate point, on a
+member point of column *i*, or elsewhere — and passes
+`insideColumnByCargoId` into `commit`. Two rules follow from it:
+
+- the reservation of a cargo whose vehicle stands inside a column is **not
+  stealable**: `chooseSlot` treats it exactly like a committed slot, so the
+  vehicle at the gate takes the next slot in fill order instead;
+- if such a vehicle ever has to re-pick a slot (it holds no usable reservation),
+  it is offered only slots of **its own** column, and commits nothing at all when
+  that column is full — it must never be handed a slot it would have to back out
+  of the rack to reach.
+
+The first rule is what makes the outcome independent of the order the loop walks
+the tasks in: a vehicle that missed its gate tick now behaves exactly as if it
+had committed there on time, so *when* it is processed can no longer change who
+gets which slot. The tick still runs gate-standing vehicles first, and the tasks
+are read in `createdAt` order, so a tick is reproducible rather than dependent on
+Postgres row order.
+
+One instance per task per tick: the winner's swap mutates the displaced task
+(withdrawn order, new `to3Name`, `swapCount`), and the displaced vehicle may be
+processed later in the same tick — `reaimDisplaced` therefore reuses the instance
+the tick is iterating and only falls back to a read when the victim is not part
+of this tick (still driving to the zone).
+
 `DeliverySlotEngine` splits the static from the live. `layoutFor(zone)` builds a
 `ZoneSlotLayout` (columns ordered farthest-from-exit first, each ordered from the
 far end of the rack inwards, plus the entry points) and caches it per zone behind
