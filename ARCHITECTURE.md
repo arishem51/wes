@@ -59,7 +59,8 @@ it lives, and the one rule that keeps it intact.
 | **State Machine** | `cargo/domain/transport-task.state-machine.ts` | The transition table is the single source of truth for the task lifecycle and the only code that assigns `task.status` (§4). |
 | **Single write choke point** | `cargo/transport-task.service.ts` | `TransportTaskService.changeStatus()` is the only path to transition: validate (state machine) → persist → emit. Set other fields before calling it. |
 | **In-process Event Bus** | `cargo/domain/events.ts` + `@nestjs/event-emitter` | Producers `emit`, consumers `@OnEvent`. Never call another service's method to trigger a reaction — emit an event (§3). |
-| **Saga / Process Manager** | `cargo/transport-task.saga.ts` | Owns the TO1→TO3 leg progression reacting to `fms.transport-order.finished`. Keep multi-leg flow here, not scattered. |
+| **Saga / Process Manager** | `cargo/transport-task.saga.ts` | Owns the pickup -> approach leg progression reacting to `fms.transport-order.finished`. The drop-off leg is owned by `cargo/dropoff-commit.loop.ts`, because it is gated on physical lane state rather than on an event. Keep each multi-leg flow in one place. |
+| **One aim per vehicle** | `cargo/vehicle-aim.service.ts` | Where a vehicle is headed lives in two halves - the cargo's slot in the DB and the transport order in the kernel. `VehicleAimService` is the only writer of both, so they cannot drift. Re-deciding a slot **must** re-issue the order in the same step. |
 | **Specification / Strategy** | `cargo/domain/dispatch.policy.ts`, `cargo/domain/row-dependency.policy.ts` | Fleet eligibility, vehicle pick, and row-dependency are pure functions. The engine feeds data in; the policy decides. No hardcoded vehicles (§6). |
 | **Anti-Corruption Layer** | `src/opentcs/` | All openTCS REST/SSE + types stay here; never leak openTCS types into business modules (§5). |
 | **Repository + DTO** | every module | TypeORM repos for persistence; map entities → DTO before returning from controllers. |
@@ -148,6 +149,8 @@ export const TRANSPORT_TASK_EVENTS = {
 
 export const FMS_EVENTS = {
   TRANSPORT_ORDER_FINISHED: 'fms.transport-order.finished',
+  TRANSPORT_ORDER_LOST_NAVIGATION: 'fms.transport-order.lost-navigation',
+  DROPOFF_UNLOADED: 'fms.transport-order.dropoff-unloaded',
   VEHICLE_AVAILABLE: 'fms.vehicle.available',
   VEHICLE_ERROR_CHANGED: 'fms.vehicle.error-changed',
 } as const;
@@ -171,7 +174,10 @@ vehicle-state/point/order snapshot taken when the change was observed).
   safe because every `fms.*` consumer is idempotent.
 
 ### 3.5 Consuming
-- Use `@OnEvent('...')` (array form for multiple events) on a service method.
+- Use `@OnEvent('...')` on a service method. For several events, **stack one
+  decorator per event**. `@OnEvent([...])` registers the listener under the
+  stringified array and therefore **never fires**: `EventEmitterModule.forRoot()`
+  runs without `wildcard`, so eventemitter2 indexes by the raw key.
 - Consumers are decoupled from producers — never call the producer's service
   directly to react to its output.
 
@@ -195,11 +201,20 @@ TransportTaskService        = the only writer of task.status; on each change
                                 '.failed'    on FAILED)
                              on create emits 'transport-task.created'
 
-DispatchSchedulerService   ← @OnEvent(['transport-task.created',
-                                        'transport-task.status-changed',
-                                        'fms.vehicle.available'])
-                             debounced (1.5s) flush:
-                             park-claims → leg-reconcile → release → assign → park
+DispatchSchedulerService   -> @OnEvent('transport-task.created')
+                              @OnEvent('transport-task.status-changed')
+                              @OnEvent('fms.vehicle.available')
+                              debounced (1.5s) flush:
+                              park-claims -> leg-reconcile -> release -> assign -> park
+
+DropoffCommitLoop           = NOT event-driven. A 200ms polling loop behind a
+                              pg_try_advisory_lock single-runner gate, re-acquired
+                              each tick so a standby takes over. It owns the
+                              happy-path drop-off leg: commit a slot at the zone
+                              gate, issue the drop-off order, and re-aim every
+                              vehicle queued in that lane. The saga issues a
+                              drop-off order only on the lost-navigation recovery
+                              path.
 ```
 
 No service calls `DispatchSchedulerService.schedule()` directly. The flush is
@@ -856,4 +871,10 @@ step depends on the one before:
 - **Frontend**: Playwright e2e for critical flows (auth, create cargo, cancel cargo).
 - A service constructor change must update that service's `*.spec.ts` providers
   in the same change (keep the suite green).
+- **Known gap, do not treat as the standard**: `zone.service.spec.ts` and
+  `dropoff-commit.loop.spec.ts` mock the DB rather than run against one. That is
+  why a decision written to the DB but never sent to the kernel stayed invisible
+  for so long - each half was mocked, so nothing watched the seam between them.
+  When a rule can be stated without I/O, put it in `domain/` and unit-test it
+  there instead of asserting call graphs through mocks.
 ```
