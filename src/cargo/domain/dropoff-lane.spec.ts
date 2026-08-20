@@ -1,0 +1,224 @@
+import {
+  deepestReachableCell,
+  laneSpotOf,
+  canKeepDrivingTo,
+  serveOrder,
+  standsOnASlot,
+  whereToQueue,
+} from './dropoff-lane';
+import { ZoneOccupancy, type ZoneClaim } from './zone-occupancy';
+import { CargoStatus } from '../entities/cargo.entity';
+import type { ZoneLane, ZoneSlotLayout } from './zone-slot-layout';
+
+const slot = (pointName: string) => ({
+  locationName: `location_${pointName}`,
+  pointName,
+});
+
+const DEEP_LANE: ZoneLane = {
+  axis: 0,
+  slots: ['P5', 'P4', 'P3', 'P2', 'P1'].map(slot),
+  axisPoints: ['P5', 'P4', 'P3', 'P2', 'P1', 'corr', 'mainline'],
+};
+
+const SIDE_LANE: ZoneLane = {
+  axis: 1000,
+  slots: ['Q2', 'Q1'].map(slot),
+  axisPoints: ['Q2', 'Q1', 'corrQ'],
+};
+
+const LAYOUT: ZoneSlotLayout = {
+  columns: [DEEP_LANE.slots, SIDE_LANE.slots],
+  lanes: [DEEP_LANE, SIDE_LANE],
+  entryPoints: ['P1', 'Q1'],
+  memberPointNames: new Set(['P1', 'P2', 'P3', 'P4', 'P5', 'Q1', 'Q2']),
+  strandedLocationNames: [],
+};
+
+const taken = (...pointNames: string[]) =>
+  new Set(pointNames.map((name) => `location_${name}`));
+
+describe('laneSpotOf', () => {
+  it('places a vehicle standing on a drop-off cell', () => {
+    expect(laneSpotOf(LAYOUT, 'P3')).toEqual({ lane: DEEP_LANE, depth: 2 });
+  });
+
+  it('places a vehicle queued on the corridor behind the cells', () => {
+    expect(laneSpotOf(LAYOUT, 'corr')?.depth).toBe(5);
+  });
+
+  it('counts depth from the far end, so deeper reads as smaller', () => {
+    const deep = laneSpotOf(LAYOUT, 'P5')!;
+    const shallow = laneSpotOf(LAYOUT, 'P1')!;
+
+    expect(deep.depth).toBeLessThan(shallow.depth);
+  });
+
+  it('tells the lanes apart', () => {
+    expect(laneSpotOf(LAYOUT, 'Q1')?.lane).toBe(SIDE_LANE);
+  });
+
+  it('reports nothing for a vehicle that has not entered any lane', () => {
+    expect(laneSpotOf(LAYOUT, 'somewhere-else')).toBeNull();
+  });
+});
+
+describe('standsOnASlot', () => {
+  it('is true on a drop-off cell', () => {
+    expect(standsOnASlot(DEEP_LANE, 'P2')).toBe(true);
+  });
+
+  it('is false on the corridor, which carries no cargo', () => {
+    expect(standsOnASlot(DEEP_LANE, 'corr')).toBe(false);
+  });
+});
+
+describe('deepestReachableCell', () => {
+  it('sends the first vehicle all the way to the far end', () => {
+    expect(deepestReachableCell(DEEP_LANE, taken())?.pointName).toBe('P5');
+  });
+
+  it('stops one cell short of the cargo already there', () => {
+    expect(deepestReachableCell(DEEP_LANE, taken('P5'))?.pointName).toBe('P4');
+  });
+
+  it('never reaches past an occupied cell to a free one behind it', () => {
+    expect(deepestReachableCell(DEEP_LANE, taken('P3'))?.pointName).toBe('P2');
+  });
+
+  it('stops at the shallowest occupied cell, not the deepest', () => {
+    expect(deepestReachableCell(DEEP_LANE, taken('P5', 'P2'))?.pointName).toBe(
+      'P1',
+    );
+  });
+
+  it('reports the lane full once the entrance cell is taken', () => {
+    expect(deepestReachableCell(DEEP_LANE, taken('P1'))).toBeNull();
+  });
+});
+
+describe('serveOrder', () => {
+  it('asks the vehicle deepest in the lane first', () => {
+    const spots = [
+      { depth: 5, id: 'shallow' },
+      { depth: 1, id: 'deep' },
+    ];
+
+    expect(serveOrder(spots).map((s) => s.id)).toEqual(['deep', 'shallow']);
+  });
+
+  it('leaves the caller array untouched', () => {
+    const spots = [{ depth: 5 }, { depth: 1 }];
+
+    serveOrder(spots);
+
+    expect(spots.map((s) => s.depth)).toEqual([5, 1]);
+  });
+});
+
+describe('whereToQueue', () => {
+  const claim = (id: string, fields: Partial<ZoneClaim> = {}): ZoneClaim => ({
+    id,
+    status: CargoStatus.ACTIVE,
+    destinationLocationName: null,
+    reservedLocationName: null,
+    ...fields,
+  });
+
+  const occupancyOf = (...claims: ZoneClaim[]) =>
+    ZoneOccupancy.of(claims, LAYOUT);
+
+  it('sends the first arrival to the far end of the lane', () => {
+    expect(whereToQueue(LAYOUT, occupancyOf())).toBe('location_P5');
+  });
+
+  it('sends the next arrival one cell short, while nobody has committed', () => {
+    const occupancy = occupancyOf(
+      claim('c1', { reservedLocationName: 'location_P5' }),
+    );
+
+    expect(whereToQueue(LAYOUT, occupancy)).toBe('location_P4');
+  });
+
+  it('clears the retreat cells once someone commits', () => {
+    const occupancy = occupancyOf(
+      claim('c1', { destinationLocationName: 'location_P5' }),
+    );
+
+    expect(whereToQueue(LAYOUT, occupancy)).toBe('location_P2');
+  });
+
+  it('queues the one after that a further cell back', () => {
+    const occupancy = occupancyOf(
+      claim('c1', { destinationLocationName: 'location_P5' }),
+      claim('c2', { reservedLocationName: 'location_P2' }),
+    );
+
+    expect(whereToQueue(LAYOUT, occupancy)).toBe('location_P1');
+  });
+
+  it('offers the corridor once the cells behind the retreat are taken', () => {
+    const soloLayout: ZoneSlotLayout = {
+      ...LAYOUT,
+      columns: [DEEP_LANE.slots],
+      lanes: [DEEP_LANE],
+    };
+    const occupancy = ZoneOccupancy.of(
+      [
+        claim('c1', { destinationLocationName: 'location_P5' }),
+        claim('c2', { reservedLocationName: 'location_P2' }),
+        claim('c3', { reservedLocationName: 'location_P1' }),
+      ],
+      soloLayout,
+    );
+
+    expect(whereToQueue(soloLayout, occupancy)).toBe('corr');
+  });
+
+  it('diverts to the next lane before offering the corridor of a full one', () => {
+    const occupancy = occupancyOf(
+      claim('c1', { destinationLocationName: 'location_P5' }),
+      claim('c2', { reservedLocationName: 'location_P2' }),
+      claim('c3', { reservedLocationName: 'location_P1' }),
+    );
+
+    expect(whereToQueue(LAYOUT, occupancy)).toBe('location_Q2');
+  });
+
+  it('moves to the next lane once this one leads by the buffer', () => {
+    const occupancy = occupancyOf(
+      claim('c1', { reservedLocationName: 'location_P5' }),
+      claim('c2', { reservedLocationName: 'location_P4' }),
+      claim('c3', { reservedLocationName: 'location_P3' }),
+    );
+
+    expect(whereToQueue(LAYOUT, occupancy)).toBe('location_Q2');
+  });
+});
+
+describe('canKeepDrivingTo', () => {
+  it('says yes when the new cell is deeper down the same lane', () => {
+    expect(canKeepDrivingTo(LAYOUT, 'location_P2', 'location_P4')).toBe(true);
+  });
+
+  it('says yes when it is the very cell already being driven to', () => {
+    expect(canKeepDrivingTo(LAYOUT, 'location_P3', 'location_P3')).toBe(true);
+  });
+
+  it('says no when the new cell is behind, which needs a turn-around', () => {
+    expect(canKeepDrivingTo(LAYOUT, 'location_P4', 'location_P2')).toBe(false);
+  });
+
+  it('says no when the new cell is in another lane', () => {
+    expect(canKeepDrivingTo(LAYOUT, 'location_P3', 'location_Q2')).toBe(false);
+  });
+
+  it('measures from a corridor point too, not just a drop-off cell', () => {
+    expect(canKeepDrivingTo(LAYOUT, 'corr', 'location_P1')).toBe(true);
+    expect(canKeepDrivingTo(LAYOUT, 'location_P1', 'corr')).toBe(false);
+  });
+
+  it('says no when either end is not on any lane', () => {
+    expect(canKeepDrivingTo(LAYOUT, 'somewhere', 'location_P3')).toBe(false);
+  });
+});

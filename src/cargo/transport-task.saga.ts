@@ -13,8 +13,17 @@ import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { TransportOrderDestination as OrderDestination } from '../opentcs/domain/kernel-model';
 import { TransportTaskService } from './transport-task.service';
 import { SlotReservationService } from './slot-reservation.service';
-import { DropoffOrderService } from './dropoff-order.service';
+import {
+  DropoffOrderService,
+  retreatDestinations,
+} from './dropoff-order.service';
+import type { RetreatPlan } from './domain/retreat-point';
 import { RetreatPointService } from './retreat-point.service';
+import {
+  ApproachOrderService,
+  approachTargetFor,
+} from './approach-order.service';
+import { DeliverySlotEngine } from './delivery-slot.engine';
 import {
   FMS_EVENTS,
   FmsDropOffUnloadedEvent,
@@ -45,6 +54,8 @@ export class TransportTaskSaga {
     private readonly slotReservation: SlotReservationService,
     private readonly dropoffOrder: DropoffOrderService,
     private readonly retreatPoint: RetreatPointService,
+    private readonly approachOrder: ApproachOrderService,
+    private readonly deliverySlotEngine: DeliverySlotEngine,
   ) {}
 
   @OnEvent(FMS_EVENTS.TRANSPORT_ORDER_FINISHED)
@@ -57,6 +68,9 @@ export class TransportTaskSaga {
       switch (event.leg) {
         case 'PICKUP':
           await this.onPickupFinished(event.taskId);
+          break;
+        case 'APPROACH':
+          await this.onApproachFinished(event.taskId);
           break;
         case 'DROPOFF':
           await this.onDropOffFinished(event.taskId);
@@ -144,14 +158,19 @@ export class TransportTaskSaga {
       return;
     }
 
-    const retreatPath = await this.retreatPoint.pathFor(slot);
+    const zone = cargo ? await this.destinationZoneOf(cargo) : null;
+    if (!zone) {
+      this.logger.warn(
+        `Task ${task.id}: no destination zone to re-issue the drop-off into`,
+      );
+      return;
+    }
+
+    const plan = await this.retreatPoint.planFor(slot, zone);
     const alreadyUnloaded = Boolean(task.metadata?.unloadedAt);
     const destinations = alreadyUnloaded
-      ? (retreatPath ?? []).map((cell) => ({
-          locationName: cell,
-          operation: 'MOVE',
-        }))
-      : this.dropOffDestinations(slot, retreatPath);
+      ? retreatDestinations(plan)
+      : this.dropOffDestinations(slot, plan);
 
     if (destinations.length === 0) {
       this.logger.log(
@@ -249,19 +268,36 @@ export class TransportTaskSaga {
       return;
     }
 
-    const orderName = await this.dropoffOrder.issue(
+    const layout = await this.deliverySlotEngine.layoutFor(zone);
+    if (!layout) return;
+
+    const orderName = await this.approachOrder.aim(
       task,
       vehicle,
-      reservedSlot,
+      approachTargetFor(layout, reservedSlot),
     );
     if (!orderName) return;
 
     await this.transportTask.changeStatus(task, TaskStatus.DELIVERING, {
       trigger: 'SAGA',
-      context: { to3Name: orderName, reservedSlot },
+      context: { approachOrderName: orderName, reservedSlot },
     });
     this.logger.log(
-      `Task ${task.id} → DELIVERING, created ${orderName} (reserved ${reservedSlot})`,
+      `Task ${task.id} → DELIVERING, ${vehicle} heading for ${reservedSlot}`,
+    );
+  }
+
+  private async onApproachFinished(taskId: string): Promise<void> {
+    const task = await this.findTask(taskId, TaskStatus.DELIVERING);
+    if (!task || task.metadata?.approachedAt) return;
+
+    task.metadata = {
+      ...task.metadata,
+      approachedAt: new Date().toISOString(),
+    };
+    await this.taskRepo.save(task);
+    this.logger.log(
+      `Task ${task.id}: ${task.metadata.assignedVehicleName} waiting at the zone gate for a free lane`,
     );
   }
 
@@ -286,17 +322,13 @@ export class TransportTaskSaga {
 
   private dropOffDestinations(
     slot: string,
-    retreatPath: readonly string[] | null,
+    plan: RetreatPlan | null,
   ): OrderDestination[] {
     const dropOff = {
       locationName: slot,
       operation: this.kernelApi.unloadOperation,
     };
-    const retreatSteps = (retreatPath ?? []).map((cell) => ({
-      locationName: cell,
-      operation: 'MOVE',
-    }));
-    return [dropOff, ...retreatSteps];
+    return [dropOff, ...retreatDestinations(plan)];
   }
 
   private async onDropOffFinished(taskId: string): Promise<void> {

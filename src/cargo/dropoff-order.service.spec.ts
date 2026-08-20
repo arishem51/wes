@@ -1,9 +1,10 @@
 import { DropoffOrderService } from './dropoff-order.service';
 
 const SLOT = 'location_3003';
-const RETREAT_PATH = ['3002', '3001'];
+const ZONE = { id: 'zone-1', name: 'zone_1' } as never;
+const PLAN = { cells: ['3002', '3001'], egress: null };
 
-function makeService(retreatPath: string[] | null = RETREAT_PATH) {
+function makeService(plan: unknown = PLAN) {
   const taskRepo = { save: jest.fn().mockResolvedValue(undefined) };
   const kernelApi = {
     unloadOperation: 'liftDown',
@@ -11,7 +12,7 @@ function makeService(retreatPath: string[] | null = RETREAT_PATH) {
     withdrawTransportOrder: jest.fn().mockResolvedValue(undefined),
   };
   const retreatPoint = {
-    pathFor: jest.fn().mockResolvedValue(retreatPath),
+    planFor: jest.fn().mockResolvedValue(plan),
   };
   const service = new DropoffOrderService(
     taskRepo as never,
@@ -29,7 +30,7 @@ describe('DropoffOrderService.issue', () => {
   it('puts the drop-off first, then one MOVE per retreat cell', async () => {
     const { service, kernelApi } = makeService();
 
-    await service.issue(task(), 'V1', SLOT);
+    await service.issue(task(), 'V1', SLOT, ZONE);
 
     const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
     expect(destinations).toEqual([
@@ -39,10 +40,13 @@ describe('DropoffOrderService.issue', () => {
     ]);
   });
 
-  it('never collapses the retreat into a single destination at the far cell', async () => {
-    const { service, kernelApi } = makeService(['3002', '3001', '0091']);
+  it('appends the turn-off cell after the retreat cells', async () => {
+    const { service, kernelApi } = makeService({
+      cells: ['3002', '3001'],
+      egress: '0091',
+    });
 
-    await service.issue(task(), 'V1', SLOT);
+    await service.issue(task(), 'V1', SLOT, ZONE);
 
     const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
     expect(
@@ -53,7 +57,7 @@ describe('DropoffOrderService.issue', () => {
   it('keeps the order on the DROPOFF leg and pins the assigned vehicle', async () => {
     const { service, kernelApi } = makeService();
 
-    await service.issue(task(), 'V1', SLOT);
+    await service.issue(task(), 'V1', SLOT, ZONE);
 
     const [orderName, , vehicle, properties] =
       kernelApi.createTransportOrder.mock.calls[0];
@@ -68,7 +72,7 @@ describe('DropoffOrderService.issue', () => {
   it('records the order name and the last retreat cell on the task', async () => {
     const { service, taskRepo } = makeService();
 
-    await service.issue(task(), 'V1', SLOT);
+    await service.issue(task(), 'V1', SLOT, ZONE);
 
     const saved = taskRepo.save.mock.calls[0][0] as {
       metadata: Record<string, string>;
@@ -80,7 +84,7 @@ describe('DropoffOrderService.issue', () => {
   it('still delivers with a single destination when no retreat path resolves', async () => {
     const { service, kernelApi, taskRepo } = makeService(null);
 
-    await service.issue(task(), 'V1', SLOT);
+    await service.issue(task(), 'V1', SLOT, ZONE);
 
     const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
     expect(destinations).toEqual([
@@ -97,7 +101,12 @@ describe('DropoffOrderService.reissue', () => {
   it('withdraws the order in flight before aiming at the new slot', async () => {
     const { service, kernelApi } = makeService();
 
-    await service.reissue(task({ to3Name: 'DROPOFF-V1-old' }), 'V1', SLOT);
+    await service.reissue(
+      task({ to3Name: 'DROPOFF-V1-old' }),
+      'V1',
+      SLOT,
+      ZONE,
+    );
 
     expect(kernelApi.withdrawTransportOrder).toHaveBeenCalledWith(
       'DROPOFF-V1-old',
@@ -113,6 +122,7 @@ describe('DropoffOrderService.reissue', () => {
       task({ to3Name: 'DROPOFF-V1-old' }),
       'V1',
       SLOT,
+      ZONE,
     );
 
     expect(result).toBeNull();
@@ -122,7 +132,7 @@ describe('DropoffOrderService.reissue', () => {
   it('issues straight away when nothing is in flight yet', async () => {
     const { service, kernelApi } = makeService();
 
-    await service.reissue(task(), 'V1', SLOT);
+    await service.reissue(task(), 'V1', SLOT, ZONE);
 
     expect(kernelApi.withdrawTransportOrder).not.toHaveBeenCalled();
     expect(kernelApi.createTransportOrder).toHaveBeenCalled();

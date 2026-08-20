@@ -128,3 +128,115 @@ export function checkZoneReachability(
 
   return { feeders, unreachable: [...unreachable], maxHops };
 }
+
+export interface TopologyPoint {
+  readonly name: string;
+  readonly position: { readonly x: number; readonly y: number };
+}
+
+export interface LaneInvariantViolation {
+  readonly code: 'V1' | 'V3';
+  readonly detail: string;
+}
+
+function lanesOf(
+  points: readonly TopologyPoint[],
+  memberPointNames: ReadonlySet<string>,
+): TopologyPoint[][] {
+  const byAxis = new Map<number, TopologyPoint[]>();
+  for (const point of points) {
+    if (!memberPointNames.has(point.name)) continue;
+    const lane = byAxis.get(point.position.x);
+    if (lane) lane.push(point);
+    else byAxis.set(point.position.x, [point]);
+  }
+  return [...byAxis.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, lane]) => lane.sort((a, b) => a.position.y - b.position.y));
+}
+
+function nearestBehind(
+  current: TopologyPoint,
+  points: readonly TopologyPoint[],
+): TopologyPoint | null {
+  let nearest: TopologyPoint | null = null;
+  let nearestGap = Infinity;
+  for (const candidate of points) {
+    if (candidate.position.x !== current.position.x) continue;
+    const gap = candidate.position.y - current.position.y;
+    if (gap <= 0 || gap >= nearestGap) continue;
+    nearest = candidate;
+    nearestGap = gap;
+  }
+  return nearest;
+}
+
+function corridorDepthAbove(
+  shallowest: TopologyPoint,
+  points: readonly TopologyPoint[],
+  adj: ReadonlyMap<string, string[]>,
+): number {
+  let current = shallowest;
+  let depth = 0;
+  for (let step = 0; step < 2; step++) {
+    const behind = nearestBehind(current, points);
+    if (!behind) return depth;
+    if (!(adj.get(current.name) ?? []).includes(behind.name)) return depth;
+    depth++;
+    current = behind;
+  }
+  return depth;
+}
+
+export function checkLaneInvariants(
+  points: readonly TopologyPoint[],
+  paths: readonly PlantPath[],
+  memberPointNames: ReadonlySet<string>,
+): LaneInvariantViolation[] {
+  const arcs = directedArcs(paths);
+  const adj = adjacency(arcs);
+  const arcSet = new Set(arcs.map((arc) => `${arc.from}>${arc.to}`));
+  const positionOf = new Map(
+    points.map((point) => [point.name, point.position]),
+  );
+  const violations: LaneInvariantViolation[] = [];
+
+  for (const lane of lanesOf(points, memberPointNames)) {
+    const shallowest = lane[lane.length - 1];
+    const depth = corridorDepthAbove(shallowest, points, adj);
+    if (depth < 2) {
+      violations.push({
+        code: 'V1',
+        detail: `lane x=${shallowest.position.x} has only ${depth} corridor point(s) straight above ${shallowest.name}, needs 2`,
+      });
+    }
+  }
+
+  let direction = 0;
+  for (const arc of arcs) {
+    if (!memberPointNames.has(arc.from) || !memberPointNames.has(arc.to)) {
+      continue;
+    }
+    const from = positionOf.get(arc.from);
+    const to = positionOf.get(arc.to);
+    if (!from || !to || from.x === to.x) continue;
+
+    if (arcSet.has(`${arc.to}>${arc.from}`)) {
+      violations.push({
+        code: 'V3',
+        detail: `${arc.from} ↔ ${arc.to} crosses lanes in both directions`,
+      });
+      continue;
+    }
+    const sign = Math.sign(to.x - from.x);
+    if (direction === 0) direction = sign;
+    else if (direction !== sign) {
+      violations.push({
+        code: 'V3',
+        detail: `${arc.from} → ${arc.to} crosses lanes against the other cross-lane paths`,
+      });
+    }
+  }
+
+  return violations;
+}

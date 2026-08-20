@@ -178,7 +178,8 @@ export class CargoService {
       loadedMapName,
     );
 
-    await this.assertZoneHasRoom(this.cargoRepo, zone);
+    const capacity = await this.reachableCapacityOf(zone);
+    await this.assertZoneHasRoom(this.cargoRepo, zone, capacity);
 
     if (sourceZoneId) {
       await this.laneSafety.clearLaneForNewCargo(
@@ -194,7 +195,7 @@ export class CargoService {
           [zone.id],
         );
         const cargoRepo = manager.getRepository(CargoEntity);
-        await this.assertZoneHasRoom(cargoRepo, zone);
+        await this.assertZoneHasRoom(cargoRepo, zone, capacity);
 
         const saved = await cargoRepo.save(
           cargoRepo.create({
@@ -392,9 +393,15 @@ export class CargoService {
     return this.taskRepo.findOne({ where: { cargoId } });
   }
 
+  private async reachableCapacityOf(zone: ZoneEntity): Promise<number> {
+    const reachable = await this.deliverySlotEngine.usableCapacityOf(zone);
+    return reachable || zone.members.length;
+  }
+
   private async assertZoneHasRoom(
     cargoRepo: Repository<CargoEntity>,
     zone: ZoneEntity,
+    capacity: number,
   ): Promise<void> {
     const occupied = await cargoRepo.count({
       where: {
@@ -402,9 +409,6 @@ export class CargoService {
         status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]),
       },
     });
-    const reachableCapacity =
-      await this.deliverySlotEngine.usableCapacityOf(zone);
-    const capacity = reachableCapacity || zone.members.length;
     if (occupied >= capacity) {
       throw new BadRequestException(
         'Khu trả hàng đã đầy, không còn vị trí trống.',

@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, IsNull, Not, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Not, QueryRunner, Repository } from 'typeorm';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
@@ -14,23 +14,31 @@ import {
   TransportTaskEntity,
 } from './entities/transport-task.entity';
 import { DeliverySlotEngine } from './delivery-slot.engine';
-import { DropoffOrderService } from './dropoff-order.service';
 import {
   SlotReservationService,
   type SlotCommitResult,
 } from './slot-reservation.service';
-import { columnIndexOfPoint } from './domain/zone-slot-layout';
+import { VehicleAimService } from './vehicle-aim.service';
+import { laneSpotOf, serveOrder, standsOnASlot } from './domain/dropoff-lane';
+import {
+  laneOfLocation,
+  waitingTargetsFor,
+  type ZoneLane,
+  type ZoneSlotLayout,
+} from './domain/zone-slot-layout';
 
-const TICK_MS = 500;
+const TICK_MS = 200;
 const SINGLE_RUNNER_LOCK_KEY = 815_004_711;
+const RUNNER_LOCK_RECHECK_MS = 10_000;
 
 interface CommitCandidate {
   readonly task: TransportTaskEntity;
   readonly vehicle: string;
   readonly cargo: CargoEntity;
   readonly zone: ZoneEntity;
-  readonly atGate: boolean;
-  readonly insideColumn: number | null;
+  readonly layout: ZoneSlotLayout;
+  readonly lane: ZoneLane;
+  readonly depth: number;
 }
 
 @Injectable()
@@ -38,7 +46,8 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DropoffCommitLoop.name);
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
-  private runnerLock: { release: () => Promise<void> } | null = null;
+  private runnerLock: RunnerLock | null = null;
+  private lockVerifiedAt = 0;
 
   constructor(
     @InjectRepository(TransportTaskEntity)
@@ -52,42 +61,34 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     private readonly vehicleStore: VehicleStateStore,
     private readonly deliverySlotEngine: DeliverySlotEngine,
     private readonly slotReservation: SlotReservationService,
-    private readonly dropoffOrder: DropoffOrderService,
+    private readonly vehicleAim: VehicleAimService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    this.runnerLock = await this.acquireSingleRunnerLock();
-    if (!this.runnerLock) {
-      this.logger.log(
-        'Another instance already runs the drop-off commit loop — staying idle',
-      );
-      return;
-    }
+  onModuleInit(): void {
     this.timer = setInterval(() => void this.tick(), TICK_MS);
   }
 
   async onModuleDestroy(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    await this.runnerLock?.release();
-    this.runnerLock = null;
+    await this.releaseRunnerLock();
   }
 
   async tick(): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
     try {
-      const candidates = await this.commitCandidates();
-      const insideColumnByCargoId = insideColumnMap(candidates);
+      if (!(await this.holdsRunnerLock())) return;
+
+      const tasks = await this.tasksAwaitingCommit();
+      const candidates = await this.commitCandidates(tasks);
       const taskByCargoId = new Map(
-        candidates.map((candidate) => [candidate.cargo.id, candidate.task]),
+        tasks
+          .filter((task) => task.cargoId)
+          .map((task) => [task.cargoId!, task] as const),
       );
-      for (const candidate of gateFirst(candidates)) {
-        await this.commitCandidate(
-          candidate,
-          insideColumnByCargoId,
-          taskByCargoId,
-        );
+      for (const candidate of serveOrder(candidates)) {
+        await this.commitOne(candidate, taskByCargoId);
       }
     } catch (err) {
       this.logger.error(
@@ -105,9 +106,11 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async commitCandidates(): Promise<CommitCandidate[]> {
+  private async commitCandidates(
+    tasks: readonly TransportTaskEntity[],
+  ): Promise<CommitCandidate[]> {
     const candidates: CommitCandidate[] = [];
-    for (const task of await this.tasksAwaitingCommit()) {
+    for (const task of tasks) {
       const candidate = await this.candidateFor(task);
       if (candidate) candidates.push(candidate);
     }
@@ -139,28 +142,95 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     const layout = await this.deliverySlotEngine.layoutFor(zone);
     if (!layout) return null;
 
-    const atGate = layout.entryPoints.includes(position);
-    if (!atGate && !layout.memberPointNames.has(position)) return null;
+    const spot = laneSpotOf(layout, position);
+    if (!spot) return null;
 
     return {
       task,
       vehicle,
       cargo,
       zone,
-      atGate,
-      insideColumn: atGate ? null : columnIndexOfPoint(layout, position),
+      layout,
+      lane: spot.lane,
+      depth: spot.depth,
     };
+  }
+
+  // TODO: nothing releases a lane when the drop-off never completes. A cargo
+  // that is committed but never reaches unloadedAt — drop-off order FAILED or
+  // UNROUTABLE, order withdrawn, vehicle fault or lost navigation — blocks its
+  // lane forever, and every vehicle reserved into that lane waits behind it.
+  // Needs both a timeout on the committed-but-not-unloaded state and a release
+  // on terminal order state, which then has to hand the slot back to ranking.
+  private async slotsOfBusyLanes(
+    candidate: CommitCandidate,
+    taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
+  ): Promise<Set<string>> {
+    const inFlight = await this.cargoRepo.find({
+      where: {
+        destinationZoneId: candidate.zone.id,
+        status: CargoStatus.ACTIVE,
+        destinationLocationName: Not(IsNull()),
+      },
+    });
+
+    const blocked = new Set<string>();
+    for (const cargo of inFlight) {
+      const lane = laneOfLocation(
+        candidate.layout,
+        cargo.destinationLocationName!,
+      );
+      if (!lane) continue;
+      if (this.hasLeftLane(cargo, lane, taskByCargoId)) continue;
+      for (const slot of lane.slots) blocked.add(slot.locationName);
+    }
+    return blocked;
+  }
+
+  private hasLeftLane(
+    cargo: CargoEntity,
+    lane: ZoneLane,
+    taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
+  ): boolean {
+    const task = taskByCargoId.get(cargo.id);
+    if (!task?.metadata?.unloadedAt) return false;
+
+    const vehicle = task.metadata.assignedVehicleName;
+    const position = vehicle
+      ? this.vehicleStore.get(vehicle)?.currentPosition
+      : null;
+    if (!position) return false;
+
+    return !standsOnASlot(lane, position);
+  }
+
+  private async commitOne(
+    candidate: CommitCandidate,
+    taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
+  ): Promise<void> {
+    try {
+      await this.commitCandidate(candidate, taskByCargoId);
+    } catch (err) {
+      this.logger.error(
+        `Task ${candidate.task.id}: ${candidate.vehicle} failed mid-commit in lane ${candidate.lane.axis}: ${(err as Error).message}`,
+      );
+    }
   }
 
   private async commitCandidate(
     candidate: CommitCandidate,
-    insideColumnByCargoId: ReadonlyMap<string, number>,
     taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
   ): Promise<void> {
     const result = await this.slotReservation.commit(
       candidate.cargo.id,
       candidate.zone,
-      { allowSwap: candidate.atGate, insideColumnByCargoId },
+      {
+        lane: candidate.lane,
+        blockedLocationNames: await this.slotsOfBusyLanes(
+          candidate,
+          taskByCargoId,
+        ),
+      },
     );
     if (!result) return;
 
@@ -173,21 +243,108 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
   ): Promise<void> {
     const { task, vehicle } = candidate;
-    if (!result.keptOwnReservation) {
-      await this.dropoffOrder.reissue(task, vehicle, result.slot);
-    }
-
-    this.logger.log(
-      `Task ${task.id}: ${vehicle} committed ${result.slot}${
-        candidate.atGate ? '' : ' (already inside the zone, no swap)'
-      }${result.keptOwnReservation ? '' : ' — re-aimed'}`,
+    const dropping = await this.vehicleAim.dropAt(
+      { task, vehicle, cargoId: candidate.cargo.id },
+      candidate.zone,
+      candidate.layout,
+      result.slot,
+      result.keptOwnReservation,
     );
+    if (!dropping) return;
 
-    if (!result.displaced) return;
-    await this.reaimDisplaced(result, vehicle, taskByCargoId);
+    this.logger.log(`Task ${task.id}: ${vehicle} committed ${result.slot}`);
+
+    if (result.displaced) {
+      await this.recordDisplaced(result, vehicle, taskByCargoId);
+    }
+    await this.reaimLane(candidate, result.slot, taskByCargoId);
   }
 
-  private async reaimDisplaced(
+  private async reaimLane(
+    candidate: CommitCandidate,
+    committedSlot: string,
+    taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
+  ): Promise<void> {
+    const lane = laneOfLocation(candidate.layout, committedSlot);
+    if (!lane) return;
+
+    const committedPoint = lane.slots.find(
+      (slot) => slot.locationName === committedSlot,
+    )?.pointName;
+    if (!committedPoint) return;
+
+    const chain = waitingTargetsFor(lane, committedPoint);
+    const waiting = await this.waitingBehind(candidate, lane, taskByCargoId);
+    for (const [index, entry] of waiting.entries()) {
+      const target = chain[index];
+      if (!target) {
+        this.logger.warn(
+          `Task ${entry.task.id}: ${entry.vehicle} has nowhere left to wait behind ${committedSlot}`,
+        );
+        continue;
+      }
+      await this.vehicleAim.queueAt(
+        entry,
+        candidate.zone,
+        candidate.layout,
+        target,
+      );
+    }
+  }
+
+  private async waitingBehind(
+    candidate: CommitCandidate,
+    lane: ZoneLane,
+    taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
+  ): Promise<
+    { task: TransportTaskEntity; vehicle: string; cargoId: string }[]
+  > {
+    const laneTargets = new Set<string>([
+      ...lane.slots.map((slot) => slot.locationName),
+      ...lane.axisPoints,
+    ]);
+    const cargos = await this.cargoRepo.find({
+      where: {
+        destinationZoneId: candidate.zone.id,
+        status: CargoStatus.ACTIVE,
+        destinationLocationName: IsNull(),
+      },
+    });
+
+    const waiting: {
+      task: TransportTaskEntity;
+      vehicle: string;
+      cargoId: string;
+      distance: number;
+    }[] = [];
+    for (const cargo of cargos) {
+      if (cargo.id === candidate.cargo.id) continue;
+      if (
+        !cargo.reservedLocationName ||
+        !laneTargets.has(cargo.reservedLocationName)
+      ) {
+        continue;
+      }
+      const task = taskByCargoId.get(cargo.id);
+      const vehicle = task?.metadata?.assignedVehicleName;
+      if (!task || !vehicle) continue;
+
+      const position = this.vehicleStore.get(vehicle)?.currentPosition;
+      const onAxis = position ? lane.axisPoints.indexOf(position) : -1;
+      waiting.push({
+        task,
+        vehicle,
+        cargoId: cargo.id,
+        distance: onAxis === -1 ? Number.MAX_SAFE_INTEGER : onAxis,
+      });
+    }
+
+    return waiting
+      .sort((a, b) => a.distance - b.distance)
+      .map(({ task, vehicle, cargoId }) => ({ task, vehicle, cargoId }));
+  }
+
+  private async recordDisplaced(
     result: SlotCommitResult,
     winner: string,
     taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
@@ -210,56 +367,99 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.dropoffOrder.reissue(
-      victim,
-      victimVehicle,
-      displaced.replacementSlot,
-    );
     victim.metadata = {
       ...victim.metadata,
       swapCount: (victim.metadata?.swapCount ?? 0) + 1,
     };
     await this.taskRepo.save(victim);
     this.logger.log(
-      `Task ${victim.id}: ${victimVehicle} lost ${displaced.lostSlot} to ${winner}, re-aimed at ${displaced.replacementSlot}`,
+      `Task ${victim.id}: ${victimVehicle} lost ${displaced.lostSlot} to ${winner}, now reserved ${displaced.replacementSlot} (still waiting at the gate)`,
     );
   }
 
-  private async acquireSingleRunnerLock(): Promise<{
-    release: () => Promise<void>;
-  } | null> {
-    const runner = this.dataSource.createQueryRunner();
-    await runner.connect();
-    const [{ locked }] = (await runner.query(
-      'SELECT pg_try_advisory_lock($1) AS locked',
-      [SINGLE_RUNNER_LOCK_KEY],
-    )) as { locked: boolean }[];
-    if (!locked) {
-      await runner.release();
-      return null;
+  private async holdsRunnerLock(): Promise<boolean> {
+    if (this.runnerLock && !(await this.lockStillAlive())) {
+      this.logger.warn(
+        'Lost the drop-off commit lock, taking it again if it is free',
+      );
+      await this.releaseRunnerLock();
     }
-    return {
-      release: async () => {
+    if (this.runnerLock) return true;
+
+    this.runnerLock = await this.acquireSingleRunnerLock();
+    if (this.runnerLock) {
+      this.lockVerifiedAt = Date.now();
+      this.logger.log('Now running the drop-off commit loop');
+    }
+    return this.runnerLock !== null;
+  }
+
+  private async lockStillAlive(): Promise<boolean> {
+    const lock = this.runnerLock;
+    if (!lock) return false;
+    if (Date.now() - this.lockVerifiedAt < RUNNER_LOCK_RECHECK_MS) return true;
+
+    const alive = await lock.ping();
+    if (alive) this.lockVerifiedAt = Date.now();
+    return alive;
+  }
+
+  private async releaseRunnerLock(): Promise<void> {
+    const lock = this.runnerLock;
+    this.runnerLock = null;
+    this.lockVerifiedAt = 0;
+    if (!lock) return;
+    try {
+      await lock.release();
+    } catch (err) {
+      this.logger.warn(
+        `Could not release the drop-off commit lock: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async acquireSingleRunnerLock(): Promise<RunnerLock | null> {
+    const runner = this.dataSource.createQueryRunner();
+    try {
+      await runner.connect();
+      const [{ locked }] = (await runner.query(
+        'SELECT pg_try_advisory_lock($1) AS locked',
+        [SINGLE_RUNNER_LOCK_KEY],
+      )) as { locked: boolean }[];
+      if (locked) return runnerLockOn(runner);
+    } catch (err) {
+      this.logger.warn(
+        `Could not reach the database for the drop-off commit lock: ${(err as Error).message}`,
+      );
+    }
+    await runner.release().catch(() => undefined);
+    return null;
+  }
+}
+
+interface RunnerLock {
+  ping: () => Promise<boolean>;
+  release: () => Promise<void>;
+}
+
+function runnerLockOn(runner: QueryRunner): RunnerLock {
+  return {
+    ping: async () => {
+      try {
+        await runner.query('SELECT 1');
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    release: async () => {
+      try {
         await runner.query('SELECT pg_advisory_unlock($1)', [
           SINGLE_RUNNER_LOCK_KEY,
         ]);
+      } finally {
         await runner.release();
-      },
-    };
-  }
-}
-
-function insideColumnMap(
-  candidates: readonly CommitCandidate[],
-): ReadonlyMap<string, number> {
-  const byCargoId = new Map<string, number>();
-  for (const candidate of candidates) {
-    if (candidate.insideColumn === null) continue;
-    byCargoId.set(candidate.cargo.id, candidate.insideColumn);
-  }
-  return byCargoId;
-}
-
-function gateFirst(candidates: readonly CommitCandidate[]): CommitCandidate[] {
-  return [...candidates].sort((a, b) => Number(b.atGate) - Number(a.atGate));
+      }
+    },
+  };
 }

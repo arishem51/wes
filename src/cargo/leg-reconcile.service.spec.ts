@@ -83,7 +83,7 @@ describe('LegReconcileService', () => {
       task(TaskStatus.DELIVERING, {
         assignedVehicleName: 'V1',
         to1Name: 'PICKUP-1',
-        to2Name: 'APPROACH-1',
+        approachOrderName: 'APPROACH-1',
       }),
     ]);
     store.get.mockReturnValue({ transportOrder: null });
@@ -103,7 +103,7 @@ describe('LegReconcileService', () => {
     taskRepo.find.mockResolvedValue([
       task(TaskStatus.DELIVERING, {
         assignedVehicleName: 'V1',
-        to2Name: 'APPROACH-1',
+        approachOrderName: 'APPROACH-1',
         to3Name: 'DROPOFF-1',
       }),
     ]);
@@ -147,7 +147,7 @@ describe('LegReconcileService', () => {
       taskRepo.find.mockResolvedValue([
         task(TaskStatus.DELIVERING, {
           assignedVehicleName: 'V1',
-          to2Name: 'APPROACH-1',
+          approachOrderName: 'APPROACH-1',
           to3Name: 'DROPOFF-1',
         }),
       ]);

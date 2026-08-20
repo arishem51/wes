@@ -12,39 +12,29 @@ import { ZoneMemberEntity } from './entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import {
   readPlantTopology,
-  removeLocations,
-  upsertMemberLocations,
-  type KernelLocationType,
-  type MemberLocationSpec,
   type PlantTopology,
 } from '../opentcs/plant-model-locations';
-import type { CreateZoneDto, UpdateZoneDto } from './zone.dto';
-import { checkZoneReachability } from './domain/zone-topology';
-
-export const LOCATION_PREFIX = 'location_';
-
-export const ZONE_COLOR_PALETTE = [
-  '#2563eb', // blue
-  '#dc2626', // red
-  '#16a34a', // green
-  '#d97706', // amber
-  '#7c3aed', // violet
-  '#0891b2', // cyan
-  '#db2777', // pink
-  '#65a30d', // lime
-  '#ea580c', // orange
-  '#0d9488', // teal
-  '#9333ea', // purple
-  '#ca8a04', // gold
-  '#e11d48', // rose
-  '#4f46e5', // indigo
-  '#059669', // emerald
-  '#c026d3', // fuchsia
-  '#0284c7', // sky
-  '#b45309', // bronze
-  '#15803d', // pine
-  '#be123c', // crimson
-] as const;
+import { ZoneLocationWriter } from './zone-location.writer';
+import { ZoneUsageQuery } from './zone-usage.query';
+import {
+  toZoneResponse,
+  type CreateZoneDto,
+  type UpdateZoneDto,
+  type ZoneListItemResponse,
+  type ZoneResponse,
+} from './zone.dto';
+import {
+  reviewDropoffLayout,
+  type LayoutProblem,
+} from './domain/zone-layout.rules';
+import { pointNameOf } from './domain/location-naming';
+import {
+  planZoneSync,
+  withRebuildsFailed,
+  type SyncCandidate,
+  type SyncStatus,
+} from './domain/zone-sync.policy';
+import { ZONE_COLOR_PALETTE, pickLeastUsedColor } from './domain/zone-color';
 
 export interface SyncResult {
   plantModelName: string | null;
@@ -72,9 +62,11 @@ export class ZoneService {
     @InjectRepository(ZoneMemberEntity)
     private readonly memberRepo: Repository<ZoneMemberEntity>,
     private readonly kernelApi: KernelApiService,
+    private readonly locationWriter: ZoneLocationWriter,
+    private readonly usage: ZoneUsageQuery,
   ) {}
 
-  async create(dto: CreateZoneDto): Promise<ZoneEntity> {
+  async create(dto: CreateZoneDto): Promise<ZoneResponse> {
     this.validateMembers(dto);
 
     const topology = await readPlantTopology(this.kernelApi);
@@ -92,6 +84,9 @@ export class ZoneService {
     }
 
     const color = dto.color ?? (await this.pickDefaultColor());
+    const memberLocationNames = dto.members.map(
+      (member) => member.locationName,
+    );
 
     const savedZoneId = await this.dataSource.transaction(async (manager) => {
       const zoneRepo = manager.getRepository(ZoneEntity);
@@ -116,10 +111,6 @@ export class ZoneService {
       });
 
       const saved = await zoneRepo.save(zone);
-      const memberLocationNames = dto.members.map(
-        (member) => member.locationName,
-      );
-
       const members = dto.members.map((member) =>
         memberRepo.create({
           zoneId: saved.id,
@@ -129,21 +120,19 @@ export class ZoneService {
       );
       await memberRepo.save(members);
 
-      await this.applyZoneLocationsToKernel(
-        memberLocationNames,
-        this.kernelLocationType(dto.type),
-      );
-
       return saved.id;
     });
 
-    return this.zoneRepo.findOneOrFail({
+    await this.projectNewZoneToKernel(savedZoneId, dto, memberLocationNames);
+
+    const saved = await this.zoneRepo.findOneOrFail({
       where: { id: savedZoneId },
       relations: { members: true },
     });
+    return toZoneResponse(saved);
   }
 
-  async update(id: string, dto: UpdateZoneDto): Promise<ZoneEntity> {
+  async update(id: string, dto: UpdateZoneDto): Promise<ZoneResponse> {
     const zone = await this.zoneRepo.findOne({
       where: { id },
       relations: { members: true },
@@ -152,7 +141,27 @@ export class ZoneService {
       throw new NotFoundException('Khu vực không tồn tại.');
     }
     zone.color = dto.color;
-    return this.zoneRepo.save(zone);
+    return toZoneResponse(await this.zoneRepo.save(zone));
+  }
+
+  private async projectNewZoneToKernel(
+    zoneId: string,
+    dto: CreateZoneDto,
+    memberLocationNames: string[],
+  ): Promise<void> {
+    try {
+      await this.locationWriter.write(
+        this.locationWriter.specsFor(
+          memberLocationNames,
+          this.locationWriter.kernelTypeOf(dto.type),
+        ),
+      );
+    } catch (err) {
+      await this.zoneRepo.update(zoneId, { status: ZoneStatus.STALE });
+      this.logger.warn(
+        `Zone "${dto.name}" (${zoneId}) saved, but its locations could not be written to the kernel — marked STALE, run sync to repair: ${(err as Error).message}`,
+      );
+    }
   }
 
   private async pickDefaultColor(): Promise<string> {
@@ -160,47 +169,11 @@ export class ZoneService {
       where: { status: ZoneStatus.ACTIVE },
       select: { id: true, color: true },
     });
-    const usage = new Map<string, number>();
-    for (const zone of zones) {
-      if (zone.color) usage.set(zone.color, (usage.get(zone.color) ?? 0) + 1);
-    }
-    let best = ZONE_COLOR_PALETTE[0] as string;
-    let bestCount = Infinity;
-    for (const color of ZONE_COLOR_PALETTE) {
-      const count = usage.get(color) ?? 0;
-      if (count < bestCount) {
-        bestCount = count;
-        best = color;
-      }
-    }
-    return best;
-  }
-
-  private kernelLocationType(zoneType: ZoneType): KernelLocationType {
-    return zoneType === ZoneType.DROPOFF ? 'Drop off' : 'Pick up';
-  }
-
-  private toMemberSpecs(
-    memberLocationNames: string[],
-    type: KernelLocationType,
-  ): MemberLocationSpec[] {
-    return memberLocationNames.map((locationName) => ({
-      locationName,
-      pointName: this.getPointNameFromLocation(locationName),
-      type,
-    }));
-  }
-
-  private async applyZoneLocationsToKernel(
-    memberLocationNames: string[],
-    type: KernelLocationType,
-  ): Promise<void> {
-    await upsertMemberLocations(
-      this.kernelApi,
-      this.toMemberSpecs(memberLocationNames, type),
-    );
-    this.logger.log(
-      `Zone (${type}): đã tạo ${memberLocationNames.length} location con trong kernel`,
+    return pickLeastUsedColor(
+      ZONE_COLOR_PALETTE,
+      zones
+        .map((zone) => zone.color)
+        .filter((color): color is string => Boolean(color)),
     );
   }
 
@@ -210,59 +183,50 @@ export class ZoneService {
   ): boolean {
     if (zone.members.length === 0) return false;
     return zone.members.every((member) =>
-      pointNames.has(this.getPointNameFromLocation(member.locationName)),
+      pointNames.has(pointNameOf(member.locationName)),
     );
-  }
-
-  private getPointNameFromLocation(locationName: string): string {
-    return locationName.startsWith(LOCATION_PREFIX)
-      ? locationName.slice(LOCATION_PREFIX.length)
-      : locationName;
   }
 
   private assertDropoffZoneReachable(
     topology: PlantTopology,
     memberLocationNames: string[],
   ): void {
-    const pointToLocation = new Map(
-      memberLocationNames.map((name) => [
-        this.getPointNameFromLocation(name),
-        name,
-      ]),
-    );
-    const memberPointNames = new Set(pointToLocation.keys());
-
-    const { feeders, unreachable, maxHops } = checkZoneReachability(
+    const review = reviewDropoffLayout(
+      topology.points,
       topology.paths,
-      memberPointNames,
+      memberLocationNames,
     );
 
-    if (feeders.length === 0) {
+    if (review.noFeeder) {
       this.logger.warn(
         `Zone reachability: no feeder (entry head) for members [${memberLocationNames.join(', ')}] — cannot verify; approach will link all members`,
       );
       return;
     }
 
-    if (unreachable.length > 0) {
-      const names = unreachable.map((pt) => pointToLocation.get(pt) ?? pt);
-      throw new BadRequestException(
-        `Layout khu trả hàng không hợp lệ: các vị trí ${names.join(', ')} không thể tới được từ điểm vào của khu — sẽ khiến AGV đi vòng hoặc kẹt. Hãy điều chỉnh danh sách vị trí hoặc bản đồ.`,
+    if (review.longDetour) {
+      this.logger.warn(
+        `Zone reachability: layout reachable but with a long detour (maxHops=${review.longDetour.maxHops}, members=${review.longDetour.members})`,
       );
     }
 
-    if (maxHops > memberPointNames.size) {
-      this.logger.warn(
-        `Zone reachability: layout reachable but with a long detour (maxHops=${maxHops}, members=${memberPointNames.size})`,
-      );
+    for (const problem of review.problems) {
+      throw new BadRequestException(this.layoutProblemMessage(problem));
     }
+  }
+
+  private layoutProblemMessage(problem: LayoutProblem): string {
+    if (problem.kind === 'unreachable') {
+      return `Layout khu trả hàng không hợp lệ: các vị trí ${problem.locationNames.join(', ')} không thể tới được từ điểm vào của khu — sẽ khiến AGV đi vòng hoặc kẹt. Hãy điều chỉnh danh sách vị trí hoặc bản đồ.`;
+    }
+    return `Layout khu trả hàng không hợp lệ: ${problem.violations
+      .map((violation) => `${violation.code} — ${violation.detail}`)
+      .join('; ')}. Hãy điều chỉnh danh sách vị trí hoặc bản đồ.`;
   }
 
   async list(
     options: { allMaps?: boolean } = {},
-  ): Promise<
-    Array<ZoneEntity & { occupiedSlotCount: number; totalSlotCount: number }>
-  > {
+  ): Promise<ZoneListItemResponse[]> {
     const allZones = await this.zoneRepo.find({
       relations: { members: true },
       order: { createdAt: 'DESC' },
@@ -274,27 +238,12 @@ export class ZoneService {
 
     if (zones.length === 0) return [];
 
-    const zoneIds = zones.map((z) => z.id);
-    const rows = await this.dataSource.query<
-      Array<{ zone_id: string; count: string }>
-    >(
-      `SELECT zm.zone_id, COUNT(c.id)::text AS count
-       FROM zone_members zm
-       INNER JOIN cargos c
-         ON c.destination_location_name = zm.location_name
-        AND c.status IN ('ACTIVE', 'DELIVERED')
-        AND c.deleted_at IS NULL
-       WHERE zm.zone_id = ANY($1)
-       GROUP BY zm.zone_id`,
-      [zoneIds],
-    );
-
-    const occupiedByZone = new Map(
-      rows.map((r) => [r.zone_id, Number(r.count)]),
+    const occupiedByZone = await this.usage.occupiedByZone(
+      zones.map((zone) => zone.id),
     );
 
     return zones.map((z) => ({
-      ...z,
+      ...toZoneResponse(z),
       occupiedSlotCount: occupiedByZone.get(z.id) ?? 0,
       totalSlotCount: z.members.length,
     }));
@@ -310,7 +259,7 @@ export class ZoneService {
     }
 
     if (await this.belongsToLoadedMap(zone)) {
-      await this.removeZoneLocationsFromKernel(zone);
+      await this.locationWriter.removeUnshared(zone);
     }
     await this.zoneRepo.softDelete(id);
   }
@@ -414,68 +363,13 @@ export class ZoneService {
     const unassigned = allZones.filter((zone) => !zone.plantModelName).length;
     const skippedOtherMaps = allZones.length - zones.length - unassigned;
 
-    const candidates = zones.filter(
-      (zone) =>
-        zone.status === ZoneStatus.ACTIVE &&
-        this.canRepairZone(zone, topology.pointNames),
-    );
-
-    const claimants = new Map<string, ZoneEntity[]>();
-    for (const zone of candidates) {
-      for (const locationName of this.zoneMemberLocationNames(zone)) {
-        const list = claimants.get(locationName) ?? [];
-        list.push(zone);
-        claimants.set(locationName, list);
-      }
-    }
-    const conflictedZoneIds = new Set<string>();
-    for (const list of claimants.values()) {
-      if (list.length > 1) {
-        for (const zone of list) conflictedZoneIds.add(zone.id);
-      }
-    }
-
-    const winners = candidates.filter(
-      (zone) => !conflictedZoneIds.has(zone.id),
-    );
-
-    const desiredStatus = new Map<string, ZoneStatus>(
-      zones.map((zone) => [zone.id, ZoneStatus.STALE]),
-    );
-    const toRebuild: ZoneEntity[] = [];
-    const rebuildSpecs: MemberLocationSpec[] = [];
-    for (const zone of winners) {
-      desiredStatus.set(zone.id, ZoneStatus.ACTIVE);
-      if (!this.isZoneValid(zone, topology)) {
-        rebuildSpecs.push(
-          ...this.toMemberSpecs(
-            this.zoneMemberLocationNames(zone),
-            this.kernelLocationType(zone.type),
-          ),
-        );
-        toRebuild.push(zone);
-      }
-    }
-
-    if (toRebuild.length > 0) {
-      try {
-        await upsertMemberLocations(this.kernelApi, rebuildSpecs);
-      } catch (err) {
-        for (const zone of toRebuild) {
-          desiredStatus.set(zone.id, ZoneStatus.STALE);
-        }
-        this.logger.warn(
-          `Không thể ghi location khôi phục (kernel cần chế độ Thiết kế?): ${
-            (err as Error).message
-          }`,
-        );
-      }
-    }
+    const plan = this.planFor(zones, topology);
+    const desiredStatus = await this.applyRebuilds(plan, zones, topology);
 
     let markedStale = 0;
     let markedActive = 0;
     for (const zone of zones) {
-      const targetStatus = desiredStatus.get(zone.id) ?? ZoneStatus.STALE;
+      const targetStatus = toZoneStatus(desiredStatus.get(zone.id) ?? 'STALE');
       if (zone.status !== targetStatus) {
         zone.status = targetStatus;
         await this.zoneRepo.save(zone);
@@ -502,24 +396,45 @@ export class ZoneService {
     };
   }
 
-  private zoneMemberLocationNames(zone: ZoneEntity): string[] {
-    return [...new Set(zone.members.map((member) => member.locationName))];
+  private planFor(zones: ZoneEntity[], topology: PlantTopology) {
+    const candidates: SyncCandidate[] = zones.map((zone) => ({
+      id: zone.id,
+      status: zone.status === ZoneStatus.ACTIVE ? 'ACTIVE' : 'STALE',
+      memberLocationNames: this.zoneMemberLocationNames(zone),
+    }));
+    return planZoneSync(candidates, {
+      pointNames: topology.pointNames,
+      locationLinks: topology.locationLinks,
+    });
   }
 
-  private isZoneValid(zone: ZoneEntity, topology: PlantTopology): boolean {
-    for (const member of zone.members) {
-      const memberLinks = topology.locationLinks.get(member.locationName);
-      if (!memberLinks) {
-        return false;
-      }
+  private async applyRebuilds(
+    plan: ReturnType<typeof planZoneSync>,
+    zones: ZoneEntity[],
+    topology: PlantTopology,
+  ): Promise<ReadonlyMap<string, SyncStatus>> {
+    const toRebuild = zones.filter((zone) => plan.rebuildIds.has(zone.id));
+    if (toRebuild.length === 0) return plan.desiredStatus;
 
-      const pointName = this.getPointNameFromLocation(member.locationName);
-      if (!topology.pointNames.has(pointName) || !memberLinks.has(pointName)) {
-        return false;
-      }
+    const specs = toRebuild.flatMap((zone) =>
+      this.locationWriter.specsFor(
+        this.zoneMemberLocationNames(zone),
+        this.locationWriter.kernelTypeOf(zone.type),
+      ),
+    );
+    try {
+      await this.locationWriter.write(specs);
+      return plan.desiredStatus;
+    } catch (err) {
+      this.logger.warn(
+        `Không thể ghi location khôi phục cho bản đồ "${topology.name}" (kernel cần chế độ Thiết kế?): ${(err as Error).message}`,
+      );
+      return withRebuildsFailed(plan).desiredStatus;
     }
+  }
 
-    return true;
+  private zoneMemberLocationNames(zone: ZoneEntity): string[] {
+    return [...new Set(zone.members.map((member) => member.locationName))];
   }
 
   private validateMembers(dto: CreateZoneDto): void {
@@ -535,34 +450,8 @@ export class ZoneService {
       throw new BadRequestException('Duplicate positionIndex in members.');
     }
   }
+}
 
-  private async removeZoneLocationsFromKernel(zone: ZoneEntity): Promise<void> {
-    const memberLocationNames = this.zoneMemberLocationNames(zone);
-    if (memberLocationNames.length === 0) return;
-
-    const sharedLocationRows = await this.dataSource.query<
-      Array<{ location_name: string }>
-    >(
-      `
-        SELECT DISTINCT zm.location_name
-        FROM zone_members zm
-        JOIN zones z ON z.id = zm.zone_id
-        WHERE zm.zone_id <> $1
-          AND z.deleted_at IS NULL
-          AND zm.location_name = ANY($2)
-      `,
-      [zone.id, memberLocationNames],
-    );
-    const sharedLocationNames = new Set(
-      sharedLocationRows.map((row) => row.location_name),
-    );
-
-    const removableNames = memberLocationNames.filter(
-      (locationName) => !sharedLocationNames.has(locationName),
-    );
-    if (removableNames.length === 0) return;
-
-    await removeLocations(this.kernelApi, removableNames);
-    this.logger.log(`Zone "${zone.name}" (${zone.id}) soft-deleted`);
-  }
+function toZoneStatus(status: SyncStatus): ZoneStatus {
+  return status === 'ACTIVE' ? ZoneStatus.ACTIVE : ZoneStatus.STALE;
 }

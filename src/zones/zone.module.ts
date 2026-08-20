@@ -5,14 +5,17 @@ import { ZoneMemberEntity } from './entities/zone-member.entity';
 import { ZoneController } from './zone.controller';
 import { ZoneService } from './zone.service';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
+import { CargoEntity } from '../cargo/entities/cargo.entity';
+import { ZoneLocationWriter } from './zone-location.writer';
+import { ZoneUsageQuery } from './zone-usage.query';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ZoneEntity, ZoneMemberEntity]),
+    TypeOrmModule.forFeature([ZoneEntity, ZoneMemberEntity, CargoEntity]),
     OpenTcsModule,
   ],
   controllers: [ZoneController],
-  providers: [ZoneService],
+  providers: [ZoneService, ZoneLocationWriter, ZoneUsageQuery],
   exports: [ZoneService],
 })
 export class ZoneModule {}

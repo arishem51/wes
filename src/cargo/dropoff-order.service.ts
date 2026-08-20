@@ -4,8 +4,10 @@ import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { TransportOrderDestination } from '../opentcs/domain/kernel-model';
+import type { ZoneEntity } from '../zones/entities/zone.entity';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import { RetreatPointService } from './retreat-point.service';
+import type { RetreatPlan } from './domain/retreat-point';
 import { ORDER_PROP } from './domain/events';
 import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 
@@ -24,9 +26,10 @@ export class DropoffOrderService {
     task: TransportTaskEntity,
     vehicle: string,
     slot: string,
+    zone: ZoneEntity,
   ): Promise<string | null> {
-    const retreatPath = await this.retreatPoint.pathFor(slot);
-    if (!retreatPath) {
+    const plan = await this.retreatPoint.planFor(slot, zone);
+    if (!plan) {
       this.logger.warn(
         `Task ${task.id}: no retreat point behind ${slot} — drop-off goes out without the retreat leg`,
       );
@@ -41,7 +44,7 @@ export class DropoffOrderService {
     try {
       await this.kernelApi.createTransportOrder(
         orderName,
-        destinationsFor(slot, retreatPath, this.kernelApi.unloadOperation),
+        destinationsFor(slot, plan, this.kernelApi.unloadOperation),
         vehicle,
         { [ORDER_PROP.TASK_ID]: task.id, [ORDER_PROP.LEG]: 'DROPOFF' },
       );
@@ -53,7 +56,7 @@ export class DropoffOrderService {
     }
 
     task.metadata = { ...task.metadata, to3Name: orderName };
-    const retreatPoint = retreatPath?.at(-1);
+    const retreatPoint = plan?.cells.at(-1);
     if (retreatPoint) task.metadata.retreatPointName = retreatPoint;
     await this.taskRepo.save(task);
     return orderName;
@@ -63,6 +66,7 @@ export class DropoffOrderService {
     task: TransportTaskEntity,
     vehicle: string,
     slot: string,
+    zone: ZoneEntity,
   ): Promise<string | null> {
     const current = task.metadata?.to3Name;
     if (current) {
@@ -75,20 +79,25 @@ export class DropoffOrderService {
         return null;
       }
     }
-    return this.issue(task, vehicle, slot);
+    return this.issue(task, vehicle, slot, zone);
   }
+}
+
+export function retreatDestinations(
+  plan: RetreatPlan | null,
+): TransportOrderDestination[] {
+  const cells = plan ? [...plan.cells] : [];
+  if (plan?.egress) cells.push(plan.egress);
+  return cells.map((cell) => ({ locationName: cell, operation: 'MOVE' }));
 }
 
 function destinationsFor(
   slot: string,
-  retreatPath: readonly string[] | null,
+  plan: RetreatPlan | null,
   unloadOperation: string,
 ): TransportOrderDestination[] {
   return [
     { locationName: slot, operation: unloadOperation },
-    ...(retreatPath ?? []).map((cell) => ({
-      locationName: cell,
-      operation: 'MOVE',
-    })),
+    ...retreatDestinations(plan),
   ];
 }

@@ -284,7 +284,11 @@ describe('toVehicleGoal', () => {
         state: 'BEING_PROCESSED',
         processingVehicle: 'Vehicle-0001',
         destinations: [
-          { locationName: 'location_3008', operation: 'liftDown', state: 'FINISHED' },
+          {
+            locationName: 'location_3008',
+            operation: 'liftDown',
+            state: 'FINISHED',
+          },
           { locationName: '3007', operation: 'MOVE', state: 'TRAVELLING' },
           { locationName: '3006', operation: 'MOVE', state: 'PRISTINE' },
         ],
@@ -306,7 +310,11 @@ describe('toVehicleGoal', () => {
         state: { state: 'BEING_PROCESSED', timestamp: 1 },
         processingVehicle: 'Vehicle-0015',
         destinations: [
-          { locationName: '0270', operation: { operation: 'MOVE' }, state: { state: 'TRAVELLING' } },
+          {
+            locationName: '0270',
+            operation: { operation: 'MOVE' },
+            state: { state: 'TRAVELLING' },
+          },
         ],
       }),
     ).toEqual({
@@ -383,7 +391,10 @@ describe('toVehicleGoal on the SSE object-state shape', () => {
         driveOrders: [
           {
             state: 'FINISHED',
-            destination: { destination: 'location_3008', operation: 'liftDown' },
+            destination: {
+              destination: 'location_3008',
+              operation: 'liftDown',
+            },
           },
           {
             state: 'TRAVELLING',

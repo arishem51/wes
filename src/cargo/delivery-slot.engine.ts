@@ -70,9 +70,10 @@ export class DeliverySlotEngine {
 
   rank(
     layout: ZoneSlotLayout,
-    occupiedLocationNames: ReadonlySet<string>,
+    unavailableLocationNames: ReadonlySet<string>,
+    activeCountByLane?: readonly number[],
   ): ZoneSlot[] {
-    return rankSlots(layout, occupiedLocationNames);
+    return rankSlots(layout, unavailableLocationNames, activeCountByLane);
   }
 
   capacityOf(layout: ZoneSlotLayout): number {

@@ -25,6 +25,8 @@ function makeSaga(findOne: jest.Mock): TransportTaskSaga {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
   );
 }
 
@@ -117,7 +119,10 @@ function makeDeliverySaga(
         options.zone === null ? null : { id: 'zone-1', name: 'zone_1' },
       ),
   };
-  const kernelApi = { unloadOperation: 'liftDown' };
+  const kernelApi = {
+    unloadOperation: 'liftDown',
+    createTransportOrder: jest.fn().mockResolvedValue(undefined),
+  };
   const transportTask = {
     changeStatus: jest.fn().mockResolvedValue(undefined),
   };
@@ -131,7 +136,21 @@ function makeDeliverySaga(
   const dropoffOrder = {
     issue: jest.fn().mockResolvedValue('DROPOFF-V1-location_3003-y'),
   };
-  const retreatPoint = { pathFor: jest.fn().mockResolvedValue(['3002']) };
+  const retreatPoint = {
+    planFor: jest.fn().mockResolvedValue({ cells: ['3002'], egress: null }),
+  };
+  const approachOrder = { aim: jest.fn().mockResolvedValue('APPROACH-V1-x') };
+  const deliverySlotEngine = {
+    layoutFor: jest.fn().mockResolvedValue({
+      lanes: [
+        {
+          axis: 0,
+          slots: [{ locationName: SLOT, pointName: '3003' }],
+          axisPoints: ['3003', '3002', '3001'],
+        },
+      ],
+    }),
+  };
 
   const saga = new TransportTaskSaga(
     taskRepo as never,
@@ -142,6 +161,8 @@ function makeDeliverySaga(
     slotReservation as never,
     dropoffOrder as never,
     retreatPoint as never,
+    approachOrder as never,
+    deliverySlotEngine as never,
   );
 
   return {
@@ -149,9 +170,12 @@ function makeDeliverySaga(
     task,
     taskRepo,
     cargoRepo,
+    kernelApi,
     transportTask,
     slotReservation,
     dropoffOrder,
+    retreatPoint,
+    approachOrder,
   };
 }
 
@@ -159,8 +183,8 @@ const pickupFinished = () =>
   new FmsTransportOrderFinishedEvent('PICKUP-V1-x', 'task-1', 'PICKUP');
 
 describe('TransportTaskSaga pick-up finished', () => {
-  it('reserves a drop-off slot and aims the drop-off order straight at it', async () => {
-    const { saga, slotReservation, dropoffOrder, task } = makeDeliverySaga();
+  it('reserves a slot and aims the approach order straight at it', async () => {
+    const { saga, slotReservation, approachOrder } = makeDeliverySaga();
 
     await saga.onTransportOrderFinished(pickupFinished());
 
@@ -168,7 +192,19 @@ describe('TransportTaskSaga pick-up finished', () => {
       id: 'zone-1',
       name: 'zone_1',
     });
-    expect(dropoffOrder.issue).toHaveBeenCalledWith(task, 'V1', SLOT);
+    expect(approachOrder.aim).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'task-1' }),
+      'V1',
+      { locationName: SLOT },
+    );
+  });
+
+  it('never issues the drop-off order before a lane is free', async () => {
+    const { saga, dropoffOrder } = makeDeliverySaga();
+
+    await saga.onTransportOrderFinished(pickupFinished());
+
+    expect(dropoffOrder.issue).not.toHaveBeenCalled();
   });
 
   it('moves the task to DELIVERING once the drop-off order is out', async () => {
@@ -183,18 +219,13 @@ describe('TransportTaskSaga pick-up finished', () => {
     );
   });
 
-  it('never sends the vehicle to a shared approach point first', async () => {
-    const { saga, dropoffOrder } = makeDeliverySaga();
+  it('holds the task in PICKING_UP when the approach order cannot go out', async () => {
+    const { saga, transportTask, approachOrder } = makeDeliverySaga();
+    approachOrder.aim.mockResolvedValueOnce(null);
 
     await saga.onTransportOrderFinished(pickupFinished());
 
-    expect(dropoffOrder.issue).toHaveBeenCalledTimes(1);
-    const [, , slot] = dropoffOrder.issue.mock.calls[0] as [
-      unknown,
-      string,
-      string,
-    ];
-    expect(slot).toBe(SLOT);
+    expect(transportTask.changeStatus).not.toHaveBeenCalled();
   });
 
   it('holds the task in PICKING_UP when the zone offers no slot to reserve', async () => {
@@ -281,16 +312,23 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       unloadOperation: 'UNLOAD',
     };
     const transportTask = { changeStatus: jest.fn() };
-    const retreatPoint = { pathFor: jest.fn().mockResolvedValue(['3002']) };
+    const zoneRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 'zone-1', name: 'zone_1' }),
+    };
+    const retreatPoint = {
+      planFor: jest.fn().mockResolvedValue({ cells: ['3002'], egress: null }),
+    };
     const saga = new TransportTaskSaga(
       taskRepo as never,
       cargoRepo as never,
-      {} as never,
+      zoneRepo as never,
       kernelApi as never,
       transportTask as never,
       {} as never,
       {} as never,
       retreatPoint as never,
+      {} as never,
+      {} as never,
     );
     return {
       saga,
@@ -337,7 +375,11 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       metadata: { assignedVehicleName: 'V1', to3Name: 'DROPOFF-1' },
       cargoId: 'cargo-1',
     };
-    const cargo = { id: 'cargo-1', destinationLocationName: 'location_3003' };
+    const cargo = {
+      id: 'cargo-1',
+      destinationZoneId: 'zone-1',
+      destinationLocationName: 'location_3003',
+    };
     const { saga, kernelApi } = makeSaga(task, cargo);
 
     await saga.onLegLostNavigation(lost('DROPOFF', 'DROPOFF-1'));
@@ -362,6 +404,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
     };
     const cargo = {
       id: 'cargo-1',
+      destinationZoneId: 'zone-1',
       destinationLocationName: null,
       reservedLocationName: 'location_3005',
     };
@@ -390,7 +433,11 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       },
       cargoId: 'cargo-1',
     };
-    const cargo = { id: 'cargo-1', destinationLocationName: 'location_3003' };
+    const cargo = {
+      id: 'cargo-1',
+      destinationZoneId: 'zone-1',
+      destinationLocationName: 'location_3003',
+    };
     const { saga, kernelApi } = makeSaga(task, cargo);
 
     await saga.onLegLostNavigation(lost('DROPOFF', 'DROPOFF-1'));

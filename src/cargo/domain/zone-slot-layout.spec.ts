@@ -3,8 +3,10 @@ import {
   buildZoneSlotLayout,
   columnIndexOfPoint,
   columnLocationNames,
+  laneOfPoint,
   rankSlots,
   usableSlotCount,
+  waitingTargetsFor,
   type PlantPoint,
   type ZoneSlotLayout,
 } from './zone-slot-layout';
@@ -109,37 +111,39 @@ function fillOrder(layout: ZoneSlotLayout): string[] {
 }
 
 describe('buildZoneSlotLayout', () => {
-  it('separates the rack into a deep and a shallow column, deep first', () => {
+  it('splits the rack into lanes, each ordered from its far end towards the entrance', () => {
     const layout = layoutOf(rack(4));
 
-    expect(layout.columns).toHaveLength(2);
-    expect(layout.columns[0].map((s) => s.pointName)).toEqual([
+    expect(layout.lanes.map((lane) => lane.axis)).toEqual([DEEP_X, SHALLOW_X]);
+    expect(layout.lanes[0].slots.map((s) => s.pointName)).toEqual([
       'D4',
       'D3',
       'D2',
+      'D1',
     ]);
-  });
-
-  it('keeps the row that has its own way out with the shallow column', () => {
-    const layout = layoutOf(rack(4));
-
-    expect(layout.columns[1].map((s) => s.pointName)).toEqual([
+    expect(layout.lanes[1].slots.map((s) => s.pointName)).toEqual([
       'S4',
       'S3',
       'S2',
       'S1',
-      'D1',
     ]);
   });
 
-  it('orders each column from the far end of the rack towards the entrance', () => {
+  it('makes each lane one column, the one farthest from the exit first', () => {
     const layout = layoutOf(rack(4));
 
-    expect(layout.columns[0].map((s) => s.pointName)).toEqual([
-      'D4',
-      'D3',
-      'D2',
+    expect(layout.columns.map((c) => c.map((s) => s.pointName))).toEqual([
+      ['D4', 'D3', 'D2', 'D1'],
+      ['S4', 'S3', 'S2', 'S1'],
     ]);
+  });
+
+  it('keeps slots of different lanes in different columns', () => {
+    const layout = layoutOf(rack(4));
+
+    expect(columnIndexOfPoint(layout, 'S3')).not.toBe(
+      columnIndexOfPoint(layout, 'D3'),
+    );
   });
 
   it('reports the entrances of the rack as its commit gates', () => {
@@ -161,15 +165,32 @@ describe('buildZoneSlotLayout', () => {
 
     expect(layout.strandedLocationNames).toEqual(['location_orphan']);
     expect(usableSlotCount(layout)).toBe(6);
+    expect(layout.lanes.map((lane) => lane.axis)).toEqual([DEEP_X, SHALLOW_X]);
+  });
+});
+
+describe('laneOfPoint', () => {
+  it('tells which lane a vehicle standing on a slot is in', () => {
+    const layout = layoutOf(rack(4));
+
+    expect(laneOfPoint(layout, 'D3')?.axis).toBe(DEEP_X);
+    expect(laneOfPoint(layout, 'S3')?.axis).toBe(SHALLOW_X);
+  });
+
+  it('reports no lane for a point outside the rack', () => {
+    const layout = layoutOf(rack(4));
+
+    expect(laneOfPoint(layout, 'A2')).toBeNull();
   });
 });
 
 describe('columnIndexOfPoint', () => {
-  it('tells which column a vehicle standing on a slot is in', () => {
+  it('reports the lane a slot belongs to, whatever its depth', () => {
     const layout = layoutOf(rack(4));
 
-    expect(columnIndexOfPoint(layout, 'D3')).toBe(0);
-    expect(columnIndexOfPoint(layout, 'S3')).toBe(1);
+    expect(columnIndexOfPoint(layout, 'D4')).toBe(0);
+    expect(columnIndexOfPoint(layout, 'D1')).toBe(0);
+    expect(columnIndexOfPoint(layout, 'S1')).toBe(1);
   });
 
   it('reports no column for a point outside the rack', () => {
@@ -178,10 +199,11 @@ describe('columnIndexOfPoint', () => {
     expect(columnIndexOfPoint(layout, 'A2')).toBeNull();
   });
 
-  it('lists the slots a vehicle may still take without leaving its column', () => {
+  it('lists the slots a vehicle may still take without changing depth', () => {
     const layout = layoutOf(rack(4));
 
     expect([...columnLocationNames(layout, 0)].sort()).toEqual([
+      'location_D1',
       'location_D2',
       'location_D3',
       'location_D4',
@@ -200,41 +222,55 @@ describe('rankSlots', () => {
     ).toHaveLength(6);
   });
 
-  it('starts at the far end of the deep column', () => {
-    expect(fillOrder(layoutOf(rack(4))).slice(0, 3)).toEqual([
+  it('fills one lane deep-first and only switches once it leads by the buffer', () => {
+    expect(fillOrder(layoutOf(rack(4)))).toEqual([
       'D4',
       'D3',
       'D2',
-    ]);
-  });
-
-  it('never lets the deep column lead the shallow one by more than MAX_COLUMN_LEAD', () => {
-    const layout = layoutOf(rack(8));
-    const deep = new Set(layout.columns[0].map((slot) => slot.pointName));
-
-    let deepFilled = 0;
-    let shallowFilled = 0;
-    let widestLead = 0;
-    for (const point of fillOrder(layout)) {
-      if (deep.has(point)) deepFilled++;
-      else shallowFilled++;
-      widestLead = Math.max(widestLead, deepFilled - shallowFilled);
-    }
-
-    expect(widestLead).toBe(MAX_COLUMN_LEAD);
-  });
-
-  it('falls back to the shallow column once the deep one is full', () => {
-    const layout = layoutOf(rack(3));
-    const allDeepTaken = new Set(
-      layout.columns[0].map((slot) => slot.locationName),
-    );
-
-    expect(rankSlots(layout, allDeepTaken).map((s) => s.pointName)).toEqual([
+      'S4',
+      'D1',
       'S3',
       'S2',
       'S1',
-      'D1',
+    ]);
+  });
+
+  it('takes the lead count from the caller, so a target off the slots still counts', () => {
+    const layout = layoutOf(rack(4));
+
+    expect(rankSlots(layout, new Set(), [3, 0])[0].pointName).toBe('S4');
+    expect(rankSlots(layout, new Set())[0].pointName).toBe('D4');
+  });
+
+  it('never lets a lane run more than MAX_COLUMN_LEAD ahead of the next one', () => {
+    const layout = layoutOf(rack(8));
+    const laneOfPointName = new Map<string, number>();
+    layout.columns.forEach((column, index) =>
+      column.forEach((slot) => laneOfPointName.set(slot.pointName, index)),
+    );
+
+    const filled = new Array<number>(layout.columns.length).fill(0);
+    let widestLead = 0;
+    for (const point of fillOrder(layout)) {
+      filled[laneOfPointName.get(point)!]++;
+      for (let index = 0; index < filled.length - 1; index++) {
+        widestLead = Math.max(widestLead, filled[index] - filled[index + 1]);
+      }
+    }
+
+    expect(widestLead).toBeLessThanOrEqual(MAX_COLUMN_LEAD);
+  });
+
+  it('moves to the next lane once the first one is full', () => {
+    const layout = layoutOf(rack(3));
+    const firstLaneTaken = new Set(
+      layout.columns[0].map((slot) => slot.locationName),
+    );
+
+    expect(rankSlots(layout, firstLaneTaken).map((s) => s.pointName)).toEqual([
+      'S3',
+      'S2',
+      'S1',
     ]);
   });
 
@@ -246,5 +282,39 @@ describe('rankSlots', () => {
     );
 
     expect(rankSlots(layout, deepHeadStart)[0].pointName).toBe('S8');
+  });
+});
+
+describe('waitingTargetsFor', () => {
+  const lane = {
+    axis: 0,
+    slots: ['P5', 'P4', 'P3', 'P2', 'P1'].map((pointName) => ({
+      locationName: `location_${pointName}`,
+      pointName,
+    })),
+    axisPoints: ['P5', 'P4', 'P3', 'P2', 'P1', 'corr', 'mainline'],
+  };
+
+  it('starts the queue clear of the cells the retreat needs', () => {
+    expect(waitingTargetsFor(lane, 'P5')).toEqual([
+      'location_P2',
+      'location_P1',
+      'corr',
+      'mainline',
+    ]);
+  });
+
+  it('names a waiting slot by its location, so a reservation on it collides', () => {
+    const [first] = waitingTargetsFor(lane, 'P5');
+
+    expect(lane.slots.some((slot) => slot.locationName === first)).toBe(true);
+  });
+
+  it('leaves a corridor point under its own name, it has no location', () => {
+    expect(waitingTargetsFor(lane, 'P3')).toEqual(['corr', 'mainline']);
+  });
+
+  it('offers nowhere to queue behind a point off the lane', () => {
+    expect(waitingTargetsFor(lane, 'elsewhere')).toEqual([]);
   });
 });

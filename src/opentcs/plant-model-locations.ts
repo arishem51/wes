@@ -11,9 +11,15 @@ export interface MemberLocationSpec {
   type: KernelLocationType;
 }
 
+export interface TopologyPoint {
+  name: string;
+  position: { x: number; y: number };
+}
+
 export interface PlantTopology {
   name: string;
   pointNames: Set<string>;
+  points: TopologyPoint[];
   locationLinks: Map<string, Set<string>>;
   paths: KernelPath[];
 }
@@ -140,9 +146,28 @@ export async function readPlantTopology(
   return {
     name: modelName,
     pointNames,
+    points: topologyPoints(points),
     locationLinks,
     paths: paths as unknown as KernelPath[],
   };
+}
+
+function topologyPoints(
+  points: readonly Record<string, unknown>[],
+): TopologyPoint[] {
+  const resolved: TopologyPoint[] = [];
+  for (const point of points) {
+    if (typeof point.name !== 'string') continue;
+    const pose = point.pose as Record<string, unknown> | undefined;
+    const position = (pose?.position ?? point.position) as
+      | Record<string, unknown>
+      | undefined;
+    const x = Number(position?.x);
+    const y = Number(position?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    resolved.push({ name: point.name, position: { x, y } });
+  }
+  return resolved;
 }
 
 export async function upsertMemberLocations(

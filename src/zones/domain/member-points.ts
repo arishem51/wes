@@ -1,4 +1,4 @@
-const LOCATION_PREFIX = 'location_';
+import { pointNameOf } from './location-naming';
 
 export interface PlantLocation {
   name?: string;
@@ -19,12 +19,6 @@ function firstLinkedPoint(links: unknown): string | null {
   return null;
 }
 
-function stripLocationPrefix(locationName: string): string {
-  return locationName.startsWith(LOCATION_PREFIX)
-    ? locationName.slice(LOCATION_PREFIX.length)
-    : locationName;
-}
-
 export function resolveLocationPoints(
   locations: readonly PlantLocation[],
   locationNames: readonly string[],
@@ -40,7 +34,7 @@ export function resolveLocationPoints(
   for (const locationName of locationNames) {
     resolved.set(
       locationName,
-      linkedPoint.get(locationName) ?? stripLocationPrefix(locationName),
+      linkedPoint.get(locationName) ?? pointNameOf(locationName),
     );
   }
   return resolved;

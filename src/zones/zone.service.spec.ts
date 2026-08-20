@@ -5,6 +5,9 @@ import { ZoneService } from './zone.service';
 import { ZoneEntity, ZoneStatus, ZoneType } from './entities/zone.entity';
 import { ZoneMemberEntity } from './entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { CargoEntity } from '../cargo/entities/cargo.entity';
+import { ZoneLocationWriter } from './zone-location.writer';
+import { ZoneUsageQuery } from './zone-usage.query';
 
 const makeZone = (overrides: Partial<ZoneEntity> = {}): ZoneEntity => ({
   id: 'zone-1',
@@ -96,6 +99,21 @@ describe('ZoneService.sync', () => {
         { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
         { provide: getRepositoryToken(ZoneMemberEntity), useValue: memberRepo },
         { provide: KernelApiService, useValue: kernelApi },
+        ZoneLocationWriter,
+        ZoneUsageQuery,
+        {
+          provide: getRepositoryToken(CargoEntity),
+          useValue: {
+            createQueryBuilder: jest.fn(() => ({
+              select: jest.fn().mockReturnThis(),
+              addSelect: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              groupBy: jest.fn().mockReturnThis(),
+              getRawMany: jest.fn().mockResolvedValue([]),
+            })),
+          },
+        },
       ],
     }).compile();
 
@@ -394,6 +412,21 @@ describe('ZoneService.assignToLoadedMap', () => {
         { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
         { provide: getRepositoryToken(ZoneMemberEntity), useValue: makeRepo() },
         { provide: KernelApiService, useValue: kernelApi },
+        ZoneLocationWriter,
+        ZoneUsageQuery,
+        {
+          provide: getRepositoryToken(CargoEntity),
+          useValue: {
+            createQueryBuilder: jest.fn(() => ({
+              select: jest.fn().mockReturnThis(),
+              addSelect: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              groupBy: jest.fn().mockReturnThis(),
+              getRawMany: jest.fn().mockResolvedValue([]),
+            })),
+          },
+        },
       ],
     }).compile();
 

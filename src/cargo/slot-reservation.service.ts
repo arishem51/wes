@@ -4,8 +4,11 @@ import { DataSource, EntityManager, In } from 'typeorm';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
 import { DeliverySlotEngine } from './delivery-slot.engine';
+import { ZoneOccupancy } from './domain/zone-occupancy';
+import { deepestReachableCell, whereToQueue } from './domain/dropoff-lane';
 import {
-  columnLocationNames,
+  laneIndexOfTarget,
+  type ZoneLane,
   type ZoneSlotLayout,
 } from './domain/zone-slot-layout';
 
@@ -24,8 +27,8 @@ export interface SlotCommitResult {
 }
 
 export interface SlotCommitOptions {
-  readonly allowSwap: boolean;
-  readonly insideColumnByCargoId: ReadonlyMap<string, number>;
+  readonly blockedLocationNames: ReadonlySet<string>;
+  readonly lane: ZoneLane;
 }
 
 @Injectable()
@@ -50,18 +53,20 @@ export class SlotReservationService {
       if (cargo.destinationLocationName) return cargo.destinationLocationName;
       if (cargo.reservedLocationName) return cargo.reservedLocationName;
 
-      const zoneCargos = await this.zoneCargos(manager, zone.id);
-      const claimed = claimedSlots(zoneCargos);
-      const slot = this.deliverySlotEngine.rank(layout, claimed)[0];
-      if (!slot) {
+      const occupancy = ZoneOccupancy.of(
+        await this.zoneCargos(manager, zone.id),
+        layout,
+      );
+      const target = whereToQueue(layout, occupancy);
+      if (!target) {
         this.logger.warn(
-          `Cargo ${cargoId}: zone "${zone.name}" offered no slot to reserve`,
+          `Cargo ${cargoId}: zone "${zone.name}" offered nowhere to queue`,
         );
         return null;
       }
 
-      await this.writeReservation(manager, cargo, slot.locationName);
-      return slot.locationName;
+      await this.writeReservation(manager, cargo, target);
+      return target;
     });
   }
 
@@ -88,20 +93,16 @@ export class SlotReservationService {
 
       const ownReservation = cargo.reservedLocationName;
       const zoneCargos = await this.zoneCargos(manager, zone.id);
-      const chosen = this.chooseSlot(layout, zoneCargos, cargo, options);
+      const occupancy = ZoneOccupancy.of(zoneCargos, layout);
+      const chosen = this.chooseSlot(occupancy, options);
       if (!chosen) {
-        this.logger.warn(
-          `Cargo ${cargoId}: zone "${zone.name}" offered no slot to commit`,
+        this.logger.debug(
+          `Cargo ${cargoId}: zone "${zone.name}" offered no slot to commit yet`,
         );
         return null;
       }
 
-      const holder = zoneCargos.find(
-        (other) =>
-          other.id !== cargo.id &&
-          other.reservedLocationName === chosen &&
-          !other.destinationLocationName,
-      );
+      const holder = occupancy.holderOf(chosen, cargo);
 
       await this.writeCommit(manager, cargo, chosen);
 
@@ -117,8 +118,8 @@ export class SlotReservationService {
         manager,
         layout,
         zone,
+        ZoneOccupancy.of(zoneCargos, layout),
         holder,
-        zoneCargos,
         cargo,
         chosen,
       );
@@ -140,53 +141,52 @@ export class SlotReservationService {
       .update(cargoId, { reservedLocationName: null });
   }
 
+  async releaseCommit(cargoId: string, zone: ZoneEntity): Promise<void> {
+    await this.withZoneLock(zone, async (manager) => {
+      const cargo = await manager
+        .getRepository(CargoEntity)
+        .findOne({ where: { id: cargoId } });
+      if (!cargo?.destinationLocationName) return;
+
+      const nextSeq = cargo.slotDecisionSeq + 1;
+      await manager.getRepository(CargoEntity).update(cargo.id, {
+        destinationLocationName: null,
+        slotDecisionSeq: nextSeq,
+      });
+      cargo.destinationLocationName = null;
+      cargo.slotDecisionSeq = nextSeq;
+    });
+  }
+
   private chooseSlot(
-    layout: ZoneSlotLayout,
-    zoneCargos: readonly CargoEntity[],
-    cargo: CargoEntity,
+    occupancy: ZoneOccupancy,
     options: SlotCommitOptions,
   ): string | null {
-    const untouchable = untouchableSlots(
-      zoneCargos,
-      cargo,
-      options.insideColumnByCargoId,
-    );
-    const ranked = this.deliverySlotEngine.rank(layout, untouchable);
-    if (ranked.length === 0) return null;
-
-    if (options.allowSwap) return ranked[0].locationName;
-
-    const own = cargo.reservedLocationName;
-    if (own && !untouchable.has(own)) return own;
-
-    const ownColumn = options.insideColumnByCargoId.get(cargo.id);
-    if (ownColumn == null) return ranked[0].locationName;
-
-    const ownColumnSlots = columnLocationNames(layout, ownColumn);
-    return (
-      ranked.find((slot) => ownColumnSlots.has(slot.locationName))
-        ?.locationName ?? null
-    );
+    const filled = new Set([
+      ...occupancy.committedSlots(),
+      ...options.blockedLocationNames,
+    ]);
+    return deepestReachableCell(options.lane, filled)?.locationName ?? null;
   }
 
   private async reassign(
     manager: EntityManager,
     layout: ZoneSlotLayout,
     zone: ZoneEntity,
+    afterCommit: ZoneOccupancy,
     holder: CargoEntity,
-    zoneCargos: readonly CargoEntity[],
     committer: CargoEntity,
     committedSlot: string,
   ): Promise<string | null> {
-    const claimed = committedSlots(zoneCargos);
-    claimed.add(committedSlot);
-    for (const other of zoneCargos) {
-      if (other.id === holder.id || other.id === committer.id) continue;
-      if (other.reservedLocationName) claimed.add(other.reservedLocationName);
-    }
-
-    const replacement = this.deliverySlotEngine.rank(layout, claimed)[0];
-    if (!replacement) {
+    const lane = layout.lanes[laneIndexOfTarget(layout, committedSlot) ?? -1];
+    const ranked = this.deliverySlotEngine.rank(
+      layout,
+      afterCommit.claimedTargets(),
+    );
+    const replacementSlot = lane
+      ? firstSlotInLane(ranked, lane)
+      : (ranked[0]?.locationName ?? null);
+    if (!replacementSlot) {
       this.logger.error(
         `Cargo ${holder.id}: lost ${committedSlot} to cargo ${committer.id} and zone "${zone.name}" has nothing left`,
       );
@@ -194,8 +194,23 @@ export class SlotReservationService {
       return null;
     }
 
-    await this.writeReservation(manager, holder, replacement.locationName);
-    return replacement.locationName;
+    await this.writeReservation(manager, holder, replacementSlot);
+    return replacementSlot;
+  }
+
+  async aimAt(
+    cargoId: string,
+    target: string,
+    zone: ZoneEntity,
+  ): Promise<void> {
+    await this.withZoneLock(zone, async (manager) => {
+      const cargo = await manager
+        .getRepository(CargoEntity)
+        .findOne({ where: { id: cargoId } });
+      if (!cargo || cargo.destinationLocationName) return;
+      if (cargo.reservedLocationName === target) return;
+      await this.writeReservation(manager, cargo, target);
+    });
   }
 
   private async writeReservation(
@@ -251,33 +266,13 @@ export class SlotReservationService {
   }
 }
 
-function committedSlots(cargos: readonly CargoEntity[]): Set<string> {
-  const slots = new Set<string>();
-  for (const cargo of cargos) {
-    if (cargo.destinationLocationName) slots.add(cargo.destinationLocationName);
-  }
-  return slots;
-}
-
-function untouchableSlots(
-  cargos: readonly CargoEntity[],
-  committer: CargoEntity,
-  insideColumnByCargoId: ReadonlyMap<string, number>,
-): Set<string> {
-  const slots = committedSlots(cargos);
-  for (const cargo of cargos) {
-    if (cargo.id === committer.id) continue;
-    if (!cargo.reservedLocationName) continue;
-    if (!insideColumnByCargoId.has(cargo.id)) continue;
-    slots.add(cargo.reservedLocationName);
-  }
-  return slots;
-}
-
-function claimedSlots(cargos: readonly CargoEntity[]): Set<string> {
-  const slots = committedSlots(cargos);
-  for (const cargo of cargos) {
-    if (cargo.reservedLocationName) slots.add(cargo.reservedLocationName);
-  }
-  return slots;
+function firstSlotInLane(
+  ranked: readonly { locationName: string }[],
+  lane: ZoneLane,
+): string | null {
+  const laneSlots = new Set(lane.slots.map((slot) => slot.locationName));
+  return (
+    ranked.find((slot) => laneSlots.has(slot.locationName))?.locationName ??
+    null
+  );
 }

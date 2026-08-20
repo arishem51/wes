@@ -4,6 +4,7 @@ import {
   computeFeederPoints,
   hopsToExit,
   type PlantPath,
+  checkLaneInvariants,
 } from './zone-topology';
 
 const oneWay = (srcPointName: string, destPointName: string): PlantPath => ({
@@ -194,5 +195,115 @@ describe('computeEgressPoints / hopsToExit', () => {
     const hops = hopsToExit(paths, new Set(['A', 'B']), ['EXIT']);
     expect(hops.has('B')).toBe(false);
     expect(hops.has('A')).toBe(false);
+  });
+});
+
+describe('checkLaneInvariants', () => {
+  const at = (name: string, x: number, y: number) => ({
+    name,
+    position: { x, y },
+  });
+  const lane = [
+    at('corr2', 1000, 0),
+    at('corr1', 1000, -1000),
+    at('A1', 1000, -2000),
+    at('A2', 1000, -3000),
+  ];
+  const members = new Set(['A1', 'A2']);
+  const spine: PlantPath[] = [
+    twoWay('corr2', 'corr1'),
+    twoWay('corr1', 'A1'),
+    twoWay('A1', 'A2'),
+  ];
+
+  it('accepts a lane with two corridor points straight above it', () => {
+    expect(checkLaneInvariants(lane, spine, members)).toEqual([]);
+  });
+
+  it('reports V1 when the lane has only one corridor point above it', () => {
+    const short = lane.slice(1);
+    const paths = spine.slice(1);
+    const violations = checkLaneInvariants(short, paths, members);
+
+    expect(violations.map((v) => v.code)).toEqual(['V1']);
+    expect(violations[0].detail).toContain('A1');
+  });
+
+  it('reports V1 when the way up out of the lane is one-way inwards', () => {
+    const paths: PlantPath[] = [
+      twoWay('corr2', 'corr1'),
+      oneWay('corr1', 'A1'),
+      twoWay('A1', 'A2'),
+    ];
+
+    expect(
+      checkLaneInvariants(lane, paths, members).map((v) => v.code),
+    ).toEqual(['V1']);
+  });
+
+  it('reports V3 when two lanes are joined in both directions', () => {
+    const points = [
+      ...lane,
+      at('cB2', 2000, 0),
+      at('cB1', 2000, -1000),
+      at('B1', 2000, -2000),
+      at('B2', 2000, -3000),
+    ];
+    const twoLaneMembers = new Set(['A1', 'A2', 'B1', 'B2']);
+    const paths: PlantPath[] = [
+      ...spine,
+      twoWay('cB2', 'cB1'),
+      twoWay('cB1', 'B1'),
+      twoWay('B1', 'B2'),
+      twoWay('A2', 'B2'),
+    ];
+
+    const violations = checkLaneInvariants(points, paths, twoLaneMembers);
+
+    expect(violations.map((v) => v.code)).toContain('V3');
+  });
+
+  it('reports V3 when cross-lane paths disagree on direction', () => {
+    const points = [
+      ...lane,
+      at('cB2', 2000, 0),
+      at('cB1', 2000, -1000),
+      at('B1', 2000, -2000),
+      at('B2', 2000, -3000),
+    ];
+    const twoLaneMembers = new Set(['A1', 'A2', 'B1', 'B2']);
+    const paths: PlantPath[] = [
+      ...spine,
+      twoWay('cB2', 'cB1'),
+      twoWay('cB1', 'B1'),
+      twoWay('B1', 'B2'),
+      oneWay('A1', 'B1'),
+      oneWay('B2', 'A2'),
+    ];
+
+    const violations = checkLaneInvariants(points, paths, twoLaneMembers);
+
+    expect(violations.map((v) => v.code)).toContain('V3');
+  });
+
+  it('accepts cross-lane paths that all run one way in the same direction', () => {
+    const points = [
+      ...lane,
+      at('cB2', 2000, 0),
+      at('cB1', 2000, -1000),
+      at('B1', 2000, -2000),
+      at('B2', 2000, -3000),
+    ];
+    const twoLaneMembers = new Set(['A1', 'A2', 'B1', 'B2']);
+    const paths: PlantPath[] = [
+      ...spine,
+      twoWay('cB2', 'cB1'),
+      twoWay('cB1', 'B1'),
+      twoWay('B1', 'B2'),
+      oneWay('A1', 'B1'),
+      oneWay('A2', 'B2'),
+    ];
+
+    expect(checkLaneInvariants(points, paths, twoLaneMembers)).toEqual([]);
   });
 });

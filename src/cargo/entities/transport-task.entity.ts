@@ -22,6 +22,8 @@ export interface TaskMetadata {
   to1Name?: string;
   to2Name?: string;
   to3Name?: string;
+  approachOrderName?: string;
+  approachedAt?: string;
   approachPointName?: string;
   retreatPointName?: string;
   unloadedAt?: string;

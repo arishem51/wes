@@ -123,10 +123,6 @@ export class LegReconcileService {
     return hasLostNavigation(this.vehicleStore.get(vehicleName)?.errors);
   }
 
-  /**
-   * The leg the task is currently waiting on, derived from its status + which
-   * order names it has recorded — the same progression the saga drives.
-   */
   private expectedLeg(
     task: TransportTaskEntity,
   ): { leg: TaskLeg; orderName: string } | null {
@@ -136,7 +132,9 @@ export class LegReconcileService {
     }
     if (task.status === TaskStatus.DELIVERING) {
       if (m?.to3Name) return { leg: 'DROPOFF', orderName: m.to3Name };
-      if (m?.to2Name) return { leg: 'APPROACH', orderName: m.to2Name };
+      if (m?.approachOrderName && !m.approachedAt) {
+        return { leg: 'APPROACH', orderName: m.approachOrderName };
+      }
     }
     return null;
   }

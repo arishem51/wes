@@ -13,6 +13,18 @@ const LAYOUT: ZoneSlotLayout = {
     [slot('D3'), slot('D2'), slot('D1')],
     [slot('S3'), slot('S2'), slot('S1')],
   ],
+  lanes: [
+    {
+      axis: 2000,
+      slots: [slot('D3'), slot('D2'), slot('D1')],
+      axisPoints: ['D3', 'D2', 'D1', 'WD1', 'WD2'],
+    },
+    {
+      axis: 1000,
+      slots: [slot('S3'), slot('S2'), slot('S1')],
+      axisPoints: ['S3', 'S2', 'S1', 'WS1', 'WS2'],
+    },
+  ],
   entryPoints: ['D1', 'S1'],
   memberPointNames: new Set(['D1', 'D2', 'D3', 'S1', 'S2', 'S3']),
   strandedLocationNames: [],
@@ -39,11 +51,14 @@ function cargo(id: string, overrides: Partial<FakeCargo> = {}): FakeCargo {
   };
 }
 
+const LANE_D = LAYOUT.lanes[0];
+const LANE_S = LAYOUT.lanes[1];
+
 function options(
-  allowSwap: boolean,
-  insideColumnByCargoId: ReadonlyMap<string, number> = new Map(),
+  blockedLocationNames: ReadonlySet<string> = new Set(),
+  lane = LANE_D,
 ) {
-  return { allowSwap, insideColumnByCargoId };
+  return { blockedLocationNames, lane };
 }
 
 function makeService(cargos: FakeCargo[]) {
@@ -81,7 +96,7 @@ function makeService(cargos: FakeCargo[]) {
     dataSource as never,
     deliverySlotEngine as never,
   );
-  return { service, cargos, manager };
+  return { service, cargos, manager, deliverySlotEngine };
 }
 
 describe('SlotReservationService.reserve', () => {
@@ -117,6 +132,36 @@ describe('SlotReservationService.reserve', () => {
     await expect(service.reserve('c1', ZONE)).resolves.toBe('D2');
   });
 
+  it('queues behind the commit instead of taking a cell it still needs', async () => {
+    const { service } = makeService([
+      cargo('c1', { destinationLocationName: 'D3' }),
+      cargo('c2'),
+    ]);
+
+    await expect(service.reserve('c2', ZONE)).resolves.toBe('WD1');
+  });
+
+  it('puts the next one in the queue one step further back', async () => {
+    const { service } = makeService([
+      cargo('c1', { destinationLocationName: 'D3' }),
+      cargo('c2', { reservedLocationName: 'WD1' }),
+      cargo('c3'),
+    ]);
+
+    await expect(service.reserve('c3', ZONE)).resolves.toBe('WD2');
+  });
+
+  it('moves to the next lane once the buffer is reached', async () => {
+    const { service } = makeService([
+      cargo('c1', { destinationLocationName: 'D3' }),
+      cargo('c2', { reservedLocationName: 'WD1' }),
+      cargo('c3', { reservedLocationName: 'WD2' }),
+      cargo('c4'),
+    ]);
+
+    await expect(service.reserve('c4', ZONE)).resolves.toBe('S3');
+  });
+
   it('takes the advisory lock on the zone before it reads', async () => {
     const { service, manager } = makeService([cargo('c1')]);
 
@@ -135,7 +180,7 @@ describe('SlotReservationService.commit', () => {
       cargo('c1', { reservedLocationName: 'D3' }),
     ]);
 
-    const result = await service.commit('c1', ZONE, options(true));
+    const result = await service.commit('c1', ZONE, options());
 
     expect(result).toMatchObject({ slot: 'D3', keptOwnReservation: true });
     expect(cargos[0].destinationLocationName).toBe('D3');
@@ -148,7 +193,7 @@ describe('SlotReservationService.commit', () => {
       cargo('c2', { reservedLocationName: 'D2' }),
     ]);
 
-    const result = await service.commit('c2', ZONE, options(true));
+    const result = await service.commit('c2', ZONE, options());
 
     expect(result).toMatchObject({ slot: 'D3', keptOwnReservation: false });
     expect(cargos[1].destinationLocationName).toBe('D3');
@@ -158,29 +203,16 @@ describe('SlotReservationService.commit', () => {
     });
   });
 
-  it('always leaves the displaced cargo a slot to go to', async () => {
+  it('leaves the displaced cargo a slot in the same lane', async () => {
     const { service, cargos } = makeService([
       cargo('c1', { reservedLocationName: 'D3' }),
       cargo('c2', { reservedLocationName: 'D2' }),
     ]);
 
-    const result = await service.commit('c2', ZONE, options(true));
+    const result = await service.commit('c2', ZONE, options());
 
     expect(result?.displaced?.replacementSlot).toBe('D2');
     expect(cargos[0].reservedLocationName).toBe('D2');
-  });
-
-  it('keeps its own reservation once the vehicle is past the gate', async () => {
-    const { service, cargos } = makeService([
-      cargo('c1', { reservedLocationName: 'D3' }),
-      cargo('c2', { reservedLocationName: 'D2' }),
-    ]);
-
-    const result = await service.commit('c2', ZONE, options(false));
-
-    expect(result).toMatchObject({ slot: 'D2', keptOwnReservation: true });
-    expect(result?.displaced).toBeNull();
-    expect(cargos[0].reservedLocationName).toBe('D3');
   });
 
   it('is idempotent once the slot is committed', async () => {
@@ -188,7 +220,7 @@ describe('SlotReservationService.commit', () => {
       cargo('c1', { destinationLocationName: 'S2' }),
     ]);
 
-    const result = await service.commit('c1', ZONE, options(true));
+    const result = await service.commit('c1', ZONE, options());
 
     expect(result).toEqual({
       slot: 'S2',
@@ -197,57 +229,62 @@ describe('SlotReservationService.commit', () => {
     });
   });
 
-  it('never offers a slot another cargo has already committed', async () => {
+  it('offers nothing while the caller reports the lane still occupied', async () => {
     const { service } = makeService([
       cargo('c1', { destinationLocationName: 'D3' }),
-      cargo('c2', { reservedLocationName: 'D2' }),
-    ]);
-
-    const result = await service.commit('c2', ZONE, options(true));
-
-    expect(result?.slot).toBe('D2');
-  });
-
-  it('never takes the slot of a vehicle that already drove into its column', async () => {
-    const { service, cargos } = makeService([
-      cargo('c1', { reservedLocationName: 'D3' }),
       cargo('c2', { reservedLocationName: 'D2' }),
     ]);
 
     const result = await service.commit(
       'c2',
       ZONE,
-      options(true, new Map([['c1', 0]])),
+      options(new Set(['D3', 'D2', 'D1'])),
     );
 
-    expect(result).toMatchObject({ slot: 'D2', keptOwnReservation: true });
-    expect(result?.displaced).toBeNull();
-    expect(cargos[0].reservedLocationName).toBe('D3');
+    expect(result).toBeNull();
   });
 
-  it('re-picks inside the column the vehicle is already in', async () => {
+  it('always takes the best free slot, ignoring its own reservation', async () => {
+    const { service, cargos } = makeService([
+      cargo('c1', { reservedLocationName: 'D1' }),
+    ]);
+
+    const result = await service.commit('c1', ZONE, options());
+
+    expect(result?.slot).toBe('D3');
+    expect(cargos[0].destinationLocationName).toBe('D3');
+  });
+
+  it('never sends a vehicle to a lane it is not standing in', async () => {
+    const { service } = makeService([cargo('c1')]);
+
+    const result = await service.commit('c1', ZONE, options(new Set(), LANE_S));
+
+    expect(result?.slot).toBe('S3');
+  });
+
+  it('waits rather than jump lanes when its own lane is busy', async () => {
     const { service } = makeService([cargo('c1')]);
 
     const result = await service.commit(
       'c1',
       ZONE,
-      options(false, new Map([['c1', 1]])),
+      options(new Set(['D3', 'D2', 'D1'])),
     );
 
-    expect(result).toMatchObject({ slot: 'S3' });
+    expect(result).toBeNull();
   });
 
-  it('commits nothing rather than send a vehicle out of its column', async () => {
-    const { service } = makeService([
-      cargo('c1'),
-      cargo('c2', { destinationLocationName: 'D3' }),
-      cargo('c3', { destinationLocationName: 'D2' }),
-      cargo('c4', { destinationLocationName: 'D1' }),
-    ]);
+  it('commits nothing while every lane is busy', async () => {
+    const { service } = makeService([cargo('c1')]);
 
-    await expect(
-      service.commit('c1', ZONE, options(false, new Map([['c1', 0]]))),
-    ).resolves.toBeNull();
+    const result = await service.commit(
+      'c1',
+      ZONE,
+      options(new Set(['D3', 'D2', 'D1', 'S3', 'S2', 'S1'])),
+    );
+
+    expect(result).toBeNull();
   });
 
   it('bumps the decision counter on every cargo it touches', async () => {
@@ -256,9 +293,99 @@ describe('SlotReservationService.commit', () => {
       cargo('c2', { reservedLocationName: 'D2', slotDecisionSeq: 7 }),
     ]);
 
-    await service.commit('c2', ZONE, options(true));
+    await service.commit('c2', ZONE, options());
 
     expect(cargos[0].slotDecisionSeq).toBe(5);
     expect(cargos[1].slotDecisionSeq).toBe(8);
+  });
+});
+
+describe('SlotReservationService.commit in a lane deeper than the retreat', () => {
+  const DEEP_SLOTS = ['P5', 'P4', 'P3', 'P2', 'P1'].map((pointName) => ({
+    locationName: pointName,
+    pointName,
+  }));
+  const DEEP_LANE = {
+    axis: 3000,
+    slots: DEEP_SLOTS,
+    axisPoints: ['P5', 'P4', 'P3', 'P2', 'P1', 'WP1'],
+  };
+  const DEEP_LAYOUT: ZoneSlotLayout = {
+    columns: [DEEP_SLOTS],
+    lanes: [DEEP_LANE],
+    entryPoints: ['P1'],
+    memberPointNames: new Set(['P1', 'P2', 'P3', 'P4', 'P5']),
+    strandedLocationNames: [],
+  };
+
+  function deepService(cargos: FakeCargo[]) {
+    const made = makeService(cargos);
+    made.deliverySlotEngine.layoutFor.mockResolvedValue(DEEP_LAYOUT);
+    return made;
+  }
+
+  const deepOptions = (blocked: string[] = []) => ({
+    blockedLocationNames: new Set(blocked),
+    lane: DEEP_LANE,
+  });
+
+  it('waits while the vehicle ahead is still in the lane', async () => {
+    const { service } = deepService([
+      cargo('c1', { destinationLocationName: 'P5' }),
+      cargo('c2', { reservedLocationName: 'P2' }),
+    ]);
+
+    const busy = deepOptions(['P5', 'P4', 'P3', 'P2', 'P1']);
+
+    await expect(service.commit('c2', ZONE, busy)).resolves.toBeNull();
+  });
+
+  it('takes the cell right behind, the moment the lane reads clear', async () => {
+    const { service, cargos } = deepService([
+      cargo('c1', { destinationLocationName: 'P5' }),
+      cargo('c2', { reservedLocationName: 'P2' }),
+    ]);
+
+    const result = await service.commit('c2', ZONE, deepOptions());
+
+    expect(result?.slot).toBe('P4');
+    expect(cargos[1].destinationLocationName).toBe('P4');
+  });
+
+  it('ignores its own reservation and never leaves a hole behind it', async () => {
+    const { service } = deepService([
+      cargo('c1', {
+        destinationLocationName: 'P5',
+        status: CargoStatus.DELIVERED,
+      }),
+      cargo('c2', { reservedLocationName: 'P2' }),
+    ]);
+
+    await expect(
+      service.commit('c2', ZONE, deepOptions()),
+    ).resolves.toMatchObject({ slot: 'P4' });
+  });
+
+  it('never reaches past an occupied cell to a deeper free one', async () => {
+    const { service } = deepService([
+      cargo('c1', { destinationLocationName: 'P3' }),
+      cargo('c2'),
+    ]);
+
+    await expect(
+      service.commit('c2', ZONE, deepOptions()),
+    ).resolves.toMatchObject({ slot: 'P2' });
+  });
+
+  it('reports the lane full when the entrance cell is taken', async () => {
+    const { service } = deepService([
+      cargo('c1', {
+        destinationLocationName: 'P1',
+        status: CargoStatus.DELIVERED,
+      }),
+      cargo('c2'),
+    ]);
+
+    await expect(service.commit('c2', ZONE, deepOptions())).resolves.toBeNull();
   });
 });

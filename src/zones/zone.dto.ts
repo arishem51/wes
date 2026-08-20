@@ -13,7 +13,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { ZoneType } from './entities/zone.entity';
+import { ZoneEntity, ZoneStatus, ZoneType } from './entities/zone.entity';
 
 /** #RGB, #RRGGBB or #RRGGBBAA hex color. */
 export const HEX_COLOR_REGEX =
@@ -71,4 +71,43 @@ export class UpdateZoneDto {
     message: 'color phải là mã hex hợp lệ (#RRGGBB).',
   })
   color!: string;
+}
+
+export interface ZoneMemberResponse {
+  locationName: string;
+  positionIndex: number;
+}
+
+export interface ZoneResponse {
+  id: string;
+  name: string;
+  type: ZoneType;
+  status: ZoneStatus;
+  color: string | null;
+  plantModelName: string | null;
+  createdAt: Date;
+  members: ZoneMemberResponse[];
+}
+
+export interface ZoneListItemResponse extends ZoneResponse {
+  occupiedSlotCount: number;
+  totalSlotCount: number;
+}
+
+export function toZoneResponse(zone: ZoneEntity): ZoneResponse {
+  return {
+    id: zone.id,
+    name: zone.name,
+    type: zone.type,
+    status: zone.status,
+    color: zone.color,
+    plantModelName: zone.plantModelName,
+    createdAt: zone.createdAt,
+    members: [...zone.members]
+      .sort((a, b) => a.positionIndex - b.positionIndex)
+      .map((member) => ({
+        locationName: member.locationName,
+        positionIndex: member.positionIndex,
+      })),
+  };
 }
