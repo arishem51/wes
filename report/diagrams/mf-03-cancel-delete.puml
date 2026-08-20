@@ -1,5 +1,8 @@
 @startuml mf-03-cancel-delete
 ' SRS Section II.1.2.3 — Main Workflow: Cancel & Delete
+' Deleting a cargo is the operator-facing action; cancelling its transport task
+' is the consequence. The pickup-lane release that follows is performed by the
+' next dispatch flush, not inside the delete request.
 ' Business-level vocabulary only; implementation detail belongs in the SDS.
 ' Render: java -jar plantuml.jar -charset UTF-8 -tpng mf-03-cancel-delete.puml
 skinparam backgroundColor #FFFFFF
@@ -8,47 +11,82 @@ skinparam defaultFontSize 12
 skinparam swimlaneWidth 260
 skinparam ArrowColor #000000
 skinparam ActivityBorderColor #000000
-skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityBackgroundColor #7ACFF4
 skinparam ActivityDiamondBorderColor #000000
-skinparam ActivityDiamondBackgroundColor #FFFFFF
+skinparam ActivityDiamondBackgroundColor #7ACFF4
 skinparam NoteBackgroundColor #FFF8DC
 skinparam NoteBorderColor #999999
 
+title Cancel & Delete
+
 |#FAFAFA|Admin / Operator|
+|#FFFFFF|WES|
+|#F2F2F2|FMS (openTCS)|
+|#F2F2F2|AGV|
+
+|Admin / Operator|
 start
 :Request cargo deletion;
 
-|#FFFFFF|WES|
+|WES|
 if (Cargo exists?) then (No)
-  :Reject: cargo not found;
+  :Reject:\n"Cargo not found";
   stop
 else (Yes)
 endif
-:Look up the linked transport task;
+:Look up the linked\ntransport task;
 if (Task is DELIVERING?) then (Yes)
-  :Reject: the AGV is currently carrying\nthis item to its destination;
-  note right: The cargo is NOT deleted.\nThis is the ONLY guard that blocks deletion
+  :Reject (MSG-24): the AGV is\nalready carrying this item\nto its destination;
+  note right
+    The cargo is NOT deleted.
+    This is the ONLY guard
+    that blocks deletion.
+  end note
   stop
-else (No, or no task at all)
+else (No, or no\ntask at all)
 endif
-
 if (Task is PICKING_UP?) then (Yes)
-  |#F2F2F2|FMS (openTCS)|
-  :Withdraw the pick-up\ntransport order;
-  note right: WES does NOT wait\nfor confirmation
+  |FMS (openTCS)|
+  :Withdraw the pick-up transport\norder (graceful; WES does\nNOT wait for confirmation);
+  |AGV|
+  :Finish the movement\ncurrently being executed,\nthen stop driving\nto the source point;
   |WES|
 else (No)
 endif
-
-if (Task cancellable?\nCREATED / READY_TO_ASSIGN /\nBLOCKED / PICKING_UP) then (Yes)
-  :Set the cancellation timestamp;
+if (Task cancellable?\nCREATED / READY_TO_ASSIGN\n/ BLOCKED / PICKING_UP) then (Yes)
+  :Stamp the cancellation\ntimestamp;
   :Task -> CANCELLED\n(reason: cargo deleted);
+  :Raise the\nstatus-changed event;
 else (No)
-  :No task update - the task is already\nin a terminal state\n(DELIVERY_COMPLETED / FAILED / CANCELLED);
+  :No task update - the task\nis already in a terminal state\n(DELIVERY_COMPLETED /\nFAILED / CANCELLED);
 endif
-
-:Remove the cargo from the system;
-:Confirm the deletion to the operator;
+:Remove the cargo from\nthe system (soft delete);
+:Confirm the deletion\nto the operator;
+#CDE9CD:Next dispatch flush -\n1.5 s after the\nstatus-changed event;
+note right
+  The deleted cargo has left its pickup
+  lane, so it no longer blocks anything
+  behind it. The AGV freed by the
+  cancellation is reconsidered in the
+  same flush.
+end note
+#CDE9CD:Release Engine re-evaluates\nthe lanes against the\nouter-before-inner rule (BR-10);
+if (Any task still BLOCKED\nbehind the deleted cargo\nin the same lane?) then (Yes)
+  #CDE9CD:Clear the block reason;\nTask -> READY_TO_ASSIGN;
+  #CDE9CD:Assignment Engine (Hungarian)\nmatches it with a free vehicle\nand issues its pick-up order;
+  |FMS (openTCS)|
+  :Route that vehicle\ninto the freed lane;
+  |AGV|
+  :Drive in and collect\nthe next cargo;
+  |WES|
+else (No)
+  #CDE9CD:Nothing to release\nin this lane;
+endif
 stop
+
+legend bottom
+|<#7ACFF4>    | Handled synchronously, inside the operator's delete request |
+|<#CDE9CD>    | Pickup-lane release - performed by the next dispatch flush |
+endlegend
 
 @enduml

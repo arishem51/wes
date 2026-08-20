@@ -2,8 +2,9 @@
 ' SRS Section II.1.2.1 — Main Workflow: Pickup
 ' Continues in mf-02a-reserve-aim.puml
 ' The tail of this flow changed with the dynamic drop-off: the pick-up no longer
-' hands over to an approach order (TO2); WES reserves a concrete drop-off slot
-' and aims the drop-off order (TO3) straight at it.
+' hands over to a separate approach order; WES reserves a concrete drop-off slot
+' and aims the drop-off order straight at it. A task now carries two kernel
+' orders only - TO1 (pick-up) and TO2 (drop-off with its trailing retreat).
 ' Business-level vocabulary only; implementation detail belongs in the SDS.
 ' Render: java -jar plantuml.jar -charset UTF-8 -tpng mf-01-pickup.puml
 skinparam backgroundColor #FFFFFF
@@ -18,15 +19,19 @@ skinparam ActivityDiamondBackgroundColor #7ACFF4
 skinparam NoteBackgroundColor #7ACFF4
 skinparam NoteBorderColor #000000
 
-|Scanner|
+|Operator / Scanner|
 |WES|
 |FMS (openTCS)|
 |AGV|
 
-|Scanner|
+|Operator / Scanner|
 start
 :Create cargo;
-note right: source point\n+ destination zone
+note right
+  source point + destination zone
+  Raised today by a logged-in Operator or Admin;
+  the scanner-facing endpoint is not delivered yet
+end note
 
 |WES|
 :Validate request\n(source point, drop-off zone);
@@ -72,7 +77,7 @@ endif
 
 |WES|
 :Reserve a concrete drop-off slot\nin the destination zone (BR-11);
-:Call openTCS to create TO3\n(DROP_OFF aimed at the reserved slot);
+:Call openTCS to create TO2\n(DROP_OFF aimed at the reserved slot);
 :Task -> DELIVERING (continues in MF-02);
 stop
 

@@ -1,8 +1,8 @@
 @startuml mf-02a-reserve-aim
 ' SRS Section II.1.2.2 — Main Workflow: Delivery, part A (Reserve & Aim)
 ' Continues in mf-02b-commit-dropoff-retreat.puml
-' Supersedes mf-02a-approach.puml: the approach leg (TO2) was retired when the
-' drop-off slot became dynamic — the vehicle is aimed at its own slot instead.
+' Supersedes mf-02a-approach.puml: the approach leg was retired when the drop-off
+' slot became dynamic — the vehicle is aimed at a slot of its own instead.
 ' Business-level vocabulary only; implementation detail belongs in the SDS.
 ' Render: java -jar plantuml.jar -charset UTF-8 -tpng mf-02a-reserve-aim.puml
 skinparam backgroundColor #FFFFFF
@@ -14,22 +14,24 @@ skinparam ActivityBorderColor #000000
 skinparam ActivityBackgroundColor #7ACFF4
 skinparam ActivityDiamondBorderColor #000000
 skinparam ActivityDiamondBackgroundColor #7ACFF4
-skinparam NoteBackgroundColor #7ACFF4
-skinparam NoteBorderColor #000000
+skinparam NoteBackgroundColor #FFF8DC
+skinparam NoteBorderColor #999999
 
-|FMS (openTCS)|
-|WES|
-|AGV|
+title Delivery - Part A: Reserve & Aim
 
-|FMS (openTCS)|
+|#F2F2F2|FMS (openTCS)|
 start
 :The pick-up transport order\nreaches FINISHED;
 :Notify WES;
-note left: WES re-checks order state on a heartbeat,\nso a lost notification does not stall the task
+note right
+  WES re-checks the order state on a
+  heartbeat, so a lost notification
+  does not stall the task
+end note
 
-|WES|
+|#FFFFFF|WES|
 :Receive the pick-up completion;
-if (Drop-off order already issued?) then (Yes)
+if (Drop-off order\nalready issued?) then (Yes)
   :Ignore the duplicate notification;
   stop
 else (No)
@@ -39,32 +41,52 @@ if (Assigned vehicle and\ndestination zone both present?) then (No)
   stop
 else (Yes)
 endif
-:Take exclusive access\nto the zone's slot map;
-:Reserve one concrete drop-off slot\nby the cascading depth-first fill rule (BR-11),\ncounting the slots already committed\nand the slots already reserved;
-if (Any slot free to reserve?) then (No)
+:Take exclusive access to\nthe zone's slot map;
+note right
+  Both slot steps run under exclusive
+  access, so two vehicles arriving at
+  once are never given the same slot
+end note
+:Reserve one concrete drop-off slot by the\ncascading depth-first fill rule (BR-11),\ncounting the slots already COMMITTED\nand the slots already RESERVED;
+if (Any slot free\nto reserve?) then (No)
   :Release the zone;
   :Stay in PICKING_UP;\nthe periodic re-check retries;
   stop
 else (Yes)
 endif
-:Record the reserved slot on the cargo;
+:Record the slot on the cargo\nas a PROVISIONAL RESERVATION;
 :Release the zone;
-note right: A reservation is provisional -\nanother vehicle may still take the slot
+note right
+  A reservation is **provisional**: it only
+  records the slot WES currently intends
+  the cargo to occupy. Part B may still
+  **swap** it away, and only the **commit**
+  in Part B makes a slot binding.
+end note
 :Resolve the 2-cell retreat path\nbehind the reserved slot;
 if (Retreat path found?) then (No)
   :Log a warning - the drop-off order\ngoes out without the retreat steps;
 else (Yes)
 endif
-:Issue the drop-off transport order\naimed at the reserved slot:\nunload at the slot, then one move step\nper retreat cell;
+:Issue ONE drop-off transport order aimed at the\nreserved slot: unload at the slot, then one\nmove step per retreat cell;
 :Task -> DELIVERING;
-note right: Each vehicle drives straight to a slot of its own -\nthere is no shared approach point, so two vehicles\nare never routed to the same destination
+note right
+  There is no approach order and no shared
+  approach point. Each vehicle drives from
+  the pick-up straight to a slot of its own,
+  so two vehicles are never routed to the
+  same destination.
+end note
 
-|FMS (openTCS)|
-:Route the vehicle\ntowards the reserved slot;
+|#F2F2F2|FMS (openTCS)|
+:Route the vehicle towards\nthe reserved slot;
 
-|AGV|
+|#F2F2F2|AGV|
 :Drive towards the destination zone;
+note right
+  Continues in Part B:
+  Commit, Swap, Drop-off & Retreat
+end note
 stop
-note right: Continues in part B\n(Commit, Drop-off & Retreat)
 
 @enduml

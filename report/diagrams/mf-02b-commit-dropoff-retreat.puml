@@ -1,5 +1,5 @@
 @startuml mf-02b-commit-dropoff-retreat
-' SRS Section II.1.2.2 — Main Workflow: Delivery, part B (Commit, Drop-off & Retreat)
+' SRS Section II.1.2.2 — Main Workflow: Delivery, part B (Commit, Swap, Drop-off & Retreat)
 ' Continues from mf-02a-reserve-aim.puml
 ' Supersedes mf-02b-dropoff-retreat.puml: the slot is now committed at the zone
 ' gate by a periodic watch, and a late arrival may swap a slot away from a
@@ -15,45 +15,68 @@ skinparam ActivityBorderColor #000000
 skinparam ActivityBackgroundColor #7ACFF4
 skinparam ActivityDiamondBorderColor #000000
 skinparam ActivityDiamondBackgroundColor #7ACFF4
-skinparam NoteBackgroundColor #7ACFF4
-skinparam NoteBorderColor #000000
+skinparam NoteBackgroundColor #FFF8DC
+skinparam NoteBorderColor #999999
 
-|FMS (openTCS)|
-|WES|
-|AGV|
+title Delivery - Part B: Commit, Swap, Drop-off & Retreat
+
+|#F2F2F2|FMS (openTCS)|
+|#FFFFFF|WES|
+|#F2F2F2|AGV|
 
 |WES|
 start
-:Watch every delivering vehicle\nthat has no committed slot yet;
-note right: Continued from part A\n(Reserve & Aim)
+:Drop-off Commit Watch: every 0.2 s,\ntake every delivering task that has\nno committed slot yet;
+note right: Continued from Part A (Reserve & Aim)
 repeat
-  :Read where the assigned vehicle stands;
-  backward:Re-check on the next tick (0.5 s);
-repeat while (Has it reached\nthe destination zone?) is (Not yet) not (Yes)
-:Take exclusive access\nto the zone's slot map;
-if (Is it standing at the zone gate?) then (Yes - it can still pick another column)
-  :Choose the best slot the fill rule (BR-11)\noffers among the slots\nnot committed by anyone;
-else (No - it is already inside the zone)
-  :Keep its own reserved slot, unless\nanother vehicle has already committed it;
+  :Read where the assigned\nvehicle stands;
+  backward:Not yet -\nre-check on the next tick;
+repeat while (Has it reached the\ndestination zone?) is (Not yet) not (Yes)
+:Take exclusive access to\nthe zone's slot map;
+if (Where is the vehicle standing?) then (On an entry point\nof the zone - the gate)
+  :Re-run the fill rule (BR-11)\nover the slots nobody has\nCOMMITTED, and offer the best;
+  note right
+    It can still turn into another
+    column, so it is re-offered the
+    best slot the rule allows - this
+    is what makes a **swap** possible
+  end note
+else (Already inside\nthe zone)
+  :Keep its own\nRESERVATION - no swap;
+  note right
+    It has passed the last point
+    from which another column
+    was still reachable
+  end note
 endif
-if (Does the fill rule offer a slot?) then (No)
-  :Release the zone;
-  :Log a warning;\nthe next tick tries again;
+if (Does the fill rule\noffer a slot?) then (No)
+  :Release the zone and log a warning;\nthe next tick tries again;
   stop
 else (Yes)
 endif
-:Record the committed slot on the cargo\nand drop its reservation;
+#B5E6B5:**COMMIT** the slot on the cargo\nand drop its reservation;
+note right
+  A committed slot is final - it can
+  never be taken away again. Missing
+  the tick at the gate is not an error:
+  the commit simply happens later and
+  loses the right to swap.
+end note
 :Release the zone;
-note right: A committed slot is final -\nit can never be taken away again
-if (Was that slot another cargo's reservation?) then (Yes)
-  :Re-reserve that cargo to the next slot\nthe fill rule offers;
-  :Withdraw and re-issue\nthat vehicle's drop-off transport order;
-  :Count the swap on that request;
-  note right: The zone was capacity-checked when the request\nwas created, so a displaced cargo always\nhas a slot left to move to
+if (Was that slot another\ncargo's RESERVATION?) then (Yes)
+  #FFE699:**SWAP** - re-reserve the displaced cargo\nonto the next slot the fill rule offers;
+  #FFE699:Withdraw and re-issue that cargo's drop-off\norder at its new slot, and count the swap;
+  note right
+    Only an uncommitted reservation can be
+    swapped away. The zone was capacity-checked
+    when the request was created, so a replacement
+    is normally free; where none is, the loss is
+    logged and the cargo waits for a later tick.
+  end note
 else (No)
 endif
-if (Is the committed slot the one\nthis vehicle was aimed at?) then (No)
-  :Withdraw and re-issue this vehicle's\ndrop-off transport order\nat the committed slot;
+if (Is the committed slot the\none this vehicle was aimed at?) then (No)
+  :Withdraw and re-issue this vehicle's\ndrop-off order at the committed slot;
 else (Yes)
 endif
 
@@ -61,24 +84,35 @@ endif
 :Route the vehicle\nto the committed slot;
 
 |AGV|
-:Unload the cargo at the slot;
+:Unload the cargo\nat the slot;
 
 |FMS (openTCS)|
 :Notify WES that the cargo\nhas been unloaded;
 
 |WES|
-:Record that the cargo has been unloaded;
-note right: The task is STILL DELIVERING -\nthe retreat steps are running
+:Record that the cargo\nhas been unloaded;
+note right
+  The task is STILL DELIVERING -
+  the retreat steps are running
+end note
 
 |AGV|
-:Retreat 2 cells clear of the slot;
+:Retreat 2 cells\nclear of the slot;
+note right
+  So it does not block the
+  vehicles queued behind it
+end note
 
 |FMS (openTCS)|
 :The drop-off transport order\nreaches FINISHED;
 
 |WES|
-:Task -> DELIVERY_COMPLETED;
-:Cargo -> DELIVERED;
+:Task -> DELIVERY_COMPLETED;\nCargo -> DELIVERED;
 stop
+
+legend bottom
+|<#B5E6B5>    | **COMMIT** - binding: the slot can never be taken away from this cargo again |
+|<#FFE699>    | **SWAP** - the slot is taken from another cargo's uncommitted reservation, which is re-aimed |
+endlegend
 
 @enduml
