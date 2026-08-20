@@ -4,10 +4,11 @@ import { CargoStatus } from './entities/cargo.entity';
 import { TaskStatus } from './entities/transport-task.entity';
 import type { SlotCommitResult } from './slot-reservation.service';
 
-const GATE = 'S1';
-const WAIT = 'W-S';
+const GATE = 'D1';
+const WAIT = 'W-D';
 const INSIDE = 'D2';
 const OUTSIDE = '0005';
+const CROSSING = 'W-S';
 
 function slot(name: string) {
   return { locationName: name, pointName: name };
@@ -31,7 +32,7 @@ const LAYOUT = {
       axisPoints: ['D3', 'D2', 'D1', 'W-D', 'W-D2'],
     },
   ],
-  entryPoints: [GATE, 'D1'],
+  entryPoints: ['S1', 'D1'],
   memberPointNames: new Set(['D1', 'D2', 'D3', 'S1', 'S2', 'S3']),
   strandedLocationNames: [],
 };
@@ -207,7 +208,7 @@ function makeLoop(
 }
 
 describe('DropoffCommitLoop trigger', () => {
-  it('commits as soon as the vehicle is anywhere on the lane axis', async () => {
+  it('commits as soon as the vehicle reaches the axis of its own lane', async () => {
     const { loop, slotReservation } = makeLoop({ fleet: solo(WAIT) });
 
     await loop.tick();
@@ -215,7 +216,7 @@ describe('DropoffCommitLoop trigger', () => {
     expect(slotReservation.commit).toHaveBeenCalledWith(
       'cargo-1',
       expect.objectContaining({ id: 'zone-1' }),
-      { blockedLocationNames: new Set(), lane: expect.anything() },
+      { blockedLocationNames: new Set(), lane: LAYOUT.lanes[1] },
     );
   });
 
@@ -227,12 +228,40 @@ describe('DropoffCommitLoop trigger', () => {
     expect(slotReservation.commit).toHaveBeenCalledWith(
       'cargo-1',
       expect.anything(),
-      { blockedLocationNames: new Set(), lane: expect.anything() },
+      { blockedLocationNames: new Set(), lane: LAYOUT.lanes[1] },
     );
   });
 
   it('leaves a vehicle that is not on any lane axis alone', async () => {
     const { loop, slotReservation } = makeLoop({ fleet: solo(OUTSIDE) });
+
+    await loop.tick();
+
+    expect(slotReservation.commit).not.toHaveBeenCalled();
+  });
+
+  it('leaves a vehicle crossing another lane on its way to its own alone', async () => {
+    const { loop, slotReservation } = makeLoop({ fleet: solo(CROSSING) });
+
+    await loop.tick();
+
+    expect(slotReservation.commit).not.toHaveBeenCalled();
+  });
+
+  it('never offers a slot in the lane the vehicle is only passing through', async () => {
+    const { loop, slotReservation } = makeLoop({
+      fleet: solo('S2', { reservedLocationName: 'D3' }),
+    });
+
+    await loop.tick();
+
+    expect(slotReservation.commit).not.toHaveBeenCalled();
+  });
+
+  it('leaves a cargo that has been aimed at nothing alone', async () => {
+    const { loop, slotReservation } = makeLoop({
+      fleet: solo(INSIDE, { reservedLocationName: null }),
+    });
 
     await loop.tick();
 

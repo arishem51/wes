@@ -13,15 +13,17 @@ export interface LaneSpot {
   readonly depth: number;
 }
 
-export function laneSpotOf(
+export function spotInReservedLane(
   layout: ZoneSlotLayout,
+  reservedTarget: string,
   pointName: string,
 ): LaneSpot | null {
-  for (const lane of layout.lanes) {
-    const depth = lane.axisPoints.indexOf(pointName);
-    if (depth !== -1) return { lane, depth };
-  }
-  return null;
+  const laneIndex = laneIndexOfTarget(layout, reservedTarget);
+  if (laneIndex === null) return null;
+
+  const lane = layout.lanes[laneIndex];
+  const depth = lane.axisPoints.indexOf(pointName);
+  return depth === -1 ? null : { lane, depth };
 }
 
 export function standsOnASlot(lane: ZoneLane, pointName: string): boolean {

@@ -1,6 +1,6 @@
 import {
   deepestReachableCell,
-  laneSpotOf,
+  spotInReservedLane,
   canKeepDrivingTo,
   serveOrder,
   standsOnASlot,
@@ -38,28 +38,43 @@ const LAYOUT: ZoneSlotLayout = {
 const taken = (...pointNames: string[]) =>
   new Set(pointNames.map((name) => `location_${name}`));
 
-describe('laneSpotOf', () => {
-  it('places a vehicle standing on a drop-off cell', () => {
-    expect(laneSpotOf(LAYOUT, 'P3')).toEqual({ lane: DEEP_LANE, depth: 2 });
+describe('spotInReservedLane', () => {
+  it('places a vehicle standing on a cell of the lane it was sent to', () => {
+    expect(spotInReservedLane(LAYOUT, 'location_P1', 'P3')).toEqual({
+      lane: DEEP_LANE,
+      depth: 2,
+    });
   });
 
-  it('places a vehicle queued on the corridor behind the cells', () => {
-    expect(laneSpotOf(LAYOUT, 'corr')?.depth).toBe(5);
+  it('places a vehicle queued on the corridor behind its own lane', () => {
+    expect(spotInReservedLane(LAYOUT, 'location_P1', 'corr')?.depth).toBe(5);
   });
 
   it('counts depth from the far end, so deeper reads as smaller', () => {
-    const deep = laneSpotOf(LAYOUT, 'P5')!;
-    const shallow = laneSpotOf(LAYOUT, 'P1')!;
+    const deep = spotInReservedLane(LAYOUT, 'location_P1', 'P5')!;
+    const shallow = spotInReservedLane(LAYOUT, 'location_P1', 'P1')!;
 
     expect(deep.depth).toBeLessThan(shallow.depth);
   });
 
-  it('tells the lanes apart', () => {
-    expect(laneSpotOf(LAYOUT, 'Q1')?.lane).toBe(SIDE_LANE);
+  it('reads the lane off the reservation, not off the cell underneath', () => {
+    expect(spotInReservedLane(LAYOUT, 'location_Q1', 'Q1')?.lane).toBe(SIDE_LANE);
   });
 
-  it('reports nothing for a vehicle that has not entered any lane', () => {
-    expect(laneSpotOf(LAYOUT, 'somewhere-else')).toBeNull();
+  it('ignores a vehicle only crossing another lane on its way to its own', () => {
+    expect(spotInReservedLane(LAYOUT, 'location_P3', 'corrQ')).toBeNull();
+  });
+
+  it('takes a waiting cell as the reservation too, not just a slot', () => {
+    expect(spotInReservedLane(LAYOUT, 'corr', 'P2')?.lane).toBe(DEEP_LANE);
+  });
+
+  it('reports nothing for a vehicle that has not reached its lane yet', () => {
+    expect(spotInReservedLane(LAYOUT, 'location_P1', 'somewhere-else')).toBeNull();
+  });
+
+  it('reports nothing when the reservation names no lane at all', () => {
+    expect(spotInReservedLane(LAYOUT, 'somewhere-else', 'P3')).toBeNull();
   });
 });
 

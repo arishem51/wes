@@ -19,7 +19,11 @@ import {
   type SlotCommitResult,
 } from './slot-reservation.service';
 import { VehicleAimService } from './vehicle-aim.service';
-import { laneSpotOf, serveOrder, standsOnASlot } from './domain/dropoff-lane';
+import {
+  serveOrder,
+  spotInReservedLane,
+  standsOnASlot,
+} from './domain/dropoff-lane';
 import {
   laneOfLocation,
   waitingTargetsFor,
@@ -129,9 +133,15 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     const cargo = await this.cargoRepo.findOne({
       where: { id: task.cargoId!, status: In([CargoStatus.ACTIVE]) },
     });
-    if (!cargo || cargo.destinationLocationName || !cargo.destinationZoneId) {
+    if (
+      !cargo ||
+      cargo.destinationLocationName ||
+      !cargo.destinationZoneId ||
+      !cargo.reservedLocationName
+    ) {
       return null;
     }
+    const reservedTarget = cargo.reservedLocationName;
 
     const zone = await this.zoneRepo.findOne({
       where: { id: cargo.destinationZoneId },
@@ -142,7 +152,7 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     const layout = await this.deliverySlotEngine.layoutFor(zone);
     if (!layout) return null;
 
-    const spot = laneSpotOf(layout, position);
+    const spot = spotInReservedLane(layout, reservedTarget, position);
     if (!spot) return null;
 
     return {
