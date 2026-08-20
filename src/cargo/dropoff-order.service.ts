@@ -87,7 +87,6 @@ export function retreatDestinations(
   plan: RetreatPlan | null,
 ): TransportOrderDestination[] {
   const cells = plan ? [...plan.cells] : [];
-  if (plan?.egress) cells.push(plan.egress);
   return cells.map((cell) => ({ locationName: cell, operation: 'MOVE' }));
 }
 

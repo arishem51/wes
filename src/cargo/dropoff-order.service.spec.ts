@@ -40,7 +40,7 @@ describe('DropoffOrderService.issue', () => {
     ]);
   });
 
-  it('appends the turn-off cell after the retreat cells', async () => {
+  it('never aims the vehicle at a turn-off cell, which two lanes could be given at once', async () => {
     const { service, kernelApi } = makeService({
       cells: ['3002', '3001'],
       egress: '0091',
@@ -51,7 +51,7 @@ describe('DropoffOrderService.issue', () => {
     const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
     expect(
       (destinations as { locationName: string }[]).map((d) => d.locationName),
-    ).toEqual([SLOT, '3002', '3001', '0091']);
+    ).toEqual([SLOT, '3002', '3001']);
   });
 
   it('keeps the order on the DROPOFF leg and pins the assigned vehicle', async () => {

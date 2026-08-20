@@ -76,7 +76,7 @@ export class RetreatPointService {
     this.logger.log(
       `Drop-off "${dropOffLocationName}" (point ${dropPoint}): retreat ${plan.cells.join(' → ')}${
         plan.egress
-          ? ` then off the lane via ${plan.egress}`
+          ? ` — still on a lane, so the next order has to route it out (nearest exit ${plan.egress})`
           : ' (already clear of every lane)'
       }`,
     );
