@@ -33,6 +33,13 @@ const POINTS: ReadonlyArray<readonly [string, string[]]> = [
   ['loc-D', ['P-D']],
 ];
 
+const POINT_NAMES = new Map(POINTS);
+const POINTS_BY_LANE = AXES.reduce((byLane, [locationName, axes]) => {
+  const points = byLane.get(axes.laneKey) ?? new Set<string>();
+  for (const point of POINT_NAMES.get(locationName) ?? []) points.add(point);
+  return byLane.set(axes.laneKey, points);
+}, new Map<number, Set<string>>());
+
 const zone = (): ZoneEntity =>
   ({
     id: ZONE_ID,
@@ -96,10 +103,12 @@ function setup(options: SetupOptions = {}) {
   const cargoRepo = { find: jest.fn().mockResolvedValue(options.cargos ?? []) };
   const zoneRepo = { findOne: jest.fn().mockResolvedValue(zone()) };
   const zoneGeometry = {
-    computeMemberAxes: jest.fn().mockResolvedValue(new Map(AXES)),
+    laneIndexOf: jest.fn().mockResolvedValue({
+      axesByLocation: new Map(AXES),
+      pointsByLane: POINTS_BY_LANE,
+    }),
   };
   const kernelApi = {
-    getPointNamesByLocation: jest.fn().mockResolvedValue(new Map(POINTS)),
     withdrawTransportOrder: jest.fn().mockResolvedValue(undefined),
     getVehicleStates: jest
       .fn()

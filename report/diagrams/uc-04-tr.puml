@@ -1,0 +1,69 @@
+@startuml uc-04-tr
+' SRS Section II.1.3.3.4 — UCs for Transport Request
+' Use cases taken verbatim from the UC table in Section II.1.3.2 (TR group).
+' Cargo and its Transport Request are a 1:1 pair, so the request monitoring use
+' cases are delivered through the unified Cargo view.
+!pragma layout smetana
+!include uc-style.iuml
+left to right direction
+
+actor Operator as OP
+actor Admin as ADM
+actor "Barcode Scanner" as SCAN
+actor "FMS (openTCS)" as FMS
+
+rectangle "SWES" {
+  usecase "UC 42\nOperator creates request\nfrom scanned data" as UC42
+  usecase "UC 43\nOperator creates manual\ntransport request" as UC43
+  usecase "UC 57\nCreate cargo" as UC57
+  usecase "UC 48\nCancel transport request" as UC48
+  usecase "UC 58\nDelete cargo" as UC58
+  usecase "UC 44\nView transport request list" as UC44
+  usecase "UC 46\nSearch transport requests" as UC46
+  usecase "UC 47\nFilter transport requests" as UC47
+  usecase "UC 45\nView transport\nrequest details" as UC45
+  usecase "UC 51\nView AGV assigned\nto the request" as UC51
+  usecase "UC 52\nView transport request\nexecution progress" as UC52
+  usecase "UC 53\nView reason for\nunassigned request" as UC53
+  usecase "UC 54\nView selected pickup\npoint for the request" as UC54
+  usecase "UC 55\nView selected drop-off\npoint for the request" as UC55
+  usecase "UC 56\nView reason for no valid\npickup / drop-off point" as UC56
+  usecase "UC 59\nView cargo list" as UC59
+  usecase "UC 60\nView cargo details" as UC60
+}
+
+SCAN --> UC42
+OP --> UC42
+OP --> UC43
+ADM --> UC43
+SCAN --> UC57
+OP --> UC57
+ADM --> UC57
+OP --> UC48
+ADM --> UC48
+OP --> UC58
+ADM --> UC58
+OP --> UC44
+ADM --> UC44
+OP --> UC59
+ADM --> UC59
+
+UC46 ..> UC44 : <<extend>>
+UC47 ..> UC44 : <<extend>>
+UC45 ..> UC44 : <<extend>>
+UC51 ..> UC45 : <<extend>>
+UC52 ..> UC45 : <<extend>>
+UC53 ..> UC45 : <<extend>>
+UC54 ..> UC45 : <<extend>>
+UC55 ..> UC45 : <<extend>>
+UC56 ..> UC45 : <<extend>>
+UC60 ..> UC59 : <<extend>>
+
+UC48 --> FMS
+UC58 --> FMS
+
+legend bottom
+  Cargo and Transport Request are created together as a 1:1 pair, so UC 44 to UC 56
+  are delivered through the unified Cargo view; there is no separate request screen.
+endlegend
+@enduml

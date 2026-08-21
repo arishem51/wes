@@ -7,9 +7,11 @@ import {
 } from './entities/transport-task.entity';
 import { CargoEntity } from './entities/cargo.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { ZoneGeometryService, MemberAxes } from './zone-geometry.service';
 import {
   findBlocker,
+  hasLeftColumn,
   PickupCandidate,
 } from './domain/pickup-dependency.policy';
 
@@ -21,19 +23,25 @@ const AT_SOURCE: readonly TaskStatus[] = [
   TaskStatus.PICKING_UP,
 ];
 
+const IN_LANE: readonly TaskStatus[] = [...AT_SOURCE, TaskStatus.DELIVERING];
+
 export interface PickupDecision {
   task: TransportTaskEntity;
   blocked: boolean;
   reason: string | null;
 }
 
-/**
- * Decides which pickup tasks are blocked by the "AGV can't drive through a
- * row" rule. Joins transport tasks with their cargo's source pickup zone,
- * ranks the zone's slots via ZoneGeometryService, and applies the pure
- * pickup-dependency policy per lane. Used by ReleaseEngine (evaluate all) and
- * AssignmentEngine (single-task guard at assign time).
- */
+function awaitsPickup(task: TransportTaskEntity): boolean {
+  return AT_SOURCE.includes(task.status);
+}
+
+function blockedReason(blocker: PickupCandidate): string {
+  if (blocker.atSource) {
+    return `Blocked by cargo at ${blocker.locationName} (closer to the aisle in the same lane)`;
+  }
+  return `Blocked by ${blocker.vehicleName ?? 'a vehicle'} still driving out of the lane from ${blocker.locationName}`;
+}
+
 @Injectable()
 export class PickupDependencyService {
   private readonly logger = new Logger(PickupDependencyService.name);
@@ -46,17 +54,16 @@ export class PickupDependencyService {
     @InjectRepository(ZoneEntity)
     private readonly zoneRepo: Repository<ZoneEntity>,
     private readonly zoneGeometry: ZoneGeometryService,
+    private readonly vehicleStore: VehicleStateStore,
   ) {}
 
-  /** Evaluate every task whose cargo is still at its source point. */
   async evaluate(): Promise<PickupDecision[]> {
     const tasks = await this.taskRepo.find({
-      where: { status: In(AT_SOURCE as TaskStatus[]) },
+      where: { status: In(IN_LANE as TaskStatus[]) },
     });
     return this.decide(tasks);
   }
 
-  /** Re-check a single task right before assignment (closes release→assign race). */
   async isBlocked(task: TransportTaskEntity): Promise<boolean> {
     const cargo = task.cargoId
       ? await this.cargoRepo.findOne({ where: { id: task.cargoId } })
@@ -67,7 +74,7 @@ export class PickupDependencyService {
       .createQueryBuilder('t')
       .innerJoin(CargoEntity, 'c', 'c.id = t.cargo_id')
       .where('c.source_zone_id = :zoneId', { zoneId: cargo.sourceZoneId })
-      .andWhere('t.status IN (:...statuses)', { statuses: AT_SOURCE })
+      .andWhere('t.status IN (:...statuses)', { statuses: IN_LANE })
       .getMany();
 
     const decisions = await this.decide(peers);
@@ -97,9 +104,10 @@ export class PickupDependencyService {
       const cargo = task.cargoId ? cargoById.get(task.cargoId) : undefined;
       const zoneId = cargo?.sourceZoneId ?? null;
       const loc = cargo?.sourcePickupLocationName ?? null;
-      // No pickup zone / location → no spatial constraint.
       if (!zoneId || !loc) {
-        decisions.push({ task, blocked: false, reason: null });
+        if (awaitsPickup(task)) {
+          decisions.push({ task, blocked: false, reason: null });
+        }
         continue;
       }
       const list = byZone.get(zoneId) ?? [];
@@ -109,11 +117,9 @@ export class PickupDependencyService {
 
     for (const [zoneId, entries] of byZone) {
       const zone = await this.zoneRepo.findOne({ where: { id: zoneId } });
-      const geometry = zone
-        ? await this.zoneGeometry.computeMemberAxes(zone)
-        : null;
+      const laneIndex = zone ? await this.zoneGeometry.laneIndexOf(zone) : null;
 
-      if (!geometry) {
+      if (!laneIndex) {
         this.logger.error(
           `Zone "${zone?.name ?? zoneId}": no geometry, holding ${entries.length} task(s) where` +
             ' they are. Releasing them would let a vehicle drive into a lane behind cargo that' +
@@ -125,19 +131,22 @@ export class PickupDependencyService {
       const candidates: PickupCandidate[] = [];
       const candByTask = new Map<string, PickupCandidate>();
       for (const e of entries) {
-        const axes: MemberAxes | undefined = geometry.get(e.loc);
+        const axes: MemberAxes | undefined = laneIndex.axesByLocation.get(
+          e.loc,
+        );
         if (!axes) continue;
-        const cand: PickupCandidate = {
-          taskId: e.task.id,
-          laneKey: axes.laneKey,
-          depthKey: axes.depthKey,
-          locationName: e.loc,
-        };
+        const cand = this.candidateOf(
+          e.task,
+          e.loc,
+          axes,
+          laneIndex.pointsByLane.get(axes.laneKey) ?? new Set<string>(),
+        );
         candidates.push(cand);
         candByTask.set(e.task.id, cand);
       }
 
       for (const e of entries) {
+        if (!awaitsPickup(e.task)) continue;
         const cand = candByTask.get(e.task.id);
         if (!cand) {
           decisions.push({ task: e.task, blocked: false, reason: null });
@@ -147,13 +156,53 @@ export class PickupDependencyService {
         decisions.push({
           task: e.task,
           blocked: blocker !== null,
-          reason: blocker
-            ? `Blocked by cargo at ${blocker.locationName} (closer to the aisle in the same lane)`
-            : null,
+          reason: blocker ? blockedReason(blocker) : null,
         });
       }
     }
 
     return decisions;
+  }
+
+  private candidateOf(
+    task: TransportTaskEntity,
+    locationName: string,
+    axes: MemberAxes,
+    lanePoints: ReadonlySet<string>,
+  ): PickupCandidate {
+    const atSource = awaitsPickup(task);
+    const vehicleName = task.metadata?.assignedVehicleName ?? null;
+    return {
+      taskId: task.id,
+      laneKey: axes.laneKey,
+      depthKey: axes.depthKey,
+      locationName,
+      atSource,
+      vehicleName,
+      vehicleLeftColumn: atSource
+        ? false
+        : this.vehicleLeftColumn(task, vehicleName, lanePoints),
+    };
+  }
+
+  private vehicleLeftColumn(
+    task: TransportTaskEntity,
+    vehicleName: string | null,
+    lanePoints: ReadonlySet<string>,
+  ): boolean {
+    if (!vehicleName) {
+      this.logger.warn(
+        `Task ${task.id} is past its source point with no assigned vehicle — holding its lane`,
+      );
+      return false;
+    }
+    const state = this.vehicleStore.get(vehicleName);
+    if (!state) {
+      this.logger.warn(
+        `No kernel state for ${vehicleName} — holding the lane of task ${task.id}`,
+      );
+      return false;
+    }
+    return hasLeftColumn(state.allocatedResources ?? [], lanePoints);
   }
 }

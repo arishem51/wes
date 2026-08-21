@@ -69,12 +69,8 @@ export class LegReconcileService {
     const onOrder = vehicleName
       ? this.vehicleStore.get(vehicleName)?.transportOrder
       : undefined;
-    // Vehicle still processing the leg we expect → it is running; skip the fetch.
     if (onOrder === expected.orderName) return;
 
-    // The vehicle has moved off the expected order — confirm its state directly.
-    // The kernel is authoritative, so a transient snapshot lag never re-fires: a
-    // still-running order reads BEING_PROCESSED and we simply wait for a later tick.
     const state = await this.kernelApi.getTransportOrderState(
       expected.orderName,
     );
@@ -82,7 +78,6 @@ export class LegReconcileService {
       this.logger.warn(
         `Leg reconcile: task ${task.id} ${expected.leg} order ${expected.orderName} FINISHED but unadvanced — re-firing`,
       );
-      // Idempotent: the saga bails if the next leg already exists.
       this.eventEmitter.emit(
         FMS_EVENTS.TRANSPORT_ORDER_FINISHED,
         new FmsTransportOrderFinishedEvent(

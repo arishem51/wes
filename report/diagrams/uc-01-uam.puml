@@ -1,0 +1,64 @@
+@startuml uc-01-uam
+' SRS Section II.1.3.3.1 — UCs for User & Access Management
+' Use cases taken verbatim from the UC table in Section II.1.3.2 (UAM group).
+!pragma layout smetana
+!include uc-style.iuml
+left to right direction
+
+actor Operator as OP
+actor Admin as ADM
+actor "Gmail Service" as GMAIL
+
+rectangle "SWES" {
+  usecase "UC 84\nSystem login" as UC84
+  usecase "UC 85\nSystem logout" as UC85
+  usecase "UC 86\nView personal info" as UC86
+  usecase "UC 87\nUpdate personal info\n(profile)" as UC87
+  usecase "UC 88\nChange password" as UC88
+  usecase "UC 89\nForgot / reset password" as UC89
+  usecase "UC 90\nCreate user account" as UC90
+  usecase "UC 91\nUpdate user account" as UC91
+  usecase "UC 92\nDelete user account" as UC92
+  usecase "UC 93\nView user list" as UC93
+  usecase "UC 94\nView user details" as UC94
+  usecase "UC 95\nLock user account" as UC95
+  usecase "UC 96\nUnlock user account" as UC96
+  usecase "UC 97\nAssign role to user" as UC97
+  usecase "UC 98\nRemove role from user" as UC98
+  usecase "UC 99\nReset user password" as UC99
+}
+
+OP --> UC84
+OP --> UC85
+OP --> UC86
+OP --> UC87
+OP --> UC88
+OP --> UC89
+
+ADM --> UC84
+ADM --> UC85
+ADM --> UC86
+ADM --> UC87
+ADM --> UC88
+ADM --> UC89
+ADM --> UC90
+ADM --> UC91
+ADM --> UC92
+ADM --> UC93
+ADM --> UC95
+ADM --> UC96
+ADM --> UC97
+ADM --> UC98
+ADM --> UC99
+
+UC94 ..> UC93 : <<extend>>
+
+UC89 --> GMAIL
+UC90 --> GMAIL
+UC99 --> GMAIL
+
+legend bottom
+  UC 84 to UC 89 are self-service and open to both roles; UC 90 to UC 99 are Admin only.
+  Gmail Service delivers the invitation and password-reset emails.
+endlegend
+@enduml

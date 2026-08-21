@@ -1,0 +1,54 @@
+@startuml uc-03-wmt
+' SRS Section II.1.3.3.3 — UCs for Warehouse Map & Topology
+' Use cases taken verbatim from the UC table in Section II.1.3.2 (WMT group).
+' Point/path/block editing was withdrawn on 20/07/2026: topology is edited in the
+' openTCS Model Editor, WES manages maps and operational locations only.
+!pragma layout smetana
+!include uc-style.iuml
+left to right direction
+
+actor Operator as OP
+actor Admin as ADM
+actor "FMS (openTCS)" as FMS
+
+rectangle "SWES" {
+  usecase "UC 17\nUpload new operation map" as UC17
+  usecase "UC 18\nReplace current\noperation map" as UC18
+  usecase "UC 38\nSet kernel\noperating mode" as UC38
+  usecase "UC 39\nSynchronise operational\nlocations with the\nplant model" as UC39
+  usecase "UC 31\nCreate operational location" as UC31
+  usecase "UC 32\nUpdate operational location" as UC32
+  usecase "UC 33\nDelete operational location" as UC33
+  usecase "UC 34\nView operational\nlocation list" as UC34
+  usecase "UC 37\nView operational\nlocation details" as UC37
+  usecase "UC 35\nAssign point to location" as UC35
+  usecase "UC 36\nRemove point from location" as UC36
+  usecase "UC 71\nManage availability status\nof station / location" as UC71
+}
+
+ADM --> UC17
+ADM --> UC18
+ADM --> UC38
+ADM --> UC39
+ADM --> UC31
+ADM --> UC32
+ADM --> UC33
+ADM --> UC34
+ADM --> UC35
+ADM --> UC36
+ADM --> UC71
+OP --> UC34
+
+UC37 ..> UC34 : <<extend>>
+
+UC17 --> FMS
+UC18 --> FMS
+UC36 --> FMS
+UC38 --> FMS
+UC39 --> FMS
+
+legend bottom
+  Points, paths and blocks are edited in the openTCS Model Editor, not in WES,
+  so they carry no use case here. UC 34 and UC 37 are open to both roles.
+endlegend
+@enduml

@@ -18,12 +18,23 @@ const AXES: ReadonlyArray<readonly [string, MemberAxes]> = [
   ['loc-other-lane', { laneKey: 1000, depthKey: 1000 }],
 ];
 
+const LANE_POINTS = new Map<number, Set<string>>([
+  [0, new Set(['P-front', 'P-back'])],
+  [1000, new Set(['P-other-lane'])],
+]);
+
 const task = (
   id: string,
   cargoId: string,
   status: TaskStatus,
+  vehicleName?: string,
 ): TransportTaskEntity =>
-  ({ id, cargoId, status, metadata: {} }) as TransportTaskEntity;
+  ({
+    id,
+    cargoId,
+    status,
+    metadata: vehicleName ? { assignedVehicleName: vehicleName } : {},
+  }) as TransportTaskEntity;
 
 const cargoAt = (id: string, locationName: string): CargoEntity =>
   ({
@@ -33,7 +44,11 @@ const cargoAt = (id: string, locationName: string): CargoEntity =>
     status: CargoStatus.ACTIVE,
   }) as CargoEntity;
 
-function setup(tasks: TransportTaskEntity[], cargos: CargoEntity[]) {
+function setup(
+  tasks: TransportTaskEntity[],
+  cargos: CargoEntity[],
+  allocated: Record<string, string[][]> = {},
+) {
   const taskRepo = {
     find: jest.fn().mockResolvedValue(tasks),
     save: jest.fn().mockImplementation((t: TransportTaskEntity) => t),
@@ -43,7 +58,17 @@ function setup(tasks: TransportTaskEntity[], cargos: CargoEntity[]) {
     findOne: jest.fn().mockResolvedValue({ id: ZONE_ID }),
   };
   const zoneGeometry = {
-    computeMemberAxes: jest.fn().mockResolvedValue(new Map(AXES)),
+    laneIndexOf: jest.fn().mockResolvedValue({
+      axesByLocation: new Map(AXES),
+      pointsByLane: LANE_POINTS,
+    }),
+  };
+  const vehicleStore = {
+    get: jest.fn((name: string) =>
+      name in allocated
+        ? { name, allocatedResources: allocated[name] }
+        : undefined,
+    ),
   };
   const transportTask = {
     changeStatus: jest
@@ -59,6 +84,7 @@ function setup(tasks: TransportTaskEntity[], cargos: CargoEntity[]) {
     cargoRepo as unknown as Repository<CargoEntity>,
     zoneRepo as unknown as Repository<ZoneEntity>,
     zoneGeometry as unknown as ZoneGeometryService,
+    vehicleStore as never,
   );
 
   const svc = new ReleaseEngineService(
@@ -189,6 +215,37 @@ describe('ReleaseEngineService', () => {
     expect(blocked.status).toBe(TaskStatus.BLOCKED);
     expect(statusChanges(transportTask.changeStatus)).toEqual([
       ['t-front', TaskStatus.READY_TO_ASSIGN],
+    ]);
+  });
+
+  it('keeps a task blocked while the vehicle in front is still driving out of the lane', async () => {
+    const behind = task('t-back', 'c-back', TaskStatus.CREATED);
+    const { svc, transportTask } = setup(
+      [behind, task('t-front', 'c-front', TaskStatus.DELIVERING, 'V1')],
+      [cargoAt('c-back', 'loc-back'), cargoAt('c-front', 'loc-front')],
+      { V1: [['P-front', 'P-front --- P-aisle']] },
+    );
+
+    await svc.run();
+
+    expect(statusChanges(transportTask.changeStatus)).toEqual([
+      ['t-back', TaskStatus.BLOCKED],
+    ]);
+    expect(behind.metadata.blockedReason).toContain('V1');
+  });
+
+  it('releases the task behind once that vehicle holds a point outside the lane', async () => {
+    const behind = task('t-back', 'c-back', TaskStatus.CREATED);
+    const { svc, transportTask } = setup(
+      [behind, task('t-front', 'c-front', TaskStatus.DELIVERING, 'V1')],
+      [cargoAt('c-back', 'loc-back'), cargoAt('c-front', 'loc-front')],
+      { V1: [['P-front', 'P-aisle']] },
+    );
+
+    await svc.run();
+
+    expect(statusChanges(transportTask.changeStatus)).toEqual([
+      ['t-back', TaskStatus.READY_TO_ASSIGN],
     ]);
   });
 });

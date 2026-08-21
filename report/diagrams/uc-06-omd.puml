@@ -1,0 +1,54 @@
+@startuml uc-06-omd
+' SRS Section II.1.3.3.6 — UCs for Operational Monitoring Dashboard
+' Use cases taken verbatim from the UC table in Section II.1.3.2 (OMD group).
+' UC 68 and UC 69 moved into this group on 02/08/2026: both are views of state
+' produced by the FMS layer rather than dispatch logic.
+!pragma layout smetana
+!include uc-style.iuml
+left to right direction
+
+actor Operator as OP
+actor Admin as ADM
+
+rectangle "SWES" {
+  usecase "UC 72\nView overall\noperation dashboard" as UC72
+  usecase "UC 75\nView completed\nrequests KPI" as UC75
+  usecase "UC 76\nView average\ntransport time KPI" as UC76
+  usecase "UC 77\nView AGV\nutilization rate KPI" as UC77
+  usecase "UC 78\nView active\nAGVs count KPI" as UC78
+  usecase "UC 79\nView transport request\nfail rate KPI" as UC79
+  usecase "UC 80\nView average AGV\nassignment wait time KPI" as UC80
+  usecase "UC 81\nView throughput\nby time frame KPI" as UC81
+  usecase "UC 82\nView list of congested\nareas or hotspots" as UC82
+  usecase "UC 83\nView list of AGVs with\nhigh error frequency" as UC83
+  usecase "UC 68\nView deadlock risk alerts" as UC68
+  usecase "UC 73\nView real-time\noperation map" as UC73
+  usecase "UC 74\nView AGV live\npreview on map" as UC74
+  usecase "UC 69\nView projected AGV route" as UC69
+}
+
+OP --> UC72
+ADM --> UC72
+OP --> UC73
+ADM --> UC73
+OP --> UC82
+ADM --> UC82
+OP --> UC83
+ADM --> UC83
+ADM --> UC68
+
+UC75 ..> UC72 : <<extend>>
+UC76 ..> UC72 : <<extend>>
+UC77 ..> UC72 : <<extend>>
+UC78 ..> UC72 : <<extend>>
+UC79 ..> UC72 : <<extend>>
+UC80 ..> UC72 : <<extend>>
+UC81 ..> UC72 : <<extend>>
+UC74 ..> UC73 : <<extend>>
+UC69 ..> UC73 : <<extend>>
+
+legend bottom
+  UC 75 to UC 81 are the KPI widgets of the dashboard; UC 74 and UC 69 are overlays
+  on the live map. UC 68 and UC 69 are Admin only.
+endlegend
+@enduml

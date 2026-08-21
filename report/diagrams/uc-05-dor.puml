@@ -1,0 +1,36 @@
+@startuml uc-05-dor
+' SRS Section II.1.3.3.5 — UCs for Dispatch Orchestration & Release Control
+' Use cases taken verbatim from the UC table in Section II.1.3.2 (DOR group).
+' Render: java -jar plantuml.jar -charset UTF-8 -tpng uc-05-dor.puml
+!pragma layout smetana
+!include uc-style.iuml
+left to right direction
+
+
+actor Admin as ADM
+
+rectangle "SWES" {
+  usecase "UC 61\nConfigure AGV\ndispatch policy" as UC61
+  usecase "UC 62\nUpdate AGV\ndispatch policy" as UC62
+  usecase "UC 70\nView system's reason\nfor AGV selection" as UC70
+  usecase "UC 63\nView transport request\ndispatch queue" as UC63
+  usecase "UC 65\nView blocked\ndispatch requests" as UC65
+  usecase "UC 64\nView details of a request\nin dispatch queue" as UC64
+  usecase "UC 66\nView reason for\nheld-back requests" as UC66
+}
+
+ADM --> UC61
+ADM --> UC62
+ADM --> UC70
+ADM --> UC63
+ADM --> UC65
+
+UC64 ..> UC63 : <<extend>>
+UC66 ..> UC65 : <<extend>>
+
+legend bottom
+  UC 63 to UC 66 are delivered through the Cargo view filtered by request status;
+  there is no separate dispatch queue screen (Cargo and Transport Request are 1:1).
+endlegend
+
+@enduml

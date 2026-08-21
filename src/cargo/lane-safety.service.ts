@@ -7,7 +7,6 @@ import {
   TaskStatus,
 } from './entities/transport-task.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
-import { ZoneMemberEntity } from '../zones/entities/zone-member.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { TransportTaskService } from './transport-task.service';
@@ -18,22 +17,9 @@ import {
   LaneSlot,
 } from './domain/lane-safety.policy';
 
-interface LaneIndex {
-  memberSignature: string;
-  axesByLocation: Map<string, MemberAxes>;
-  pointsByLane: Map<number, Set<string>>;
-}
-
 interface DeeperPickup {
   task: TransportTaskEntity;
   cargo: CargoEntity;
-}
-
-function memberSignature(members: readonly ZoneMemberEntity[]): string {
-  return members
-    .map((member) => member.locationName)
-    .sort()
-    .join('|');
 }
 
 /**
@@ -49,7 +35,6 @@ function memberSignature(members: readonly ZoneMemberEntity[]): string {
 @Injectable()
 export class LaneSafetyService {
   private readonly logger = new Logger(LaneSafetyService.name);
-  private readonly laneIndexByZone = new Map<string, LaneIndex>();
 
   constructor(
     @InjectRepository(TransportTaskEntity)
@@ -71,7 +56,7 @@ export class LaneSafetyService {
     const zone = await this.zoneRepo.findOne({ where: { id: sourceZoneId } });
     if (!zone) return;
 
-    const laneIndex = await this.laneIndexOf(zone);
+    const laneIndex = await this.zoneGeometry.laneIndexOf(zone);
     const newSlot = laneIndex?.axesByLocation.get(pickupLocationName);
     if (!laneIndex || !newSlot) return;
 
@@ -121,7 +106,7 @@ export class LaneSafetyService {
 
     for (const [zoneId, entries] of byZone) {
       const zone = await this.zoneRepo.findOne({ where: { id: zoneId } });
-      const laneIndex = zone ? await this.laneIndexOf(zone) : null;
+      const laneIndex = zone ? await this.zoneGeometry.laneIndexOf(zone) : null;
       if (!laneIndex) continue;
 
       for (const { task, cargo } of entries) {
@@ -233,33 +218,6 @@ export class LaneSafetyService {
         this.vehicleStore.get(name)?.allocatedResources ?? [],
       ]),
     );
-  }
-
-  private async laneIndexOf(zone: ZoneEntity): Promise<LaneIndex | null> {
-    const signature = memberSignature(zone.members ?? []);
-    const cached = this.laneIndexByZone.get(zone.id);
-    if (cached && cached.memberSignature === signature) return cached;
-
-    const axesByLocation = await this.zoneGeometry.computeMemberAxes(zone);
-    if (!axesByLocation) return null;
-
-    const pointNamesByLocation = await this.kernelApi.getPointNamesByLocation();
-    const pointsByLane = new Map<number, Set<string>>();
-    for (const [locationName, axes] of axesByLocation) {
-      const points = pointsByLane.get(axes.laneKey) ?? new Set<string>();
-      for (const point of pointNamesByLocation.get(locationName) ?? []) {
-        points.add(point);
-      }
-      pointsByLane.set(axes.laneKey, points);
-    }
-
-    const index: LaneIndex = {
-      memberSignature: signature,
-      axesByLocation,
-      pointsByLane,
-    };
-    this.laneIndexByZone.set(zone.id, index);
-    return index;
   }
 }
 
