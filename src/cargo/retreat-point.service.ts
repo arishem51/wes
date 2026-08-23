@@ -93,10 +93,10 @@ export class RetreatPointService {
     const cargos = await this.cargoRepo.find({
       where: { destinationZoneId: zoneId, status: In(OCCUPYING_STATUSES) },
     });
-    return new Set(
-      cargos
-        .map((cargo) => cargo.destinationLocationName)
-        .filter((name): name is string => Boolean(name)),
-    );
+    return cargos.reduce((names, cargo) => {
+      if (cargo.destinationLocationName)
+        names.add(cargo.destinationLocationName);
+      return names;
+    }, new Set<string>());
   }
 }

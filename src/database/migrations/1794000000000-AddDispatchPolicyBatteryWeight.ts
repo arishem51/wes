@@ -1,8 +1,6 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddDispatchPolicyBatteryWeight1794000000000
-  implements MigrationInterface
-{
+export class AddDispatchPolicyBatteryWeight1794000000000 implements MigrationInterface {
   name = 'AddDispatchPolicyBatteryWeight1794000000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {

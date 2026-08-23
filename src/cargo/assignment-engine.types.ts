@@ -11,7 +11,6 @@ export interface DispatchMeasurement {
   readonly altVehicleName: string | null;
   readonly altDistanceToSource: number | null;
   readonly approachDistance: number | null;
-  readonly swapCount: number | null;
 }
 
 export interface DispatchContext {
@@ -19,7 +18,6 @@ export interface DispatchContext {
   readonly cargo: CargoEntity;
   readonly distanceByPoint: ReadonlyMap<string, number> | null;
   readonly approachDistance: number | null;
-  readonly pinned: boolean;
 }
 
 export interface PlannedAction {

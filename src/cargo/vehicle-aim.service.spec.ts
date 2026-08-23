@@ -152,7 +152,7 @@ describe('dropAt', () => {
 
   it('reuses the order in flight when the commit kept its own reservation', async () => {
     const { service, dropoffOrder, aimed } = setup({
-      to3Name: 'DROPOFF-old',
+      dropoffOrderName: 'DROPOFF-old',
       approachPointName: SLOT,
     });
 
@@ -162,7 +162,9 @@ describe('dropAt', () => {
   });
 
   it('re-issues the order when the commit landed somewhere else', async () => {
-    const { service, dropoffOrder, aimed } = setup({ to3Name: 'DROPOFF-old' });
+    const { service, dropoffOrder, aimed } = setup({
+      dropoffOrderName: 'DROPOFF-old',
+    });
 
     await service.dropAt(aimed, ZONE, SLOT, false);
 

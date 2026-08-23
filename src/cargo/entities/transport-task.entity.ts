@@ -19,10 +19,9 @@ export enum TaskStatus {
 
 export interface TaskMetadata {
   assignedVehicleName?: string;
-  to1Name?: string;
-  to2Name?: string;
-  to3Name?: string;
+  pickupOrderName?: string;
   approachOrderName?: string;
+  dropoffOrderName?: string;
   approachedAt?: string;
   approachPointName?: string;
   retreatPointName?: string;

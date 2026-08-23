@@ -1,3 +1,4 @@
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import type { Repository } from 'typeorm';
 import { ChargeEngineService } from './charge-engine.service';
 import { ParkClaimStore } from './park-claim.store';
@@ -93,6 +94,7 @@ async function setup(
     taskRepo as unknown as Repository<TransportTaskEntity>,
     agvRepo as unknown as Repository<AgvEntity>,
     kernelApi as unknown as KernelApiService,
+    new TransportOrderService(kernelApi as unknown as KernelApiService),
     vehicleStore,
     routing as unknown as RoutingService,
     parkClaims,
@@ -120,6 +122,7 @@ describe('ChargeEngineService', () => {
       [{ locationName: 'CHG-1', operation: 'startCharging' }],
       'V1',
       { 'wes:leg': 'CHARGE' },
+      { dispensable: false },
     );
   });
 
@@ -135,6 +138,7 @@ describe('ChargeEngineService', () => {
       [{ locationName: 'CHG-1', operation: 'startCharging' }],
       'V1',
       { 'wes:leg': 'CHARGE' },
+      { dispensable: false },
     );
   });
 

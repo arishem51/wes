@@ -42,7 +42,7 @@ describe('LegReconcileService', () => {
     taskRepo.find.mockResolvedValue([
       task(TaskStatus.PICKING_UP, {
         assignedVehicleName: 'V1',
-        to1Name: 'PICKUP-1',
+        pickupOrderName: 'PICKUP-1',
       }),
     ]);
     store.get.mockReturnValue({ transportOrder: 'PICKUP-1' });
@@ -58,7 +58,7 @@ describe('LegReconcileService', () => {
     taskRepo.find.mockResolvedValue([
       task(TaskStatus.PICKING_UP, {
         assignedVehicleName: 'V1',
-        to1Name: 'PICKUP-1',
+        pickupOrderName: 'PICKUP-1',
       }),
     ]);
     store.get.mockReturnValue({ transportOrder: null }); // moved off → idle
@@ -82,7 +82,7 @@ describe('LegReconcileService', () => {
     taskRepo.find.mockResolvedValue([
       task(TaskStatus.DELIVERING, {
         assignedVehicleName: 'V1',
-        to1Name: 'PICKUP-1',
+        pickupOrderName: 'PICKUP-1',
         approachOrderName: 'APPROACH-1',
       }),
     ]);
@@ -104,7 +104,7 @@ describe('LegReconcileService', () => {
       task(TaskStatus.DELIVERING, {
         assignedVehicleName: 'V1',
         approachOrderName: 'APPROACH-1',
-        to3Name: 'DROPOFF-1',
+        dropoffOrderName: 'DROPOFF-1',
       }),
     ]);
     store.get.mockReturnValue({ transportOrder: 'something-else' });
@@ -124,7 +124,7 @@ describe('LegReconcileService', () => {
       const { svc, taskRepo, store, kernel, transportTask, emitter } = setup();
       const t = task(TaskStatus.PICKING_UP, {
         assignedVehicleName: 'V1',
-        to1Name: 'PICKUP-1',
+        pickupOrderName: 'PICKUP-1',
       });
       taskRepo.find.mockResolvedValue([t]);
       store.get.mockReturnValue({ transportOrder: null });
@@ -148,7 +148,7 @@ describe('LegReconcileService', () => {
         task(TaskStatus.DELIVERING, {
           assignedVehicleName: 'V1',
           approachOrderName: 'APPROACH-1',
-          to3Name: 'DROPOFF-1',
+          dropoffOrderName: 'DROPOFF-1',
         }),
       ]);
       store.get.mockReturnValue({
@@ -175,7 +175,7 @@ describe('LegReconcileService', () => {
     const { svc, taskRepo, store, kernel, transportTask, emitter } = setup();
     const t = task(TaskStatus.PICKING_UP, {
       assignedVehicleName: 'V1',
-      to1Name: 'PICKUP-1',
+      pickupOrderName: 'PICKUP-1',
     });
     taskRepo.find.mockResolvedValue([t]);
     store.get.mockReturnValue({
@@ -199,7 +199,7 @@ describe('LegReconcileService', () => {
     taskRepo.find.mockResolvedValue([
       task(TaskStatus.PICKING_UP, {
         assignedVehicleName: 'V1',
-        to1Name: 'PICKUP-1',
+        pickupOrderName: 'PICKUP-1',
       }),
     ]);
     store.get.mockReturnValue({ transportOrder: null });
@@ -214,7 +214,7 @@ describe('LegReconcileService', () => {
   it('skips a task with no recorded order for its leg', async () => {
     const { svc, taskRepo, kernel, emitter } = setup();
     taskRepo.find.mockResolvedValue([
-      task(TaskStatus.PICKING_UP, { assignedVehicleName: 'V1' }), // no to1Name
+      task(TaskStatus.PICKING_UP, { assignedVehicleName: 'V1' }), // no pickupOrderName
     ]);
 
     await svc.run();
@@ -228,11 +228,11 @@ describe('LegReconcileService', () => {
     taskRepo.find.mockResolvedValue([
       task(TaskStatus.PICKING_UP, {
         assignedVehicleName: 'V1',
-        to1Name: 'PICKUP-boom',
+        pickupOrderName: 'PICKUP-boom',
       }),
       task(TaskStatus.PICKING_UP, {
         assignedVehicleName: 'V2',
-        to1Name: 'PICKUP-2',
+        pickupOrderName: 'PICKUP-2',
       }),
     ]);
     store.get.mockReturnValue({ transportOrder: null });

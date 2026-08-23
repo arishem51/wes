@@ -116,8 +116,16 @@ The shape the code actually follows, and which a change must not quietly break:
   table. Never write `task.status` directly.
 - In-process events are declared in `cargo/domain/events.ts` and emitted through
   `EventEmitter2`. Prefer an existing domain event over a new poller.
-- Order names carry their destination: `<TYPE>-<vehicle>-<destination>-<uuid>`,
-  parsed by `domain/transport-order-name.ts`.
+- `TransportOrderService.issue` / `.cancel` (`src/opentcs/`) is the single choke
+  point for ordering the fleet around — the only caller of the kernel's
+  create/withdraw endpoints. Never call `KernelApiService.createTransportOrder`
+  or `withdrawTransportOrder` from outside it.
+- The transport-order vocabulary is `opentcs/domain/transport-order.ts`: order
+  names carry their destination (`<KIND>-<vehicle>-<destination>-<uuid>`) and the
+  `wes:leg` property is derived from the same `kind`, so an order can never be
+  named one leg and stamped another.
+- A task records one order name per leg in `metadata`: `pickupOrderName`,
+  `approachOrderName`, `dropoffOrderName`. There is no TO1/TO2/TO3 numbering.
 
 ## Running locally
 

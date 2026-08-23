@@ -2,6 +2,7 @@ import { AssignmentEngineService } from './assignment-engine.service';
 import { DispatchDistanceService } from './dispatch-distance.service';
 import { VehicleCandidateService } from './vehicle-candidate.service';
 import { PickupOrderService } from './pickup-order.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { ParkClaimStore } from './park-claim.store';
 import { TaskStatus } from './entities/transport-task.entity';
 
@@ -72,15 +73,10 @@ describe('AssignmentEngineService park orders', () => {
     const approachPoint = {
       feederPointsOf: jest.fn().mockResolvedValue([]),
     };
-    const laneSafety = {
-      committedInsideLane: jest.fn().mockResolvedValue(new Set<string>()),
-    };
-
     const svc = new AssignmentEngineService(
       stub(taskRepo),
       stub(cargoRepo),
       stub(pickupDependency),
-      stub(laneSafety),
       stub(dispatchPolicy),
       new DispatchDistanceService(
         stub(zoneRepo),
@@ -88,7 +84,11 @@ describe('AssignmentEngineService park orders', () => {
         stub(approachPoint),
       ),
       new VehicleCandidateService(stub(agvRepo), stub(vehicleStore)),
-      new PickupOrderService(stub(kernelApi), stub(transportTask)),
+      new PickupOrderService(
+        stub(kernelApi),
+        new TransportOrderService(stub(kernelApi)),
+        stub(transportTask),
+      ),
     );
     return { svc, kernelApi, transportTask, vehicleStore, parkClaims };
   }
@@ -115,6 +115,7 @@ describe('AssignmentEngineService park orders', () => {
       [{ locationName: 'LOC-1', operation: 'PICK_UP' }],
       'V1',
       expect.objectContaining({ 'wes:leg': 'PICKUP' }),
+      { dispensable: false },
     );
     expect(transportTask.changeStatus).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't1' }),

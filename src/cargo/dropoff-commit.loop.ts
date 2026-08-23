@@ -405,11 +405,11 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     const delivered = await this.cargoRepo.find({
       where: { destinationZoneId: zoneId, status: CargoStatus.DELIVERED },
     });
-    return new Set(
-      delivered
-        .map((cargo) => cargo.destinationLocationName)
-        .filter((name): name is string => name !== null),
-    );
+    return delivered.reduce((names, cargo) => {
+      if (cargo.destinationLocationName !== null)
+        names.add(cargo.destinationLocationName);
+      return names;
+    }, new Set<string>());
   }
 
   private async waitingBehind(

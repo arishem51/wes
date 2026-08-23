@@ -4,6 +4,7 @@ import { MapsService } from './maps.service';
 import { MapRecordEntity } from './entities/map-record.entity';
 import { CargoEntity } from '../cargo/entities/cargo.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 
 void MapRecordEntity;
@@ -50,6 +51,12 @@ describe('MapsService', () => {
       providers: [
         MapsService,
         { provide: KernelApiService, useValue: kernelApi },
+        {
+          provide: TransportOrderService,
+          useValue: new TransportOrderService(
+            kernelApi as unknown as KernelApiService,
+          ),
+        },
         { provide: VehicleStateStore, useValue: { get: jest.fn() } },
         { provide: getRepositoryToken(MapRecordEntity), useValue: mapRepo },
         { provide: getRepositoryToken(CargoEntity), useValue: cargoRepo },

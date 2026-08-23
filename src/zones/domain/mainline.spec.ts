@@ -84,8 +84,7 @@ describe('findMainlines', () => {
     const mainlines = findMainlines(turned.points, turned.paths);
 
     expect(mainlines).toHaveLength(2);
-    expect(mainlines.map((mainline) => mainline.axis))
-      .toEqual(['y', 'y']);
+    expect(mainlines.map((mainline) => mainline.axis)).toEqual(['y', 'y']);
     expect(mainlines.map((mainline) => mainline.pointNames.length)).toEqual([
       MAINLINE_LENGTH,
       MAINLINE_LENGTH,
@@ -136,8 +135,10 @@ describe('laneAxisOf', () => {
   it('does not mirror an undeclared map that is drawn the other way round', () => {
     const turned = turnedAQuarter(warehouse());
 
-    expect(laneAxisOf(turned.points, turned.paths, NO_PROPERTIES))
-      .toEqual({ axis: 'x', source: 'detected' });
+    expect(laneAxisOf(turned.points, turned.paths, NO_PROPERTIES)).toEqual({
+      axis: 'x',
+      source: 'detected',
+    });
   });
 });
 

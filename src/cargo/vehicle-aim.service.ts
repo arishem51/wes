@@ -98,7 +98,7 @@ export class VehicleAimService {
     slot: string,
     keptOwnReservation: boolean,
   ): Promise<string | null> {
-    const current = task.metadata?.to3Name;
+    const current = task.metadata?.dropoffOrderName;
     if (!current) return this.dropoffOrder.issue(task, vehicle, slot, zone);
     if (keptOwnReservation) return current;
     return this.dropoffOrder.reissue(task, vehicle, slot, zone);

@@ -23,9 +23,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function mapArray<T>(value: unknown, map: (item: unknown) => T | null): T[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => map(item))
-    .filter((item): item is T => item !== null);
+  return value.reduce<T[]>((items, item) => {
+    const mapped = map(item);
+    if (mapped !== null) items.push(mapped);
+    return items;
+  }, []);
 }
 
 function toStringArray(value: unknown): string[] {
@@ -190,9 +192,11 @@ function toKernelLocation(value: unknown): KernelLocation | null {
 
 export function locationPointNames(links: KernelLocation['links']): string[] {
   if (Array.isArray(links)) {
-    return links
-      .map((link) => link.pointName ?? link.point)
-      .filter((point): point is string => typeof point === 'string');
+    return links.reduce<string[]>((points, link) => {
+      const point = link.pointName ?? link.point;
+      if (typeof point === 'string') points.push(point);
+      return points;
+    }, []);
   }
   if (isRecord(links)) return Object.keys(links);
   return [];

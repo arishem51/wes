@@ -118,8 +118,9 @@ describe('ColumnQueue.capacity', () => {
   });
 
   it('shrinks as pallets pile up, because each one eats retreat room', () => {
-    expect(queueAt(750, { finished: new Set(['location_0521']) }).capacity())
-      .toBe(1);
+    expect(
+      queueAt(750, { finished: new Set(['location_0521']) }).capacity(),
+    ).toBe(1);
     expect(
       queueAt(750, {
         finished: new Set(['location_0521', 'location_0516']),

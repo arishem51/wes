@@ -86,9 +86,10 @@ export class PickupDependencyService {
   ): Promise<PickupDecision[]> {
     if (tasks.length === 0) return [];
 
-    const cargoIds = tasks
-      .map((t) => t.cargoId)
-      .filter((id): id is string => id !== null);
+    const cargoIds = tasks.reduce<string[]>((ids, task) => {
+      if (task.cargoId !== null) ids.push(task.cargoId);
+      return ids;
+    }, []);
     const cargos = cargoIds.length
       ? await this.cargoRepo.find({ where: { id: In(cargoIds) } })
       : [];

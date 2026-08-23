@@ -7,7 +7,6 @@ import {
 } from './entities/transport-task.entity';
 import { CargoEntity } from './entities/cargo.entity';
 import { PickupDependencyService } from './pickup-dependency.service';
-import { LaneSafetyService } from './lane-safety.service';
 import { DispatchPolicyService } from './dispatch-policy.service';
 import {
   DispatchDistanceService,
@@ -18,15 +17,12 @@ import { PickupOrderService } from './pickup-order.service';
 import {
   type DispatchMatcher,
   type DispatchTaskCandidate,
-  type SwapOptions,
   type VehicleCandidate,
   hasDispatchableVehicle,
   isEligible,
-  isSwapCandidate,
   planVehicleAssignments,
   planVehicleAssignmentsGreedy,
 } from './domain/dispatch.policy';
-import { describeSwapOptions, swapOptionsFrom } from './domain/dispatch-swap';
 import {
   comparableCounterfactual,
   summariseDistance,
@@ -41,15 +37,12 @@ export class AssignmentEngineService {
 
   private readonly matcher: DispatchMatcher;
 
-  private readonly swap: SwapOptions;
-
   constructor(
     @InjectRepository(TransportTaskEntity)
     private readonly taskRepo: Repository<TransportTaskEntity>,
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
     private readonly pickupDependency: PickupDependencyService,
-    private readonly laneSafety: LaneSafetyService,
     private readonly dispatchPolicy: DispatchPolicyService,
     private readonly distanceSource: DispatchDistanceService,
     private readonly vehicleCandidates: VehicleCandidateService,
@@ -57,7 +50,6 @@ export class AssignmentEngineService {
   ) {
     const requested = process.env.DISPATCH_MATCHER;
     this.matcher = requested === 'greedy' ? 'greedy' : 'hungarian';
-    this.swap = swapOptionsFrom(process.env);
 
     if (requested && requested !== 'greedy' && requested !== 'hungarian') {
       this.logger.warn(
@@ -68,7 +60,6 @@ export class AssignmentEngineService {
       `Dispatch matcher: ${this.matcher.toUpperCase()} ` +
         `(counterfactual ${this.counterfactualMatcher().toUpperCase()} recorded on every assignment)`,
     );
-    this.logger.log(`Pickup swapping: ${describeSwapOptions(this.swap)}`);
   }
 
   private counterfactualMatcher(): DispatchMatcher {
@@ -80,17 +71,13 @@ export class AssignmentEngineService {
       where: { status: TaskStatus.READY_TO_ASSIGN },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
-    const busyTasks = await this.busyTasksByVehicle();
-    const heldByVehicle = this.heldPickupsByVehicle(busyTasks);
-    if (tasks.length === 0 && heldByVehicle.size < 2) return;
+    if (tasks.length === 0) return;
 
+    const busyTasks = await this.busyTasksByVehicle();
     const weights = await this.dispatchPolicy.getActiveWeights();
     const distances = await this.distanceSource.open();
-    const candidates = await this.vehicleCandidates.build(
-      busyTasks,
-      heldByVehicle,
-    );
-    this.logCandidates(tasks.length, heldByVehicle.size, candidates);
+    const candidates = await this.vehicleCandidates.build(busyTasks);
+    this.logCandidates(tasks.length, candidates);
 
     const quarantinedVehicleNames = new Set<string>();
     const dispatchCandidates = (): VehicleCandidate[] =>
@@ -103,13 +90,8 @@ export class AssignmentEngineService {
           .filter(isEligible)
           .map((candidate) => candidate.name),
       ).size;
-    const heldVehicleCount = (): number =>
-      this.swap.enabled
-        ? dispatchCandidates().filter(isSwapCandidate).length
-        : 0;
-    if (freeVehicleCount() === 0 && heldVehicleCount() < 2) return;
+    if (freeVehicleCount() === 0) return;
 
-    const heldContexts = await this.buildHeldContexts(heldByVehicle, distances);
     const pendingTasks: DispatchContext[] = [];
     let taskCursor = 0;
 
@@ -125,7 +107,7 @@ export class AssignmentEngineService {
           continue;
         }
 
-        const context = await this.buildContext(task, false, distances);
+        const context = await this.buildContext(task, distances);
         if (context) pendingTasks.push(context);
       }
     };
@@ -139,24 +121,21 @@ export class AssignmentEngineService {
 
     for (;;) {
       await fillPendingTasks();
-      const rows = [...heldContexts, ...pendingTasks];
-      if (rows.length === 0) break;
-      if (freeVehicleCount() === 0 && heldContexts.length < 2) break;
+      if (pendingTasks.length === 0) break;
+      if (freeVehicleCount() === 0) break;
 
       const availableCandidates = dispatchCandidates();
       const batteryWeight = weights?.battery ?? 0;
-      const taskCandidates = rows.map(toTaskCandidate);
+      const taskCandidates = pendingTasks.map(toTaskCandidate);
       const hungarianPlan = planVehicleAssignments(
         availableCandidates,
         taskCandidates,
         batteryWeight,
-        this.swap,
       );
       const greedyPlan = planVehicleAssignmentsGreedy(
         availableCandidates,
         taskCandidates,
         batteryWeight,
-        this.swap,
       );
       const assignments =
         this.matcher === 'greedy' ? greedyPlan : hungarianPlan;
@@ -173,14 +152,10 @@ export class AssignmentEngineService {
         .filter((context) => !plannedTaskIds.has(context.task.id))
         .filter(
           (context) =>
-            !hasDispatchableVehicle(
-              availableCandidates,
-              {
-                taskId: context.task.id,
-                distanceByPoint: context.distanceByPoint,
-              },
-              this.swap,
-            ),
+            !hasDispatchableVehicle(availableCandidates, {
+              taskId: context.task.id,
+              distanceByPoint: context.distanceByPoint,
+            }),
         )
         .map((context) => context.task.id);
       if (unreachableTaskIds.length > 0) {
@@ -203,44 +178,16 @@ export class AssignmentEngineService {
           ` | counterfactual ${summariseDistance(counterfactual)} vs ${summariseDistance(assignments)}`,
       );
 
-      const heldByTaskId = new Map(
-        heldContexts.map((context) => [context.task.id, context]),
-      );
-      const swaps: PlannedAction[] = [];
       const dispatches: PlannedAction[] = [];
       for (const { taskId, vehicle, distance } of assignments) {
-        const held = heldByTaskId.get(taskId);
-        if (held) {
-          if (
-            (held.task.metadata?.assignedVehicleName ?? null) !== vehicle.name
-          ) {
-            swaps.push({ context: held, vehicle, distance });
-          }
-          continue;
-        }
         const pending = pendingTasks.find(
           (context) => context.task.id === taskId,
         );
         if (pending) dispatches.push({ context: pending, vehicle, distance });
       }
-      if (swaps.length === 0 && dispatches.length === 0) break;
+      if (dispatches.length === 0) break;
 
-      const handedOver: PlannedAction[] = [];
-      for (const action of swaps) {
-        if (
-          await this.pickupOrders.revoke(
-            action.context.task,
-            action.vehicle.name,
-          )
-        ) {
-          handedOver.push(action);
-        }
-      }
-
-      const freeVehicleNames = new Set(
-        availableCandidates.filter(isEligible).map((c) => c.name),
-      );
-      for (const action of [...handedOver, ...dispatches]) {
+      for (const action of dispatches) {
         const { context, vehicle, distance } = action;
         removePendingTask(context.task.id);
 
@@ -260,13 +207,8 @@ export class AssignmentEngineService {
             matcher: this.matcher,
             batchSize: assignments.length,
             approachDistance: context.approachDistance,
-            swapCount: context.task.metadata?.swapCount ?? null,
             ...comparableCounterfactual(
               counterfactualByTask.get(context.task.id),
-              vehicle.name,
-              heldByTaskId.has(context.task.id),
-              freeVehicleNames,
-              this.swap.enabled,
             ),
           },
         );
@@ -279,22 +221,19 @@ export class AssignmentEngineService {
         }
         vehicle.hasActiveTask = true;
       }
-
-      if (handedOver.length > 0) break;
     }
   }
 
   private logCandidates(
     readyCount: number,
-    heldCount: number,
     candidates: readonly VehicleCandidate[],
   ): void {
     this.logger.debug(
-      `Assignment: ${readyCount} READY task(s), ${heldCount} in-flight pickup(s); candidates=[` +
+      `Assignment: ${readyCount} READY task(s); candidates=[` +
         candidates
           .map(
             (c) =>
-              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},held:${c.inFlightPickupTaskId ?? '-'},e:${c.energyLevel}/${c.criticalThreshold},pos:${c.currentPosition ?? '?'}}`,
+              `${c.name}{disp:${c.dispatchEnabled},ign:${c.ignored},avail:${c.available},busy:${c.hasActiveTask},e:${c.energyLevel}/${c.criticalThreshold},pos:${c.currentPosition ?? '?'}}`,
           )
           .join(' ') +
         ']',
@@ -303,7 +242,6 @@ export class AssignmentEngineService {
 
   private async buildContext(
     task: TransportTaskEntity,
-    pinned: boolean,
     distances: DispatchDistances,
   ): Promise<DispatchContext | null> {
     const cargo = task.cargoId
@@ -320,43 +258,7 @@ export class AssignmentEngineService {
         ? distances.distancesTo(cargo.sourcePointName)
         : null,
       approachDistance: await distances.approachDistanceOf(cargo),
-      pinned,
     };
-  }
-
-  private heldPickupsByVehicle(
-    busyTasks: ReadonlyMap<string, TransportTaskEntity>,
-  ): Map<string, TransportTaskEntity> {
-    const held = new Map<string, TransportTaskEntity>();
-    if (!this.swap.enabled) return held;
-    for (const [vehicleName, task] of busyTasks) {
-      if (task.status === TaskStatus.PICKING_UP) held.set(vehicleName, task);
-    }
-    return held;
-  }
-
-  private async buildHeldContexts(
-    heldByVehicle: ReadonlyMap<string, TransportTaskEntity>,
-    distances: DispatchDistances,
-  ): Promise<DispatchContext[]> {
-    const tasks = [...heldByVehicle.values()];
-    if (tasks.length === 0) return [];
-
-    const pinned = await this.laneSafety.committedInsideLane(tasks);
-    for (const task of tasks) {
-      if (await this.pickupDependency.isBlocked(task)) pinned.add(task.id);
-    }
-
-    const contexts: DispatchContext[] = [];
-    for (const task of tasks) {
-      const context = await this.buildContext(
-        task,
-        pinned.has(task.id),
-        distances,
-      );
-      if (context) contexts.push(context);
-    }
-    return contexts;
   }
 
   private async busyTasksByVehicle(): Promise<
@@ -379,7 +281,5 @@ function toTaskCandidate(context: DispatchContext): DispatchTaskCandidate {
     taskId: context.task.id,
     distanceByPoint: context.distanceByPoint,
     approachDistance: context.approachDistance,
-    swapCount: context.task.metadata?.swapCount ?? 0,
-    pinned: context.pinned,
   };
 }

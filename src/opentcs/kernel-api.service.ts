@@ -253,7 +253,7 @@ export class KernelApiService {
     const body: Record<string, unknown> = {
       destinations,
       intendedVehicle,
-      dispensable: options.dispensable === true,
+      dispensable: !!options.dispensable,
     };
     if (properties) {
       body.properties = Object.entries(properties).map(([key, value]) => ({

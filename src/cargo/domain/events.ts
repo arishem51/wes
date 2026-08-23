@@ -1,5 +1,4 @@
 import { TaskStatus } from '../entities/transport-task.entity';
-import { ORDER_TYPE } from './transport-order-name';
 
 export const TRANSPORT_TASK_EVENTS = {
   CREATED: 'transport-task.created',
@@ -21,15 +20,6 @@ export const FMS_EVENTS = {
 } as const;
 
 export type TaskLeg = 'PICKUP' | 'APPROACH' | 'DROPOFF';
-
-export const ORDER_PROP = {
-  TASK_ID: 'wes:taskId',
-  LEG: 'wes:leg',
-} as const;
-
-export const PARK_ORDER_PREFIX = `${ORDER_TYPE.PARK}-`;
-
-export const CHARGE_ORDER_PREFIX = `${ORDER_TYPE.CHARGE}-`;
 
 export class TransportTaskCreatedEvent {
   constructor(

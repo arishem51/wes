@@ -1,5 +1,10 @@
 import type { KernelVehicleState } from '../../opentcs/domain/kernel-model';
-import { PARK_ORDER_PREFIX } from './events';
+import {
+  ORDER_KIND,
+  orderNamePrefix,
+} from '../../opentcs/domain/transport-order';
+
+const PARK_ORDER_PREFIX = orderNamePrefix(ORDER_KIND.PARK);
 
 export function isFmsDispatchable(
   state: KernelVehicleState | undefined,

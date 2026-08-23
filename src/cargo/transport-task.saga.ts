@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import {
   TransportTaskEntity,
@@ -10,6 +9,11 @@ import {
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
+import {
+  ORDER_KIND,
+  type IssueTransportOrder,
+} from '../opentcs/domain/transport-order';
 import type { TransportOrderDestination as OrderDestination } from '../opentcs/domain/kernel-model';
 import { TransportTaskService } from './transport-task.service';
 import { SlotReservationService } from './slot-reservation.service';
@@ -29,10 +33,7 @@ import {
   FmsDropOffUnloadedEvent,
   FmsTransportOrderFinishedEvent,
   FmsTransportOrderLostNavigationEvent,
-  ORDER_PROP,
-  TaskLeg,
 } from './domain/events';
-import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 
 const MAX_LOST_NAVIGATION_RETRIES = 3;
 
@@ -50,6 +51,7 @@ export class TransportTaskSaga {
     @InjectRepository(ZoneEntity)
     private readonly zoneRepo: Repository<ZoneEntity>,
     private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
     private readonly transportTask: TransportTaskService,
     private readonly slotReservation: SlotReservationService,
     private readonly dropoffOrder: DropoffOrderService,
@@ -125,7 +127,7 @@ export class TransportTaskSaga {
   ): Promise<void> {
     task.metadata = {
       ...task.metadata,
-      to1Name: undefined,
+      pickupOrderName: undefined,
       assignedVehicleName: undefined,
     };
     task.assignedAt = null;
@@ -167,7 +169,7 @@ export class TransportTaskSaga {
     }
 
     const plan = await this.retreatPoint.planFor(slot, zone);
-    const alreadyUnloaded = Boolean(task.metadata?.unloadedAt);
+    const alreadyUnloaded = !!task.metadata?.unloadedAt;
     const destinations = alreadyUnloaded
       ? retreatDestinations(plan)
       : this.dropOffDestinations(slot, plan);
@@ -180,24 +182,19 @@ export class TransportTaskSaga {
       return;
     }
 
-    const to3Name = buildOrderName(
-      ORDER_TYPE.DROPOFF,
-      event.vehicleName,
-      slot,
-      randomUUID(),
-    );
-    const created = await this.createNextOrder(
-      to3Name,
+    const dropoffOrderName = await this.createNextOrder({
+      kind: ORDER_KIND.DROPOFF,
+      vehicleName: event.vehicleName,
+      aimedAt: slot,
       destinations,
-      event.vehicleName,
-      { taskId: task.id, leg: 'DROPOFF' },
-    );
-    if (!created) return;
+      taskId: task.id,
+    });
+    if (!dropoffOrderName) return;
 
-    task.metadata = { ...task.metadata, to3Name };
+    task.metadata = { ...task.metadata, dropoffOrderName };
     await this.taskRepo.save(task);
     this.logger.log(
-      `Task ${task.id}: re-issued drop-off as ${to3Name} at ${slot} for ${event.vehicleName}${
+      `Task ${task.id}: re-issued drop-off as ${dropoffOrderName} at ${slot} for ${event.vehicleName}${
         alreadyUnloaded ? ' (retreat only — cargo already unloaded)' : ''
       } (retry ${retries}/${MAX_LOST_NAVIGATION_RETRIES})`,
     );
@@ -228,9 +225,9 @@ export class TransportTaskSaga {
     const task = await this.findTask(taskId, TaskStatus.PICKING_UP);
     if (!task) return;
 
-    if (task.metadata?.to3Name) {
+    if (task.metadata?.dropoffOrderName) {
       this.logger.debug(
-        `Task ${task.id}: drop-off order already created — ignoring duplicate TO1 finished`,
+        `Task ${task.id}: drop-off order already created — ignoring duplicate pick-up finished`,
       );
       return;
     }
@@ -365,24 +362,15 @@ export class TransportTaskSaga {
   }
 
   private async createNextOrder(
-    orderName: string,
-    destinations: OrderDestination[],
-    vehicle: string,
-    props: { taskId: string; leg: TaskLeg },
-  ): Promise<boolean> {
+    order: IssueTransportOrder,
+  ): Promise<string | null> {
     try {
-      await this.kernelApi.createTransportOrder(
-        orderName,
-        destinations,
-        vehicle,
-        { [ORDER_PROP.TASK_ID]: props.taskId, [ORDER_PROP.LEG]: props.leg },
-      );
-      return true;
+      return await this.transportOrders.issue(order);
     } catch (err) {
       this.logger.error(
-        `Failed to create ${orderName}: ${(err as Error).message}`,
+        `Task ${order.taskId}: could not create the ${order.kind} order at ${order.aimedAt}: ${(err as Error).message}`,
       );
-      return false;
+      return null;
     }
   }
 

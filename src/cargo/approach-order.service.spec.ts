@@ -2,6 +2,7 @@ import {
   ApproachOrderService,
   approachTargetFor,
 } from './approach-order.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
 
 const SLOT = 'location_0521';
 const WAIT_POINT = '0549';
@@ -14,7 +15,7 @@ function makeService() {
   };
   const service = new ApproachOrderService(
     taskRepo as never,
-    kernelApi as never,
+    new TransportOrderService(kernelApi as never),
   );
   return { service, taskRepo, kernelApi };
 }
@@ -83,6 +84,7 @@ describe('ApproachOrderService.aim', () => {
 
     expect(kernelApi.withdrawTransportOrder).toHaveBeenCalledWith(
       'APPROACH-V1-old',
+      false,
     );
     expect(kernelApi.createTransportOrder).toHaveBeenCalled();
   });

@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AxiosError } from 'axios';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type {
   KernelLocation,
@@ -65,6 +66,7 @@ export class MapsService {
 
   constructor(
     private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
     private readonly vehicleStateStore: VehicleStateStore,
     @InjectRepository(MapRecordEntity)
     private readonly repo: Repository<MapRecordEntity>,
@@ -134,7 +136,7 @@ export class MapsService {
   }
 
   async withdrawTransportOrder(name: string): Promise<void> {
-    await this.kernelApi.withdrawTransportOrder(name);
+    await this.transportOrders.cancel(name);
   }
 
   async getCargoOptions(): Promise<{
@@ -152,13 +154,11 @@ export class MapsService {
 
     const locationTypes: KernelLocationType[] = model.locationTypes ?? [];
     const locations: KernelLocation[] = model.locations ?? [];
-    const occupiedDropoffLocations = new Set(
-      deliveredCargos
-        .map((cargo) => cargo.destinationLocationName)
-        .filter((locationName): locationName is string =>
-          Boolean(locationName),
-        ),
-    );
+    const occupiedDropoffLocations = deliveredCargos.reduce((names, cargo) => {
+      if (cargo.destinationLocationName)
+        names.add(cargo.destinationLocationName);
+      return names;
+    }, new Set<string>());
 
     const pickupTypeNames = new Set<string>(
       locationTypes

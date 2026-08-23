@@ -1,4 +1,5 @@
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { TaskTerminationService } from './task-termination.service';
 import { TransportTaskService } from './transport-task.service';
@@ -29,7 +30,7 @@ function setup(orderOnVehicle: string | null = null) {
   };
 
   const svc = new TaskTerminationService(
-    kernelApi as unknown as KernelApiService,
+    new TransportOrderService(kernelApi as unknown as KernelApiService),
     vehicleStore as unknown as VehicleStateStore,
     transportTask as unknown as TransportTaskService,
   );
@@ -57,50 +58,66 @@ describe('TaskTerminationService', () => {
   });
 
   it('withdraws the pickup order of a task on its way to the source', async () => {
-    const { svc, kernelApi } = setup('TO1');
+    const { svc, kernelApi } = setup('PICKUP-1');
 
     await svc.terminate(
       task(TaskStatus.PICKING_UP, {
         assignedVehicleName: 'V1',
-        to1Name: 'TO1',
+        pickupOrderName: 'PICKUP-1',
       }),
       TaskStatus.FAILED,
       { trigger: 'API' },
     );
 
-    expect(withdrawn(kernelApi)).toEqual(['TO1']);
+    expect(withdrawn(kernelApi)).toEqual(['PICKUP-1']);
   });
 
   it('withdraws only the leg that is still running', async () => {
-    const { svc, kernelApi } = setup('TO3');
+    const { svc, kernelApi } = setup('DROPOFF-1');
 
     await svc.terminate(
       task(TaskStatus.DELIVERING, {
         assignedVehicleName: 'V1',
-        to1Name: 'TO1',
-        to2Name: 'TO2',
-        to3Name: 'TO3',
+        pickupOrderName: 'PICKUP-1',
+        approachOrderName: 'APPROACH-1',
+        dropoffOrderName: 'DROPOFF-1',
       }),
       TaskStatus.FAILED,
       { trigger: 'API' },
     );
 
-    expect(withdrawn(kernelApi)).toEqual(['TO3']);
+    expect(withdrawn(kernelApi)).toEqual(['DROPOFF-1']);
+  });
+
+  it('withdraws the approach order of a task still waiting for a free lane', async () => {
+    const { svc, kernelApi } = setup('APPROACH-1');
+
+    await svc.terminate(
+      task(TaskStatus.DELIVERING, {
+        assignedVehicleName: 'V1',
+        pickupOrderName: 'PICKUP-1',
+        approachOrderName: 'APPROACH-1',
+      }),
+      TaskStatus.FAILED,
+      { trigger: 'API' },
+    );
+
+    expect(withdrawn(kernelApi)).toEqual(['APPROACH-1']);
   });
 
   it('withdraws the order the kernel reports when the task metadata lags behind', async () => {
-    const { svc, kernelApi } = setup('TO3');
+    const { svc, kernelApi } = setup('DROPOFF-1');
 
     await svc.terminate(
       task(TaskStatus.DELIVERING, {
         assignedVehicleName: 'V1',
-        to2Name: 'TO2',
+        approachOrderName: 'APPROACH-1',
       }),
       TaskStatus.FAILED,
       { trigger: 'API' },
     );
 
-    expect(withdrawn(kernelApi)).toEqual(['TO3', 'TO2']);
+    expect(withdrawn(kernelApi)).toEqual(['DROPOFF-1', 'APPROACH-1']);
   });
 
   it('ignores whatever the vehicle drives once the task is no longer live', async () => {
@@ -116,7 +133,7 @@ describe('TaskTerminationService', () => {
   });
 
   it('still fails the task when the withdrawal blows up', async () => {
-    const { svc, kernelApi, transportTask } = setup('TO1');
+    const { svc, kernelApi, transportTask } = setup('PICKUP-1');
     kernelApi.withdrawTransportOrder.mockRejectedValue(
       new Error('kernel down'),
     );
@@ -124,7 +141,7 @@ describe('TaskTerminationService', () => {
     await svc.terminate(
       task(TaskStatus.PICKING_UP, {
         assignedVehicleName: 'V1',
-        to1Name: 'TO1',
+        pickupOrderName: 'PICKUP-1',
       }),
       TaskStatus.FAILED,
       { trigger: 'API' },

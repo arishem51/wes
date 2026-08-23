@@ -1,14 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
+import { ORDER_KIND } from '../opentcs/domain/transport-order';
 import { TransportTaskService } from './transport-task.service';
 import { CargoEntity } from './entities/cargo.entity';
 import {
   TransportTaskEntity,
   TaskStatus,
 } from './entities/transport-task.entity';
-import { ORDER_PROP } from './domain/events';
-import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 import type { DispatchMeasurement } from './assignment-engine.types';
 
 @Injectable()
@@ -17,6 +16,7 @@ export class PickupOrderService {
 
   constructor(
     private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
     private readonly transportTask: TransportTaskService,
   ) {}
 
@@ -32,27 +32,23 @@ export class PickupOrderService {
       return false;
     }
 
-    const to1Name = buildOrderName(
-      ORDER_TYPE.PICKUP,
-      vehicleName,
-      cargo.sourcePickupLocationName,
-      randomUUID(),
-    );
+    let pickupOrderName: string;
     try {
-      await this.kernelApi.createTransportOrder(
-        to1Name,
-        [
+      pickupOrderName = await this.transportOrders.issue({
+        kind: ORDER_KIND.PICKUP,
+        vehicleName,
+        aimedAt: cargo.sourcePickupLocationName,
+        destinations: [
           {
             locationName: cargo.sourcePickupLocationName,
             operation: this.kernelApi.loadOperation,
           },
         ],
-        vehicleName,
-        { [ORDER_PROP.TASK_ID]: task.id, [ORDER_PROP.LEG]: 'PICKUP' },
-      );
+        taskId: task.id,
+      });
     } catch (err) {
       this.logger.error(
-        `Failed to create TO1 for task ${task.id}: ${(err as Error).message}`,
+        `Failed to create the pick-up order for task ${task.id}: ${(err as Error).message}`,
       );
       return false;
     }
@@ -62,59 +58,15 @@ export class PickupOrderService {
     task.metadata = {
       ...task.metadata,
       assignedVehicleName: vehicleName,
-      to1Name,
+      pickupOrderName,
     };
     await this.transportTask.changeStatus(task, TaskStatus.PICKING_UP, {
       trigger: 'ASSIGNMENT_ENGINE',
       vehicleName,
-      context: { to1Name, distanceToSource, ...measurement },
+      context: { pickupOrderName, distanceToSource, ...measurement },
     });
     this.logger.log(
-      `Task ${task.id} → PICKING_UP on ${vehicleName} (${to1Name})`,
-    );
-    return true;
-  }
-
-  async revoke(
-    task: TransportTaskEntity,
-    toVehicleName: string,
-  ): Promise<boolean> {
-    const to1Name = task.metadata?.to1Name;
-    const fromVehicleName = task.metadata?.assignedVehicleName ?? null;
-
-    if (to1Name) {
-      try {
-        await this.kernelApi.withdrawTransportOrder(to1Name, false);
-      } catch (err) {
-        this.logger.error(
-          `Failed to withdraw ${to1Name} for task ${task.id}: ${(err as Error).message}`,
-        );
-        return false;
-      }
-    }
-
-    const swapCount = (task.metadata?.swapCount ?? 0) + 1;
-    task.metadata = {
-      ...task.metadata,
-      to1Name: undefined,
-      assignedVehicleName: undefined,
-      swapCount,
-    };
-    task.assignedAt = null;
-    task.startedAt = null;
-    await this.transportTask.changeStatus(task, TaskStatus.READY_TO_ASSIGN, {
-      trigger: 'ASSIGNMENT_ENGINE',
-      vehicleName: fromVehicleName,
-      context: {
-        swap: true,
-        swapCount,
-        fromVehicleName,
-        toVehicleName,
-        withdrawnOrder: to1Name ?? null,
-      },
-    });
-    this.logger.log(
-      `Task ${task.id} SWAP ${fromVehicleName ?? '?'} → ${toVehicleName} (handover #${swapCount})`,
+      `Task ${task.id} → PICKING_UP on ${vehicleName} (${pickupOrderName})`,
     );
     return true;
   }

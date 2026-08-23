@@ -91,7 +91,7 @@ function makeLoop(
     cargoId: member.cargoId,
     metadata: {
       assignedVehicleName: member.vehicle,
-      to3Name: `DROPOFF-${member.vehicle}-old`,
+      dropoffOrderName: `DROPOFF-${member.vehicle}-old`,
       ...(member.approach ? { approachPointName: member.approach } : {}),
       ...(member.unloaded ? { unloadedAt: '2026-08-18T00:00:00.000Z' } : {}),
     },
@@ -113,7 +113,10 @@ function makeLoop(
           id: 'task-2',
           status: TaskStatus.DELIVERING,
           cargoId: 'cargo-2',
-          metadata: { assignedVehicleName: 'V2', to3Name: 'DROPOFF-V2-old' },
+          metadata: {
+            assignedVehicleName: 'V2',
+            dropoffOrderName: 'DROPOFF-V2-old',
+          },
         }
       : options.victimTask;
 
@@ -138,7 +141,7 @@ function makeLoop(
           cargos.filter((cargo) =>
             wantsUncommitted
               ? !cargo.destinationLocationName
-              : Boolean(cargo.destinationLocationName),
+              : !!cargo.destinationLocationName,
           ),
         );
       },

@@ -51,16 +51,14 @@ function requireModel(rawModel: unknown): Record<string, unknown> {
 
 function extractLinkedPointNames(links: unknown): Set<string> {
   if (Array.isArray(links)) {
-    return new Set(
-      links
-        .map((link) =>
-          link && typeof link === 'object'
-            ? ((link as { pointName?: unknown }).pointName ??
-              (link as { point?: unknown }).point)
-            : null,
-        )
-        .filter((name): name is string => typeof name === 'string'),
-    );
+    return links.reduce<Set<string>>((names, link: unknown) => {
+      if (!link || typeof link !== 'object') return names;
+      const name =
+        (link as { pointName?: unknown }).pointName ??
+        (link as { point?: unknown }).point;
+      if (typeof name === 'string') names.add(name);
+      return names;
+    }, new Set<string>());
   }
   if (links && typeof links === 'object') {
     return new Set(Object.keys(links));
@@ -137,11 +135,10 @@ export async function readPlantTopology(
     return null;
   }
 
-  const pointNames = new Set(
-    points
-      .map((point) => (typeof point.name === 'string' ? point.name : null))
-      .filter((name): name is string => name !== null),
-  );
+  const pointNames = points.reduce((names, point) => {
+    if (typeof point.name === 'string') names.add(point.name);
+    return names;
+  }, new Set<string>());
 
   const locationLinks = new Map<string, Set<string>>();
   for (const location of locations) {

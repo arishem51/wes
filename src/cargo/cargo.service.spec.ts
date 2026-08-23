@@ -389,7 +389,7 @@ describe('CargoService.list', () => {
 });
 
 const ASSIGNMENT_CONTEXT = {
-  to1Name: 'PICKUP-V1-loc-B-abc',
+  pickupOrderName: 'PICKUP-V1-loc-B-abc',
   distanceToSource: 1200,
   matcher: 'hungarian',
   batchSize: 3,
@@ -612,7 +612,7 @@ function removeSetup(options: RemoveSetupOptions = {}) {
 const droppingOffTask = (metadata: TransportTaskEntity['metadata'] = {}) =>
   storedTask('c-1', TaskStatus.DELIVERING, {
     assignedVehicleName: 'V1',
-    to3Name: 'DROPOFF-V1-drop-1-uuid',
+    dropoffOrderName: 'DROPOFF-V1-drop-1-uuid',
     ...metadata,
   });
 
