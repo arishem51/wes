@@ -1,3 +1,8 @@
+import {
+  laneAxisOf,
+  type LaneAxis,
+  type LayoutProperty,
+} from '../zones/domain/mainline';
 import { ServiceUnavailableException } from '@nestjs/common';
 import { KernelApiService } from './kernel-api.service';
 import type { KernelPath } from './domain/kernel-model';
@@ -22,6 +27,7 @@ export interface PlantTopology {
   points: TopologyPoint[];
   locationLinks: Map<string, Set<string>>;
   paths: KernelPath[];
+  laneAxis: LaneAxis;
 }
 
 interface LocationMeta {
@@ -149,7 +155,25 @@ export async function readPlantTopology(
     points: topologyPoints(points),
     locationLinks,
     paths: paths as unknown as KernelPath[],
+    laneAxis: laneAxisOf(
+      topologyPoints(points),
+      paths as unknown as KernelPath[],
+      layoutProperties(model.visualLayout),
+    ).axis,
   };
+}
+
+function layoutProperties(value: unknown): LayoutProperty[] {
+  if (!value || typeof value !== 'object') return [];
+  const properties = (value as Record<string, unknown>).properties;
+  if (!Array.isArray(properties)) return [];
+  return properties.filter(
+    (property): property is LayoutProperty =>
+      !!property &&
+      typeof property === 'object' &&
+      typeof (property as LayoutProperty).name === 'string' &&
+      typeof (property as LayoutProperty).value === 'string',
+  );
 }
 
 function topologyPoints(

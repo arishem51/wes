@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
 import type { TransportTaskEntity } from './entities/transport-task.entity';
 import type { ZoneSlotLayout } from './domain/zone-slot-layout';
-import { canKeepDrivingTo } from './domain/dropoff-lane';
 import {
   ApproachOrderService,
   approachTargetFor,
@@ -48,10 +47,12 @@ export class VehicleAimService {
     return true;
   }
 
+  async stopApproaching(aimed: AimedVehicle): Promise<void> {
+    await this.approachOrder.cancel(aimed.task);
+  }
   async dropAt(
     aimed: AimedVehicle,
     zone: ZoneEntity,
-    layout: ZoneSlotLayout,
     slot: string,
     keptOwnReservation: boolean,
   ): Promise<boolean> {
@@ -71,7 +72,7 @@ export class VehicleAimService {
       return false;
     }
 
-    if (this.shouldCancelApproach(task, layout, slot)) {
+    if (this.shouldCancelApproach(task, slot)) {
       await this.approachOrder.cancel(task);
     }
     return true;
@@ -79,7 +80,6 @@ export class VehicleAimService {
 
   private shouldCancelApproach(
     task: TransportTaskEntity,
-    layout: ZoneSlotLayout,
     slot: string,
   ): boolean {
     const heading = task.metadata?.approachPointName;
@@ -88,11 +88,7 @@ export class VehicleAimService {
     if (noApproachOrderToCancel) return false;
 
     const alreadyHeadingToThatCell = heading === slot;
-    if (alreadyHeadingToThatCell) return false;
-
-    if (canKeepDrivingTo(layout, heading, slot)) return false;
-
-    return true;
+    return !alreadyHeadingToThatCell;
   }
 
   private async dropOffOrderFor(

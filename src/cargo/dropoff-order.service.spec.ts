@@ -27,7 +27,7 @@ function task(metadata: Record<string, unknown> = {}) {
 }
 
 describe('DropoffOrderService.issue', () => {
-  it('puts the drop-off first, then one MOVE per retreat cell', async () => {
+  it('puts the drop-off first, then one MOVE to the last retreat cell', async () => {
     const { service, kernelApi } = makeService();
 
     await service.issue(task(), 'V1', SLOT, ZONE);
@@ -35,7 +35,6 @@ describe('DropoffOrderService.issue', () => {
     const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
     expect(destinations).toEqual([
       { locationName: SLOT, operation: 'liftDown' },
-      { locationName: '3002', operation: 'MOVE' },
       { locationName: '3001', operation: 'MOVE' },
     ]);
   });
@@ -51,7 +50,7 @@ describe('DropoffOrderService.issue', () => {
     const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
     expect(
       (destinations as { locationName: string }[]).map((d) => d.locationName),
-    ).toEqual([SLOT, '3002', '3001']);
+    ).toEqual([SLOT, '3001']);
   });
 
   it('keeps the order on the DROPOFF leg and pins the assigned vehicle', async () => {

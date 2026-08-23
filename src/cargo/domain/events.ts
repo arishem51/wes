@@ -8,6 +8,10 @@ export const TRANSPORT_TASK_EVENTS = {
   FAILED: 'transport-task.failed',
 } as const;
 
+export const ZONE_EVENTS = {
+  SLOT_RELEASED: 'zone.slot-released',
+} as const;
+
 export const FMS_EVENTS = {
   TRANSPORT_ORDER_FINISHED: 'fms.transport-order.finished',
   TRANSPORT_ORDER_LOST_NAVIGATION: 'fms.transport-order.lost-navigation',

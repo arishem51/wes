@@ -137,7 +137,7 @@ function makeDeliverySaga(
     issue: jest.fn().mockResolvedValue('DROPOFF-V1-location_3003-y'),
   };
   const retreatPoint = {
-    planFor: jest.fn().mockResolvedValue({ cells: ['3002'], egress: null }),
+    planFor: jest.fn().mockResolvedValue({ cells: ['3002', '3001'], egress: null }),
   };
   const approachOrder = { aim: jest.fn().mockResolvedValue('APPROACH-V1-x') };
   const deliverySlotEngine = {
@@ -316,7 +316,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       findOne: jest.fn().mockResolvedValue({ id: 'zone-1', name: 'zone_1' }),
     };
     const retreatPoint = {
-      planFor: jest.fn().mockResolvedValue({ cells: ['3002'], egress: null }),
+      planFor: jest.fn().mockResolvedValue({ cells: ['3002', '3001'], egress: null }),
     };
     const saga = new TransportTaskSaga(
       taskRepo as never,
@@ -388,7 +388,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       expect.stringContaining('DROPOFF-V1-location_3003'),
       [
         { locationName: 'location_3003', operation: 'UNLOAD' },
-        { locationName: '3002', operation: 'MOVE' },
+        { locationName: '3001', operation: 'MOVE' },
       ],
       'V1',
       expect.objectContaining({ 'wes:leg': 'DROPOFF' }),
@@ -444,7 +444,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
 
     expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
       expect.any(String),
-      [{ locationName: '3002', operation: 'MOVE' }],
+      [{ locationName: '3001', operation: 'MOVE' }],
       'V1',
       expect.anything(),
     );

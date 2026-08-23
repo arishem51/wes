@@ -1,3 +1,4 @@
+import { laneAxisOf } from '../zones/domain/mainline';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -65,6 +66,11 @@ export class RetreatPointService {
       new Set(layout.lanes.flatMap((lane) => [...lane.axisPoints])),
       occupied,
       cells,
+      laneAxisOf(
+        plantModel.points,
+        plantModel.paths,
+        plantModel.visualLayout?.properties ?? [],
+      ).axis,
     );
     if (!plan) {
       this.logger.warn(

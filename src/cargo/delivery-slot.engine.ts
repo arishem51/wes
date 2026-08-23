@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelPlantModel } from '../opentcs/domain/kernel-model';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
+import { laneAxisOf, type LaneAxis } from '../zones/domain/mainline';
 import {
   buildZoneSlotLayout,
   rankSlots,
@@ -24,6 +25,7 @@ export class DeliverySlotEngine {
   private plantModel: KernelPlantModel | null = null;
   private plantModelFetchedAt = 0;
   private plantModelInFlight: Promise<KernelPlantModel | null> | null = null;
+  private reportedLaneAxis: LaneAxis | null = null;
 
   constructor(private readonly kernelApi: KernelApiService) {}
 
@@ -58,6 +60,7 @@ export class DeliverySlotEngine {
       plantModel.paths,
       plantModel.locations,
       memberLocationNames,
+      this.laneAxisFor(plantModel),
     );
     if (layout.strandedLocationNames.length > 0) {
       this.logger.warn(
@@ -83,6 +86,21 @@ export class DeliverySlotEngine {
   async usableCapacityOf(zone: ZoneEntity): Promise<number> {
     const layout = await this.layoutFor(zone);
     return layout ? usableSlotCount(layout) : 0;
+  }
+
+  private laneAxisFor(plantModel: KernelPlantModel): LaneAxis {
+    const { axis, source } = laneAxisOf(
+      plantModel.points,
+      plantModel.paths,
+      plantModel.visualLayout?.properties ?? [],
+    );
+    if (this.reportedLaneAxis !== axis) {
+      this.reportedLaneAxis = axis;
+      this.logger.log(
+        `Lanes run along ${axis} (${source}); slot depth is measured on ${axis}, lane identity on ${axis === 'x' ? 'y' : 'x'}`,
+      );
+    }
+    return axis;
   }
 
   private plantModelIsStale(): boolean {

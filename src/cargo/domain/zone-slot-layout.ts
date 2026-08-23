@@ -1,4 +1,12 @@
 import {
+  acrossLane,
+  alongLane,
+  findMainlines,
+  mainlinePointNames,
+  type LaneAxis,
+} from '../../zones/domain/mainline';
+
+import {
   computeEgressPoints,
   computeFeederPoints,
   hopsToExit,
@@ -31,9 +39,11 @@ export interface ZoneLane {
   readonly axis: number;
   readonly slots: readonly ZoneSlot[];
   readonly axisPoints: readonly string[];
+  readonly axisAlong: readonly number[];
 }
 
 export interface ZoneSlotLayout {
+  readonly mainlinePoints: ReadonlySet<string>;
   readonly columns: readonly (readonly ZoneSlot[])[];
   readonly lanes: readonly ZoneLane[];
   readonly entryPoints: readonly string[];
@@ -51,6 +61,7 @@ export function buildZoneSlotLayout(
   paths: readonly PlantPath[],
   locations: readonly PlantLocation[],
   memberLocationNames: readonly string[],
+  laneAxis: LaneAxis = 'y',
 ): ZoneSlotLayout {
   const pointByLocation = resolveLocationPoints(locations, memberLocationNames);
   const memberPointNames = new Set(pointByLocation.values());
@@ -74,96 +85,98 @@ export function buildZoneSlotLayout(
   }
 
   const lanes = inFlowOrder(
-    groupIntoLanes(positioned),
+    groupIntoLanes(positioned, laneAxis),
     paths,
     memberPointNames,
     positioned,
+    laneAxis,
   );
   return {
+    mainlinePoints: mainlinePointNames(findMainlines(points, paths)),
     columns: lanes.map((lane) => lane.map(bareSlot)),
-    lanes: lanes.map((lane) => ({
-      axis: lane[0].x,
-      slots: lane.map(bareSlot),
-      axisPoints: axisPointsOf(lane, points, paths),
-    })),
+    lanes: lanes.map((lane) => {
+      const axis = axisOf(lane, points, paths, laneAxis);
+      return {
+        axis: acrossLane(laneAxis, lane[0]),
+        slots: lane.map(bareSlot),
+        axisPoints: axis.map((cell) => cell.pointName),
+        axisAlong: axis.map((cell) => cell.along),
+      };
+    }),
     entryPoints: computeFeederPoints(paths, memberPointNames),
     memberPointNames,
     strandedLocationNames: stranded,
   };
 }
 
-function axisPointsOf(
+interface AxisCell {
+  readonly pointName: string;
+  readonly along: number;
+}
+
+function axisOf(
   lane: readonly PositionedSlot[],
   points: readonly PlantPoint[],
   paths: readonly PlantPath[],
-): string[] {
+  laneAxis: LaneAxis,
+): AxisCell[] {
+  const positionOf = new Map(
+    points.map((point) => [point.name, point.position] as const),
+  );
   const shallowest = lane[lane.length - 1];
+  const behind = behindChain(
+    { points, paths },
+    shallowest.pointName,
+    laneAxis,
+  ).slice(0, DROPOFF_RETREAT_CELLS);
+
   return [
-    ...lane.map((slot) => slot.pointName),
-    ...behindChain({ points, paths }, shallowest.pointName).slice(
-      0,
-      DROPOFF_RETREAT_CELLS,
-    ),
+    ...lane.map((slot) => ({
+      pointName: slot.pointName,
+      along: alongLane(laneAxis, slot),
+    })),
+    ...behind.reduce<AxisCell[]>((cells, pointName) => {
+      const position = positionOf.get(pointName);
+      if (position) {
+        cells.push({ pointName, along: alongLane(laneAxis, position) });
+      }
+      return cells;
+    }, []),
   ];
-}
-
-export function nextLaneToFill(
-  layout: ZoneSlotLayout,
-  activeCountByLane: readonly number[],
-): number | null {
-  const eligible = eligibleColumns(activeCountByLane);
-  const first = eligible.indexOf(true);
-  if (first === -1) return null;
-
-  for (let index = first; index < layout.lanes.length; index++) {
-    if (activeCountByLane[index] < layout.lanes[index].slots.length) {
-      return index;
-    }
-  }
-  return null;
-}
-
-function waitingChainFor(lane: ZoneLane, committedPointName: string): string[] {
-  const committed = lane.axisPoints.indexOf(committedPointName);
-  if (committed === -1) return [];
-  return [...lane.axisPoints.slice(committed + 1 + DROPOFF_RETREAT_CELLS)];
-}
-
-export function waitingTargetsFor(
-  lane: ZoneLane,
-  committedPointName: string,
-): string[] {
-  const slotNameOf = new Map(
-    lane.slots.map((slot) => [slot.pointName, slot.locationName] as const),
-  );
-  return waitingChainFor(lane, committedPointName).map(
-    (point) => slotNameOf.get(point) ?? point,
-  );
 }
 
 function bareSlot({ locationName, pointName }: PositionedSlot): ZoneSlot {
   return { locationName, pointName };
 }
 
-function groupIntoLanes(slots: readonly PositionedSlot[]): PositionedSlot[][] {
+function groupIntoLanes(
+  slots: readonly PositionedSlot[],
+  laneAxis: LaneAxis,
+): PositionedSlot[][] {
   const byAxis = new Map<number, PositionedSlot[]>();
   for (const slot of slots) {
-    const lane = byAxis.get(slot.x);
+    const across = acrossLane(laneAxis, slot);
+    const lane = byAxis.get(across);
     if (lane) lane.push(slot);
-    else byAxis.set(slot.x, [slot]);
+    else byAxis.set(across, [slot]);
   }
 
   return [...byAxis.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([, lane]) => lane.sort((a, b) => a.y - b.y));
+    .map(([, lane]) =>
+      lane.sort((a, b) => alongLane(laneAxis, a) - alongLane(laneAxis, b)),
+    );
 }
 
 function crossLaneDirection(
   paths: readonly PlantPath[],
   memberPointNames: ReadonlySet<string>,
   slots: readonly PositionedSlot[],
+  laneAxis: LaneAxis,
 ): number {
-  const xOf = new Map(slots.map((slot) => [slot.pointName, slot.x]));
+  const xOf = new Map(
+    slots.map((slot) => [slot.pointName, acrossLane(laneAxis, slot)]),
+  );
   for (const path of paths) {
     const src = path.srcPointName;
     const dest = path.destPointName;
@@ -184,8 +197,9 @@ function inFlowOrder(
   paths: readonly PlantPath[],
   memberPointNames: ReadonlySet<string>,
   slots: readonly PositionedSlot[],
+  laneAxis: LaneAxis,
 ): (readonly PositionedSlot[])[] {
-  return crossLaneDirection(paths, memberPointNames, slots) >= 0
+  return crossLaneDirection(paths, memberPointNames, slots, laneAxis) >= 0
     ? [...lanes]
     : [...lanes].reverse();
 }
@@ -309,6 +323,10 @@ function nextSlotToFill(
     if (empty) return { slot: empty, lane: index };
   }
   return null;
+}
+
+export function eligibleLanes(filled: readonly number[]): boolean[] {
+  return eligibleColumns(filled);
 }
 
 function eligibleColumns(filled: readonly number[]): boolean[] {

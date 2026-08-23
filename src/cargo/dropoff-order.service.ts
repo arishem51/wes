@@ -86,8 +86,8 @@ export class DropoffOrderService {
 export function retreatDestinations(
   plan: RetreatPlan | null,
 ): TransportOrderDestination[] {
-  const cells = plan ? [...plan.cells] : [];
-  return cells.map((cell) => ({ locationName: cell, operation: 'MOVE' }));
+  const retreatCell = plan?.cells.at(-1);
+  return retreatCell ? [{ locationName: retreatCell, operation: 'MOVE' }] : [];
 }
 
 function destinationsFor(

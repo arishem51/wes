@@ -9,6 +9,7 @@ function slot(name: string) {
 }
 
 const LAYOUT: ZoneSlotLayout = {
+  mainlinePoints: new Set<string>(),
   columns: [
     [slot('D3'), slot('D2'), slot('D1')],
     [slot('S3'), slot('S2'), slot('S1')],
@@ -18,11 +19,13 @@ const LAYOUT: ZoneSlotLayout = {
       axis: 2000,
       slots: [slot('D3'), slot('D2'), slot('D1')],
       axisPoints: ['D3', 'D2', 'D1', 'WD1', 'WD2'],
+      axisAlong: [0, 1000, 2000, 3000, 4000],
     },
     {
       axis: 1000,
       slots: [slot('S3'), slot('S2'), slot('S1')],
       axisPoints: ['S3', 'S2', 'S1', 'WS1', 'WS2'],
+      axisAlong: [0, 1000, 2000, 3000, 4000],
     },
   ],
   entryPoints: ['D1', 'S1'],
@@ -57,8 +60,9 @@ const LANE_S = LAYOUT.lanes[1];
 function options(
   blockedLocationNames: ReadonlySet<string> = new Set(),
   lane = LANE_D,
+  unstealableLocationNames: ReadonlySet<string> = new Set(),
 ) {
-  return { blockedLocationNames, lane };
+  return { blockedLocationNames, unstealableLocationNames, lane };
 }
 
 function makeService(cargos: FakeCargo[]) {
@@ -92,11 +96,13 @@ function makeService(cargos: FakeCargo[]) {
     rank: (layout: ZoneSlotLayout, occupied: ReadonlySet<string>) =>
       rankSlots(layout, occupied),
   };
+  const eventEmitter = { emit: jest.fn() };
   const service = new SlotReservationService(
     dataSource as never,
     deliverySlotEngine as never,
+    eventEmitter as never,
   );
-  return { service, cargos, manager, deliverySlotEngine };
+  return { service, cargos, manager, deliverySlotEngine, eventEmitter };
 }
 
 describe('SlotReservationService.reserve', () => {
@@ -287,6 +293,47 @@ describe('SlotReservationService.commit', () => {
     expect(result).toBeNull();
   });
 
+  it('never takes a cell reserved by a vehicle ahead of it in the lane', async () => {
+    const { service, cargos } = makeService([
+      cargo('c1', { reservedLocationName: 'D3' }),
+      cargo('c2', { reservedLocationName: 'D2' }),
+    ]);
+
+    const result = await service.commit(
+      'c2',
+      ZONE,
+      options(new Set(), LANE_D, new Set(['D3'])),
+    );
+
+    expect(result).toMatchObject({ slot: 'D2', displaced: null });
+    expect(cargos[0].reservedLocationName).toBe('D3');
+  });
+
+  it('offers nothing when the vehicle ahead holds the last reachable cell', async () => {
+    const { service } = makeService([
+      cargo('c1', { reservedLocationName: 'D3' }),
+      cargo('c2', { reservedLocationName: 'D2' }),
+    ]);
+
+    const result = await service.commit(
+      'c2',
+      ZONE,
+      options(new Set(), LANE_D, new Set(['D3', 'D2', 'D1'])),
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('still takes a cell its own cargo reserved, ahead rule or not', async () => {
+    const { service } = makeService([
+      cargo('c1', { reservedLocationName: 'D3' }),
+    ]);
+
+    const result = await service.commit('c1', ZONE, options());
+
+    expect(result).toMatchObject({ slot: 'D3', keptOwnReservation: true });
+  });
+
   it('bumps the decision counter on every cargo it touches', async () => {
     const { service, cargos } = makeService([
       cargo('c1', { reservedLocationName: 'D3', slotDecisionSeq: 4 }),
@@ -309,8 +356,10 @@ describe('SlotReservationService.commit in a lane deeper than the retreat', () =
     axis: 3000,
     slots: DEEP_SLOTS,
     axisPoints: ['P5', 'P4', 'P3', 'P2', 'P1', 'WP1'],
+    axisAlong: [0, 1000, 2000, 3000, 4000, 5000],
   };
   const DEEP_LAYOUT: ZoneSlotLayout = {
+    mainlinePoints: new Set<string>(),
     columns: [DEEP_SLOTS],
     lanes: [DEEP_LANE],
     entryPoints: ['P1'],
@@ -326,6 +375,7 @@ describe('SlotReservationService.commit in a lane deeper than the retreat', () =
 
   const deepOptions = (blocked: string[] = []) => ({
     blockedLocationNames: new Set(blocked),
+    unstealableLocationNames: new Set<string>(),
     lane: DEEP_LANE,
   });
 

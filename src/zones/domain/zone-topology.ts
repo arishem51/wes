@@ -1,3 +1,5 @@
+import { acrossLane, alongLane, type LaneAxis } from './mainline';
+
 export interface PlantPath {
   srcPointName?: string;
   destPointName?: string;
@@ -142,28 +144,42 @@ export interface LaneInvariantViolation {
 function lanesOf(
   points: readonly TopologyPoint[],
   memberPointNames: ReadonlySet<string>,
+  laneAxis: LaneAxis,
 ): TopologyPoint[][] {
   const byAxis = new Map<number, TopologyPoint[]>();
   for (const point of points) {
     if (!memberPointNames.has(point.name)) continue;
-    const lane = byAxis.get(point.position.x);
+    const across = acrossLane(laneAxis, point.position);
+    const lane = byAxis.get(across);
     if (lane) lane.push(point);
-    else byAxis.set(point.position.x, [point]);
+    else byAxis.set(across, [point]);
   }
   return [...byAxis.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([, lane]) => lane.sort((a, b) => a.position.y - b.position.y));
+    .map(([, lane]) =>
+      lane.sort(
+        (a, b) =>
+          alongLane(laneAxis, a.position) - alongLane(laneAxis, b.position),
+      ),
+    );
 }
 
 function nearestBehind(
   current: TopologyPoint,
   points: readonly TopologyPoint[],
+  laneAxis: LaneAxis,
 ): TopologyPoint | null {
   let nearest: TopologyPoint | null = null;
   let nearestGap = Infinity;
   for (const candidate of points) {
-    if (candidate.position.x !== current.position.x) continue;
-    const gap = candidate.position.y - current.position.y;
+    if (
+      acrossLane(laneAxis, candidate.position) !==
+      acrossLane(laneAxis, current.position)
+    )
+      continue;
+    const gap =
+      alongLane(laneAxis, candidate.position) -
+      alongLane(laneAxis, current.position);
     if (gap <= 0 || gap >= nearestGap) continue;
     nearest = candidate;
     nearestGap = gap;
@@ -175,11 +191,12 @@ function corridorDepthAbove(
   shallowest: TopologyPoint,
   points: readonly TopologyPoint[],
   adj: ReadonlyMap<string, string[]>,
+  laneAxis: LaneAxis,
 ): number {
   let current = shallowest;
   let depth = 0;
   for (let step = 0; step < 2; step++) {
-    const behind = nearestBehind(current, points);
+    const behind = nearestBehind(current, points, laneAxis);
     if (!behind) return depth;
     if (!(adj.get(current.name) ?? []).includes(behind.name)) return depth;
     depth++;
@@ -192,6 +209,7 @@ export function checkLaneInvariants(
   points: readonly TopologyPoint[],
   paths: readonly PlantPath[],
   memberPointNames: ReadonlySet<string>,
+  laneAxis: LaneAxis = 'y',
 ): LaneInvariantViolation[] {
   const arcs = directedArcs(paths);
   const adj = adjacency(arcs);
@@ -201,13 +219,13 @@ export function checkLaneInvariants(
   );
   const violations: LaneInvariantViolation[] = [];
 
-  for (const lane of lanesOf(points, memberPointNames)) {
+  for (const lane of lanesOf(points, memberPointNames, laneAxis)) {
     const shallowest = lane[lane.length - 1];
-    const depth = corridorDepthAbove(shallowest, points, adj);
+    const depth = corridorDepthAbove(shallowest, points, adj, laneAxis);
     if (depth < 2) {
       violations.push({
         code: 'V1',
-        detail: `lane x=${shallowest.position.x} has only ${depth} corridor point(s) straight above ${shallowest.name}, needs 2`,
+        detail: `lane x=${acrossLane(laneAxis, shallowest.position)} has only ${depth} corridor point(s) straight above ${shallowest.name}, needs 2`,
       });
     }
   }
@@ -219,7 +237,8 @@ export function checkLaneInvariants(
     }
     const from = positionOf.get(arc.from);
     const to = positionOf.get(arc.to);
-    if (!from || !to || from.x === to.x) continue;
+    if (!from || !to || acrossLane(laneAxis, from) === acrossLane(laneAxis, to))
+      continue;
 
     if (arcSet.has(`${arc.to}>${arc.from}`)) {
       violations.push({
@@ -228,7 +247,9 @@ export function checkLaneInvariants(
       });
       continue;
     }
-    const sign = Math.sign(to.x - from.x);
+    const sign = Math.sign(
+      acrossLane(laneAxis, to) - acrossLane(laneAxis, from),
+    );
     if (direction === 0) direction = sign;
     else if (direction !== sign) {
       violations.push({

@@ -15,9 +15,11 @@ const LANE = {
     { locationName: SLOT, pointName: 'P1' },
   ],
   axisPoints: ['P0', 'P1', CORRIDOR],
+  axisAlong: [0, 1000],
 };
 
 const LAYOUT: ZoneSlotLayout = {
+  mainlinePoints: new Set<string>(),
   columns: [LANE.slots, [{ locationName: OTHER_LANE, pointName: 'Q1' }]],
   lanes: [
     LANE,
@@ -25,6 +27,7 @@ const LAYOUT: ZoneSlotLayout = {
       axis: 1000,
       slots: [{ locationName: OTHER_LANE, pointName: 'Q1' }],
       axisPoints: ['Q1', 'corrQ'],
+      axisAlong: [0, 1000],
     },
   ],
   entryPoints: ['P1', 'Q1'],
@@ -96,13 +99,13 @@ describe('queueAt', () => {
 });
 
 describe('dropAt', () => {
-  it('keeps the approach order when the cell is further along the same lane', async () => {
+  it('cancels the approach order even when the cell is further along the same lane', async () => {
     const { service, approachOrder, aimed } = setup({
       approachPointName: SLOT,
     });
 
-    expect(await service.dropAt(aimed, ZONE, LAYOUT, DEEPER, false)).toBe(true);
-    expect(approachOrder.cancel).not.toHaveBeenCalled();
+    expect(await service.dropAt(aimed, ZONE, DEEPER, false)).toBe(true);
+    expect(approachOrder.cancel).toHaveBeenCalledWith(aimed.task);
   });
 
   it('keeps it when the commit landed exactly where it was already heading', async () => {
@@ -110,7 +113,7 @@ describe('dropAt', () => {
       approachPointName: SLOT,
     });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, SLOT, true);
+    await service.dropAt(aimed, ZONE, SLOT, true);
 
     expect(approachOrder.cancel).not.toHaveBeenCalled();
   });
@@ -120,7 +123,7 @@ describe('dropAt', () => {
       approachPointName: SLOT,
     });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, OTHER_LANE, false);
+    await service.dropAt(aimed, ZONE, OTHER_LANE, false);
 
     expect(approachOrder.cancel).toHaveBeenCalled();
   });
@@ -130,7 +133,7 @@ describe('dropAt', () => {
       approachPointName: DEEPER,
     });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, SLOT, false);
+    await service.dropAt(aimed, ZONE, SLOT, false);
 
     expect(approachOrder.cancel).toHaveBeenCalled();
   });
@@ -140,7 +143,7 @@ describe('dropAt', () => {
       approachPointName: SLOT,
     });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, OTHER_LANE, false);
+    await service.dropAt(aimed, ZONE, OTHER_LANE, false);
 
     expect(dropoffOrder.issue.mock.invocationCallOrder[0]).toBeLessThan(
       approachOrder.cancel.mock.invocationCallOrder[0],
@@ -153,7 +156,7 @@ describe('dropAt', () => {
       approachPointName: SLOT,
     });
 
-    expect(await service.dropAt(aimed, ZONE, LAYOUT, SLOT, true)).toBe(true);
+    expect(await service.dropAt(aimed, ZONE, SLOT, true)).toBe(true);
     expect(dropoffOrder.issue).not.toHaveBeenCalled();
     expect(dropoffOrder.reissue).not.toHaveBeenCalled();
   });
@@ -161,7 +164,7 @@ describe('dropAt', () => {
   it('re-issues the order when the commit landed somewhere else', async () => {
     const { service, dropoffOrder, aimed } = setup({ to3Name: 'DROPOFF-old' });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, SLOT, false);
+    await service.dropAt(aimed, ZONE, SLOT, false);
 
     expect(dropoffOrder.reissue).toHaveBeenCalledWith(
       aimed.task,
@@ -175,7 +178,7 @@ describe('dropAt', () => {
     const { service, dropoffOrder, slotReservation, aimed } = setup();
     dropoffOrder.issue.mockResolvedValueOnce(null);
 
-    expect(await service.dropAt(aimed, ZONE, LAYOUT, SLOT, false)).toBe(false);
+    expect(await service.dropAt(aimed, ZONE, SLOT, false)).toBe(false);
     expect(slotReservation.releaseCommit).toHaveBeenCalledWith('cargo-1', ZONE);
   });
 
@@ -185,8 +188,20 @@ describe('dropAt', () => {
     });
     dropoffOrder.issue.mockResolvedValueOnce(null);
 
-    await service.dropAt(aimed, ZONE, LAYOUT, SLOT, false);
+    await service.dropAt(aimed, ZONE, SLOT, false);
 
     expect(approachOrder.cancel).not.toHaveBeenCalled();
+  });
+});
+
+describe('stopApproaching', () => {
+  it('withdraws the approach order so the cell stops being claimed', async () => {
+    const { service, approachOrder, aimed } = setup({
+      approachPointName: SLOT,
+    });
+
+    await service.stopApproaching(aimed);
+
+    expect(approachOrder.cancel).toHaveBeenCalledWith(aimed.task);
   });
 });

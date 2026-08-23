@@ -1,3 +1,4 @@
+import type { LaneAxis } from './mainline';
 import { pointNameOf } from './location-naming';
 import {
   checkLaneInvariants,
@@ -27,6 +28,7 @@ export function reviewDropoffLayout(
   points: readonly TopologyPoint[],
   paths: readonly PlantPath[],
   memberLocationNames: readonly string[],
+  laneAxis: LaneAxis = 'y',
 ): LayoutReview {
   const locationByPoint = new Map(
     memberLocationNames.map((name) => [pointNameOf(name), name] as const),
@@ -56,7 +58,12 @@ export function reviewDropoffLayout(
     };
   }
 
-  const violations = checkLaneInvariants(points, paths, memberPointNames);
+  const violations = checkLaneInvariants(
+    points,
+    paths,
+    memberPointNames,
+    laneAxis,
+  );
   return {
     problems:
       violations.length > 0 ? [{ kind: 'lane-invariant', violations }] : [],

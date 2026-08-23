@@ -3,6 +3,7 @@ import type {
   KernelLocationLink,
   KernelLocationType,
   KernelPath,
+  KernelLayoutProperty,
   KernelPlantModel,
   KernelPoint,
   KernelTransportOrder,
@@ -10,6 +11,7 @@ import type {
   KernelVehicleGoal,
   KernelVehiclePrecisePosition,
   KernelVehicleState,
+  KernelVisualLayout,
 } from './kernel-model';
 import { toVehicleErrors } from './vehicle-errors';
 
@@ -196,6 +198,19 @@ export function locationPointNames(links: KernelLocation['links']): string[] {
   return [];
 }
 
+function toKernelLayoutProperty(value: unknown): KernelLayoutProperty | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.name !== 'string' || typeof value.value !== 'string') {
+    return null;
+  }
+  return { name: value.name, value: value.value };
+}
+
+function toKernelVisualLayout(value: unknown): KernelVisualLayout | null {
+  if (!isRecord(value)) return null;
+  return { properties: mapArray(value.properties, toKernelLayoutProperty) };
+}
+
 export function toKernelPlantModel(value: unknown): KernelPlantModel | null {
   if (!isRecord(value)) {
     return null;
@@ -206,6 +221,7 @@ export function toKernelPlantModel(value: unknown): KernelPlantModel | null {
     paths: mapArray(value.paths, toKernelPath),
     locationTypes: mapArray(value.locationTypes, toKernelLocationType),
     locations: mapArray(value.locations, toKernelLocation),
+    visualLayout: toKernelVisualLayout(value.visualLayout),
   };
 }
 

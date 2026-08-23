@@ -23,7 +23,23 @@ describe('toKernelPlantModel', () => {
       paths: [],
       locationTypes: [],
       locations: [],
+      visualLayout: null,
     });
+  });
+
+  it('keeps the layout properties, which say which way the map was drawn', () => {
+    const model = toKernelPlantModel({
+      visualLayout: {
+        properties: [
+          { name: 'direction', value: 'X+' },
+          { name: 'scale', value: 5 },
+        ],
+      },
+    });
+
+    expect(model?.visualLayout?.properties).toEqual([
+      { name: 'direction', value: 'X+' },
+    ]);
   });
 
   it('reads parking priority from the REST array shape and the SSE map shape', () => {

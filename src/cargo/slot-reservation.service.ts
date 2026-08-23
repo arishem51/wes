@@ -1,11 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
 import { DeliverySlotEngine } from './delivery-slot.engine';
 import { ZoneOccupancy } from './domain/zone-occupancy';
-import { deepestReachableCell, whereToQueue } from './domain/dropoff-lane';
+import { ZONE_EVENTS } from './domain/events';
+import {
+  queueDiagnosis,
+  queueOfLane,
+  whereToQueue,
+} from './domain/dropoff-lane';
 import {
   laneIndexOfTarget,
   type ZoneLane,
@@ -28,6 +34,7 @@ export interface SlotCommitResult {
 
 export interface SlotCommitOptions {
   readonly blockedLocationNames: ReadonlySet<string>;
+  readonly unstealableLocationNames: ReadonlySet<string>;
   readonly lane: ZoneLane;
 }
 
@@ -39,7 +46,12 @@ export class SlotReservationService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly deliverySlotEngine: DeliverySlotEngine,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  private announceReleasedSlot(zoneId: string): void {
+    this.eventEmitter.emit(ZONE_EVENTS.SLOT_RELEASED, { zoneId });
+  }
 
   async reserve(cargoId: string, zone: ZoneEntity): Promise<string | null> {
     const layout = await this.deliverySlotEngine.layoutFor(zone);
@@ -60,7 +72,10 @@ export class SlotReservationService {
       const target = whereToQueue(layout, occupancy);
       if (!target) {
         this.logger.warn(
-          `Cargo ${cargoId}: zone "${zone.name}" offered nowhere to queue`,
+          [
+            `Cargo ${cargoId}: zone "${zone.name}" offered nowhere to queue`,
+            ...queueDiagnosis(layout, occupancy).map((lane) => `  — ${lane}`),
+          ].join('\n'),
         );
         return null;
       }
@@ -94,7 +109,7 @@ export class SlotReservationService {
       const ownReservation = cargo.reservedLocationName;
       const zoneCargos = await this.zoneCargos(manager, zone.id);
       const occupancy = ZoneOccupancy.of(zoneCargos, layout);
-      const chosen = this.chooseSlot(occupancy, options);
+      const chosen = this.chooseSlot(layout, occupancy, options);
       if (!chosen) {
         this.logger.debug(
           `Cargo ${cargoId}: zone "${zone.name}" offered no slot to commit yet`,
@@ -135,10 +150,11 @@ export class SlotReservationService {
     });
   }
 
-  async release(cargoId: string): Promise<void> {
+  async release(cargoId: string, zoneId: string): Promise<void> {
     await this.dataSource
       .getRepository(CargoEntity)
       .update(cargoId, { reservedLocationName: null });
+    this.announceReleasedSlot(zoneId);
   }
 
   async releaseCommit(cargoId: string, zone: ZoneEntity): Promise<void> {
@@ -156,17 +172,28 @@ export class SlotReservationService {
       cargo.destinationLocationName = null;
       cargo.slotDecisionSeq = nextSeq;
     });
+    this.announceReleasedSlot(zone.id);
   }
 
   private chooseSlot(
+    layout: ZoneSlotLayout,
     occupancy: ZoneOccupancy,
     options: SlotCommitOptions,
   ): string | null {
-    const filled = new Set([
-      ...occupancy.committedSlots(),
-      ...options.blockedLocationNames,
-    ]);
-    return deepestReachableCell(options.lane, filled)?.locationName ?? null;
+    const laneIndex = layout.lanes.indexOf(options.lane);
+    if (laneIndex === -1) return null;
+
+    const claims = occupancy.columnClaims();
+    const queue = queueOfLane(layout, laneIndex, {
+      finished: claims.finished,
+      committed: new Set([
+        ...claims.committed,
+        ...options.blockedLocationNames,
+        ...options.unstealableLocationNames,
+      ]),
+      reserved: new Set<string>(),
+    });
+    return queue.next('commit')?.locationName ?? null;
   }
 
   private async reassign(

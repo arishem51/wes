@@ -195,6 +195,7 @@ export class ZoneService {
       topology.points,
       topology.paths,
       memberLocationNames,
+      topology.laneAxis,
     );
 
     if (review.noFeeder) {

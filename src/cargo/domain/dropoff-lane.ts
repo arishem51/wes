@@ -1,10 +1,14 @@
 import type { ZoneOccupancy } from './zone-occupancy';
 import {
+  ColumnQueue,
+  targetOf,
+  type ColumnClaims,
+  type QueueNode,
+} from './column-queue';
+import {
+  eligibleLanes,
   laneIndexOfTarget,
-  nextLaneToFill,
-  waitingTargetsFor,
   type ZoneLane,
-  type ZoneSlot,
   type ZoneSlotLayout,
 } from './zone-slot-layout';
 
@@ -30,71 +34,67 @@ export function standsOnASlot(lane: ZoneLane, pointName: string): boolean {
   return lane.slots.some((slot) => slot.pointName === pointName);
 }
 
-export function deepestReachableCell(
-  lane: ZoneLane,
-  occupiedLocationNames: ReadonlySet<string>,
-): ZoneSlot | null {
-  let reachable = 0;
-  for (const [index, slot] of lane.slots.entries()) {
-    if (occupiedLocationNames.has(slot.locationName)) reachable = index + 1;
-  }
-  return lane.slots[reachable] ?? null;
-}
-
 export function serveOrder<T extends { readonly depth: number }>(
   spots: readonly T[],
 ): T[] {
   return [...spots].sort((a, b) => a.depth - b.depth);
 }
 
+export function queueOfLane(
+  layout: ZoneSlotLayout,
+  laneIndex: number,
+  claims: ColumnClaims,
+): ColumnQueue {
+  return ColumnQueue.of(nodesOf(layout.lanes[laneIndex], layout), claims);
+}
+
+function nodesOf(lane: ZoneLane, layout: ZoneSlotLayout): QueueNode[] {
+  const locationOf = new Map(
+    lane.slots.map((slot) => [slot.pointName, slot.locationName] as const),
+  );
+  const nodes: QueueNode[] = [];
+  for (const [index, pointName] of lane.axisPoints.entries()) {
+    if (layout.mainlinePoints.has(pointName)) break;
+    nodes.push({
+      pointName,
+      locationName: locationOf.get(pointName) ?? null,
+      along: lane.axisAlong[index],
+    });
+  }
+  return nodes;
+}
+
+function lanesWorthAsking(
+  layout: ZoneSlotLayout,
+  occupancy: ZoneOccupancy,
+): number[] {
+  const eligible = eligibleLanes(occupancy.activeCountByLane());
+  const first = eligible.indexOf(true);
+  if (first === -1) return [];
+  return layout.lanes.map((_, index) => index).slice(first);
+}
+
 export function whereToQueue(
   layout: ZoneSlotLayout,
   occupancy: ZoneOccupancy,
 ): string | null {
-  const laneIndex = nextLaneToFill(layout, occupancy.activeCountByLane());
-  if (laneIndex === null) return null;
-
-  const lane = layout.lanes[laneIndex];
-  const taken = occupancy.claimedTargets();
-  const committed = occupancy.committedInLane(laneIndex);
-
-  if (!committed) {
-    return (
-      lane.slots.find((slot) => !taken.has(slot.locationName))?.locationName ??
-      null
-    );
+  const claims = occupancy.columnClaims();
+  for (const index of lanesWorthAsking(layout, occupancy)) {
+    const node = queueOfLane(layout, index, claims).next('reserve');
+    if (node) return targetOf(node);
   }
-
-  const committedPoint = lane.slots.find(
-    (slot) => slot.locationName === committed,
-  )?.pointName;
-  if (!committedPoint) return null;
-
-  return (
-    waitingTargetsFor(lane, committedPoint).find(
-      (target) => !taken.has(target),
-    ) ?? null
-  );
+  return null;
 }
 
-export function canKeepDrivingTo(
+export function queueDiagnosis(
   layout: ZoneSlotLayout,
-  heading: string,
-  target: string,
-): boolean {
-  const headingLane = laneIndexOfTarget(layout, heading);
-  const targetLane = laneIndexOfTarget(layout, target);
-  if (headingLane === null || headingLane !== targetLane) return false;
-
-  const lane = layout.lanes[headingLane];
-  const headingDepth = axisIndexOf(lane, heading);
-  const targetDepth = axisIndexOf(lane, target);
-  if (headingDepth === -1 || targetDepth === -1) return false;
-
-  return targetDepth <= headingDepth;
-}
-
-function axisIndexOf(lane: ZoneLane, target: string): number {
-  const slot = lane.slots.find((cell) => cell.locationName === target);
-  return lane.axisPoints.indexOf(slot ? slot.pointName : target);
+  occupancy: ZoneOccupancy,
+): string[] {
+  const claims = occupancy.columnClaims();
+  const worthAsking = new Set(lanesWorthAsking(layout, occupancy));
+  return layout.lanes.map((_, index) => {
+    const queue = queueOfLane(layout, index, claims);
+    const skipped = worthAsking.has(index) ? '' : ', not eligible to fill yet';
+    return `lane ${index} (${queue.describe()}${skipped})`;
+  });
 }

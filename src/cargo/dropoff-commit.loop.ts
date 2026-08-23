@@ -18,15 +18,16 @@ import {
   SlotReservationService,
   type SlotCommitResult,
 } from './slot-reservation.service';
-import { VehicleAimService } from './vehicle-aim.service';
+import { VehicleAimService, type AimedVehicle } from './vehicle-aim.service';
 import {
   serveOrder,
   spotInReservedLane,
   standsOnASlot,
 } from './domain/dropoff-lane';
+import { targetOf } from './domain/column-queue';
+import { queueOfLane } from './domain/dropoff-lane';
 import {
   laneOfLocation,
-  waitingTargetsFor,
   type ZoneLane,
   type ZoneSlotLayout,
 } from './domain/zone-slot-layout';
@@ -43,6 +44,11 @@ interface CommitCandidate {
   readonly layout: ZoneSlotLayout;
   readonly lane: ZoneLane;
   readonly depth: number;
+}
+
+interface VacatedCell {
+  readonly aimed: AimedVehicle;
+  readonly fallback: string | null;
 }
 
 @Injectable()
@@ -240,11 +246,45 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
           candidate,
           taskByCargoId,
         ),
+        unstealableLocationNames: await this.reservationsHeldAhead(
+          candidate,
+          taskByCargoId,
+        ),
       },
     );
     if (!result) return;
 
     await this.applyCommit(candidate, result, taskByCargoId);
+  }
+
+  private async reservationsHeldAhead(
+    candidate: CommitCandidate,
+    taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
+  ): Promise<Set<string>> {
+    const queued = await this.cargoRepo.find({
+      where: {
+        destinationZoneId: candidate.zone.id,
+        status: CargoStatus.ACTIVE,
+        destinationLocationName: IsNull(),
+      },
+    });
+
+    const held = new Set<string>();
+    for (const cargo of queued) {
+      if (cargo.id === candidate.cargo.id) continue;
+      if (!cargo.reservedLocationName) continue;
+
+      const vehicle = taskByCargoId.get(cargo.id)?.metadata
+        ?.assignedVehicleName;
+      const position = vehicle
+        ? this.vehicleStore.get(vehicle)?.currentPosition
+        : null;
+      const depth = position ? candidate.lane.axisPoints.indexOf(position) : -1;
+      if (depth !== -1 && depth < candidate.depth) {
+        held.add(cargo.reservedLocationName);
+      }
+    }
+    return held;
   }
 
   private async applyCommit(
@@ -253,14 +293,18 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
   ): Promise<void> {
     const { task, vehicle } = candidate;
+    const vacated = await this.clearTheWayTo(result, taskByCargoId);
+
     const dropping = await this.vehicleAim.dropAt(
       { task, vehicle, cargoId: candidate.cargo.id },
       candidate.zone,
-      candidate.layout,
       result.slot,
       result.keptOwnReservation,
     );
-    if (!dropping) return;
+    if (!dropping) {
+      await this.putBackOnItsOrder(candidate, vacated);
+      return;
+    }
 
     this.logger.log(`Task ${task.id}: ${vehicle} committed ${result.slot}`);
 
@@ -268,6 +312,56 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
       await this.recordDisplaced(result, vehicle, taskByCargoId);
     }
     await this.reaimLane(candidate, result.slot, taskByCargoId);
+  }
+
+  private async clearTheWayTo(
+    result: SlotCommitResult,
+    taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
+  ): Promise<VacatedCell | null> {
+    const displaced = result.displaced;
+    if (!displaced) return null;
+
+    const task = await this.displacedTask(displaced.cargoId, taskByCargoId);
+    const vehicle = task?.metadata?.assignedVehicleName;
+    if (!task || !vehicle) return null;
+    if (task.metadata?.approachPointName !== result.slot) return null;
+
+    const aimed: AimedVehicle = {
+      task,
+      vehicle,
+      cargoId: displaced.cargoId,
+    };
+    await this.vehicleAim.stopApproaching(aimed);
+    this.logger.log(
+      `Task ${task.id}: ${vehicle} let go of ${result.slot} before it was handed over`,
+    );
+    return { aimed, fallback: displaced.replacementSlot };
+  }
+
+  private async putBackOnItsOrder(
+    candidate: CommitCandidate,
+    vacated: VacatedCell | null,
+  ): Promise<void> {
+    if (!vacated?.fallback) return;
+
+    await this.vehicleAim.queueAt(
+      vacated.aimed,
+      candidate.zone,
+      candidate.layout,
+      vacated.fallback,
+    );
+  }
+
+  private async displacedTask(
+    cargoId: string,
+    taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
+  ): Promise<TransportTaskEntity | null> {
+    return (
+      taskByCargoId.get(cargoId) ??
+      (await this.taskRepo.findOne({
+        where: { cargoId, status: TaskStatus.DELIVERING },
+      }))
+    );
   }
 
   private async reaimLane(
@@ -278,12 +372,17 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     const lane = laneOfLocation(candidate.layout, committedSlot);
     if (!lane) return;
 
-    const committedPoint = lane.slots.find(
-      (slot) => slot.locationName === committedSlot,
-    )?.pointName;
-    if (!committedPoint) return;
+    const laneIndex = candidate.layout.lanes.indexOf(lane);
+    if (laneIndex === -1) return;
 
-    const chain = waitingTargetsFor(lane, committedPoint);
+    const chain = queueOfLane(candidate.layout, laneIndex, {
+      finished: await this.palletsAlreadyDown(candidate.zone.id),
+      committed: new Set([committedSlot]),
+      reserved: new Set<string>(),
+    })
+      .standing()
+      .slice(1)
+      .map(targetOf);
     const waiting = await this.waitingBehind(candidate, lane, taskByCargoId);
     for (const [index, entry] of waiting.entries()) {
       const target = chain[index];
@@ -300,6 +399,17 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
         target,
       );
     }
+  }
+
+  private async palletsAlreadyDown(zoneId: string): Promise<Set<string>> {
+    const delivered = await this.cargoRepo.find({
+      where: { destinationZoneId: zoneId, status: CargoStatus.DELIVERED },
+    });
+    return new Set(
+      delivered
+        .map((cargo) => cargo.destinationLocationName)
+        .filter((name): name is string => name !== null),
+    );
   }
 
   private async waitingBehind(
@@ -360,11 +470,7 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
   ): Promise<void> {
     const displaced = result.displaced!;
-    const victim =
-      taskByCargoId.get(displaced.cargoId) ??
-      (await this.taskRepo.findOne({
-        where: { cargoId: displaced.cargoId, status: TaskStatus.DELIVERING },
-      }));
+    const victim = await this.displacedTask(displaced.cargoId, taskByCargoId);
     if (!victim) return;
 
     const victimVehicle = victim.metadata?.assignedVehicleName;
