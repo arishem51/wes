@@ -107,29 +107,22 @@ function parkCapacity(input: MapHealthInput): MapHealthCheck {
   const parks = parkPointNames.length;
   const chargers = chargeLocationNames.length;
   const shortfall = fleet - parks;
-  const standingShortfall = fleet - parks - chargers;
-
-  const findings: MapHealthFinding[] = [];
-  if (shortfall > 0 && standingShortfall <= 0) {
-    findings.push({
-      detail: `${shortfall} xe phải đứng lên điểm sạc để có chỗ — đủ chỗ đứng, nhưng chiếm mất ${shortfall}/${chargers} điểm sạc`,
-      pointNames: parkPointNames,
-      locationNames: chargeLocationNames,
-    });
-  } else if (standingShortfall > 0) {
-    findings.push({
-      detail: `${standingShortfall} xe không có chỗ đứng kể cả khi chiếm hết ${chargers} điểm sạc`,
-      pointNames: parkPointNames,
-      locationNames: chargeLocationNames,
-    });
-  }
 
   return check({
     code: 'PARK_CAPACITY',
-    title: 'Sức chứa chỗ đỗ & sạc',
-    okSummary: `${parks} chỗ đỗ + ${chargers} điểm sạc cho ${fleet} xe`,
-    warnSummary: `Thiếu ${shortfall} chỗ đỗ: map khai báo ${fleet} xe nhưng chỉ có ${parks} điểm PARK_POSITION (thêm ${chargers} điểm sạc)`,
-    findings,
+    title: 'Sức chứa điểm đỗ & sạc',
+    okSummary: `${parks} điểm đỗ + ${chargers} điểm sạc cho ${fleet} xe`,
+    warnSummary: `Thiếu điểm đỗ cho ${shortfall} xe`,
+    findings:
+      shortfall > 0
+        ? [
+            {
+              detail: `${fleet} xe / ${parks} điểm đỗ + ${chargers} điểm sạc`,
+              pointNames: parkPointNames,
+              locationNames: chargeLocationNames,
+            },
+          ]
+        : [],
   });
 }
 

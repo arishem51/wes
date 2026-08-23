@@ -111,7 +111,7 @@ describe('buildMapHealthReport', () => {
     const park = checkFor(report, 'PARK_CAPACITY');
 
     expect(park.severity).toBe('warn');
-    expect(park.summary).toContain('Thiếu 2 chỗ đỗ');
+    expect(park.summary).toBe('Thiếu điểm đỗ cho 2 xe');
   });
 
   it('does not warn when there are more park points than vehicles', () => {
@@ -138,11 +138,11 @@ describe('buildMapHealthReport', () => {
     );
 
     expect(checkFor(report, 'PARK_CAPACITY').summary).toBe(
-      '1 chỗ đỗ + 1 điểm sạc cho 1 xe',
+      '1 điểm đỗ + 1 điểm sạc cho 1 xe',
     );
   });
 
-  it('says the overflow lands on the chargers when they cover it', () => {
+  it('spells out the fleet against both kinds of standing spot', () => {
     const report = buildMapHealthReport(
       input({
         points: [point('P1', 0, 0, 'PARK_POSITION')],
@@ -153,13 +153,12 @@ describe('buildMapHealthReport', () => {
     const park = checkFor(report, 'PARK_CAPACITY');
 
     expect(park.severity).toBe('warn');
-    expect(park.findings[0].detail).toBe(
-      '1 xe phải đứng lên điểm sạc để có chỗ — đủ chỗ đứng, nhưng chiếm mất 1/2 điểm sạc',
-    );
+    expect(park.summary).toBe('Thiếu điểm đỗ cho 1 xe');
+    expect(park.findings[0].detail).toBe('2 xe / 1 điểm đỗ + 2 điểm sạc');
     expect(park.findings[0].locationNames).toEqual(['CHG-1', 'CHG-2']);
   });
 
-  it('says how many vehicles are stranded even with every charger taken', () => {
+  it('still warns when the chargers cannot absorb the overflow either', () => {
     const report = buildMapHealthReport(
       input({
         points: [point('P1', 0, 0, 'PARK_POSITION')],
@@ -168,8 +167,8 @@ describe('buildMapHealthReport', () => {
       }),
     );
 
-    expect(checkFor(report, 'PARK_CAPACITY').findings[0].detail).toBe(
-      '2 xe không có chỗ đứng kể cả khi chiếm hết 1 điểm sạc',
+    expect(checkFor(report, 'PARK_CAPACITY').summary).toBe(
+      'Thiếu điểm đỗ cho 3 xe',
     );
   });
 
@@ -186,7 +185,7 @@ describe('buildMapHealthReport', () => {
     );
 
     expect(checkFor(report, 'PARK_CAPACITY').summary).toBe(
-      '1 chỗ đỗ + 0 điểm sạc cho 1 xe',
+      '1 điểm đỗ + 0 điểm sạc cho 1 xe',
     );
   });
 
