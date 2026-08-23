@@ -3,9 +3,8 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { AxiosError } from 'axios';
 import { KernelApiService } from '../kernel-api.service';
+import { describeShift, alignPoints } from '../domain/point-alignment';
 import { parseOpenTcsXml, PlantModelDto } from './opentcs-xml.parser';
-// Auto-generation of single-vehicle lane blocks disabled — see below.
-// import { applySingleVehicleBlocks } from '../domain/apply-blocks';
 
 @Injectable()
 export class MapLoaderService implements OnApplicationBootstrap {
@@ -51,12 +50,11 @@ export class MapLoaderService implements OnApplicationBootstrap {
       return;
     }
 
-    // Auto-generation of single-vehicle lane blocks (SVB-*) DISABLED.
-    // Previously WES derived SINGLE_VEHICLE_ONLY blocks from the path graph to
-    // serialise single-file / dead-end lanes; only hand-authored blocks in the
-    // loaded map XML are kept now.
-    // const blockCount = applySingleVehicleBlocks(model).blocks.length;
-    // this.logger.log(`Generated ${blockCount} single-vehicle lane block(s)`);
+    const aligned = alignPoints(model.points);
+    for (const shift of aligned.shifts) {
+      this.logger.warn(`Point alignment ${describeShift(shift)}`);
+    }
+    model = { ...model, points: aligned.points };
 
     try {
       await this.kernelApi.putPlantModel(model);

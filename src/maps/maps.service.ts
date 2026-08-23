@@ -14,8 +14,13 @@ import type {
   KernelLocationType,
   KernelVehicleState,
 } from '../opentcs/domain/kernel-model';
+import { toKernelPlantModel } from '../opentcs/domain/kernel-mappers';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
 import { savePlantModel } from '../opentcs/save-plant-model';
+import {
+  buildMapHealthReport,
+  type MapHealthReport,
+} from './domain/map-health';
 import { MapRecordEntity } from './entities/map-record.entity';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
 
@@ -41,6 +46,17 @@ interface KernelPlantModelSummary {
   pointCount: number;
   pathCount: number;
   vehicleCount: number;
+}
+
+function vehicleNamesOf(raw: unknown): string[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const vehicles = (raw as { vehicles?: unknown }).vehicles;
+  if (!Array.isArray(vehicles)) return [];
+  return vehicles.flatMap((vehicle: unknown) => {
+    if (!vehicle || typeof vehicle !== 'object') return [];
+    const name = (vehicle as { name?: unknown }).name;
+    return typeof name === 'string' ? [name] : [];
+  });
 }
 
 @Injectable()
@@ -84,6 +100,25 @@ export class MapsService {
   async getPlantModel(): Promise<unknown> {
     const plantModel = await this.kernelApi.getRawPlantModel();
     return this.toPlantModelSummary(plantModel) ? plantModel : null;
+  }
+
+  async getHealth(): Promise<MapHealthReport | null> {
+    const raw = await this.kernelApi.getRawPlantModel();
+    const summary = this.toPlantModelSummary(raw);
+    if (!summary) return null;
+
+    const model = toKernelPlantModel(raw);
+    if (!model) return null;
+
+    return buildMapHealthReport({
+      mapName: summary.name,
+      points: model.points,
+      paths: model.paths,
+      locations: model.locations,
+      locationTypes: model.locationTypes,
+      chargeOperation: this.kernelApi.chargeOperation,
+      vehicleNames: vehicleNamesOf(raw),
+    });
   }
 
   async getKernelVehicles(): Promise<KernelVehicleState[]> {

@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * Pickup row-dependency (WF-02 / ARCHITECTURE §6.3):
+ * Pickup row-dependency (WF-02 / SRS BR-10):
  *  - cargos.source_zone_id links a cargo to the PICKUP zone of its source.
  *  - transport_request_status_enum gains BLOCKED for tasks held behind an
  *    un-picked cargo in the same lane.

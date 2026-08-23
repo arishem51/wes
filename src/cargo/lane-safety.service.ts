@@ -22,16 +22,6 @@ interface DeeperPickup {
   cargo: CargoEntity;
 }
 
-/**
- * Keeps a pickup lane safe to add cargo to (ARCHITECTURE §6.3).
- *
- * An AGV cannot drive through a row, so putting a box in a shallow slot while a
- * vehicle is already ordered to a deeper slot of the same lane would trap that
- * vehicle. Called from the create-cargo use case: it either clears the lane by
- * preempting the deeper pickups, or refuses the placement when a vehicle has
- * already been granted resources inside the lane and can no longer be halted
- * outside it.
- */
 @Injectable()
 export class LaneSafetyService {
   private readonly logger = new Logger(LaneSafetyService.name);

@@ -68,6 +68,11 @@ export class MapsController {
     return this.maps.getPlantModel();
   }
 
+  @Get('health')
+  getHealth() {
+    return this.maps.getHealth();
+  }
+
   @Get('cargo-options')
   getCargoOptions() {
     return this.maps.getCargoOptions();

@@ -22,6 +22,7 @@ import {
   toTransportOrderDebugList,
   unusablePlantModelEntries,
 } from './domain/kernel-mappers';
+import { describeShift, alignPoints } from './domain/point-alignment';
 import { vehicleOperationsFor } from './domain/vehicle-operations';
 import { toVehicleCommandException } from './vehicle-command-error';
 
@@ -111,8 +112,15 @@ export class KernelApiService {
       );
     }
 
-    this.cachedPlantModelView = view;
-    return view;
+    const aligned = alignPoints(view.points);
+    for (const shift of aligned.shifts) {
+      this.logger.warn(
+        `Plant model: point ${describeShift(shift)} — lane and column grouping compares coordinates exactly, so WES reads the aligned value`,
+      );
+    }
+
+    this.cachedPlantModelView = { ...view, points: aligned.points };
+    return this.cachedPlantModelView;
   }
 
   async getPointNamesByLocation(): Promise<Map<string, string[]>> {

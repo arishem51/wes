@@ -133,7 +133,6 @@
     <point name="0021" positionX="28367" positionY="25638" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0021 --- 0022"/>
-        <outgoingPath name="0021 --- 2026"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
     </point>
@@ -184,7 +183,6 @@
     <point name="0029" positionX="20767" positionY="25638" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0029 --- 0030"/>
-        <outgoingPath name="0029 --- 2018"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
     </point>
@@ -252,7 +250,6 @@
     </point>
     <point name="0046" positionX="4617" positionY="25638" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0046 --- 2001"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
     </point>
@@ -4161,7 +4158,6 @@
     <point name="0740" positionX="10317" positionY="25638" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0740 --- 0041"/>
-        <outgoingPath name="0740 --- 2007"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
     </point>
@@ -4174,7 +4170,6 @@
     </point>
     <point name="0747" positionX="54967" positionY="25638" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="0747 --- 2054"/>
         <outgoingPath name="0747 --- 2076"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
@@ -4189,7 +4184,6 @@
     <point name="0749" positionX="16017" positionY="25638" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0749 --- 0750"/>
-        <outgoingPath name="0749 --- 2013"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
     </point>
@@ -4757,6 +4751,7 @@
     </point>
     <point name="2001" positionX="4617" positionY="26788" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="2001 --- 0046"/>
         <outgoingPath name="2001 --- 2002"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
@@ -4798,6 +4793,7 @@
     </point>
     <point name="2007" positionX="10317" positionY="26788" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="2007 --- 0740"/>
         <outgoingPath name="2007 --- 2008"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
@@ -4839,6 +4835,7 @@
     </point>
     <point name="2013" positionX="16017" positionY="26788" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="2013 --- 0749"/>
         <outgoingPath name="2013 --- 2014"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
@@ -4873,6 +4870,7 @@
     </point>
     <point name="2018" positionX="20767" positionY="26788" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="2018 --- 0029"/>
         <outgoingPath name="2018 --- 2019"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
@@ -4928,6 +4926,7 @@
     </point>
     <point name="2026" positionX="28367" positionY="26788" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="2026 --- 0021"/>
         <outgoingPath name="2026 --- 2027"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
@@ -5089,6 +5088,7 @@
     <point name="2050" positionX="51167" positionY="26788" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="2050 --- 2051"/>
+        <outgoingPath name="2050 --- 2079"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
     </point>
@@ -5115,6 +5115,7 @@
     </point>
     <point name="2054" positionX="54967" positionY="26788" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="2054 --- 0747"/>
         <outgoingPath name="2054 --- 2055"/>
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
@@ -5278,7 +5279,6 @@
     </point>
     <point name="2079" positionX="51167" positionY="25638" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
-        <outgoingPath name="2079 --- 2050"/>
         <outgoingPath name="2079 --- 2080"/>
         <outgoingPath name="2079 --- 2466"/>
         <property name="laser" value="on"/>
@@ -10877,9 +10877,6 @@
     <path name="0021 --- 0022" sourcePoint="0021" destinationPoint="0022" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <path name="0021 --- 2026" sourcePoint="0021" destinationPoint="2026" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
     <path name="0022 --- 0023" sourcePoint="0022" destinationPoint="0023" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
@@ -10908,9 +10905,6 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0029 --- 0030" sourcePoint="0029" destinationPoint="0030" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0029 --- 2018" sourcePoint="0029" destinationPoint="2018" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0030 --- 0199" sourcePoint="0030" destinationPoint="0199" length="950" maxVelocity="1000" maxReverseVelocity="0" locked="false">
@@ -10962,9 +10956,6 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0045 --- 0202" sourcePoint="0045" destinationPoint="0202" length="950" maxVelocity="1000" maxReverseVelocity="0" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0046 --- 2001" sourcePoint="0046" destinationPoint="2001" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0047 --- 0046" sourcePoint="0047" destinationPoint="0046" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
@@ -13841,16 +13832,10 @@
     <path name="0740 --- 0041" sourcePoint="0740" destinationPoint="0041" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
-    <path name="0740 --- 2007" sourcePoint="0740" destinationPoint="2007" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
     <path name="0746 --- 2048" sourcePoint="0746" destinationPoint="2048" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0746 --- 2082" sourcePoint="0746" destinationPoint="2082" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0747 --- 2054" sourcePoint="0747" destinationPoint="2054" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0747 --- 2076" sourcePoint="0747" destinationPoint="2076" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
@@ -13863,9 +13848,6 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0749 --- 0750" sourcePoint="0749" destinationPoint="0750" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="0749 --- 2013" sourcePoint="0749" destinationPoint="2013" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0750 --- 0471" sourcePoint="0750" destinationPoint="0471" length="950" maxVelocity="1000" maxReverseVelocity="0" locked="false">
@@ -14324,6 +14306,9 @@
     <path name="2000 --- 2001" sourcePoint="2000" destinationPoint="2001" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="2001 --- 0046" sourcePoint="2001" destinationPoint="0046" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="2001 --- 2002" sourcePoint="2001" destinationPoint="2002" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
@@ -14355,6 +14340,9 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2006 --- 2007" sourcePoint="2006" destinationPoint="2007" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="2007 --- 0740" sourcePoint="2007" destinationPoint="0740" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2007 --- 2008" sourcePoint="2007" destinationPoint="2008" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
@@ -14390,6 +14378,9 @@
     <path name="2012 --- 2013" sourcePoint="2012" destinationPoint="2013" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="2013 --- 0749" sourcePoint="2013" destinationPoint="0749" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="2013 --- 2014" sourcePoint="2013" destinationPoint="2014" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
@@ -14415,6 +14406,9 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2017 --- 2018" sourcePoint="2017" destinationPoint="2018" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="2018 --- 0029" sourcePoint="2018" destinationPoint="0029" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2018 --- 2019" sourcePoint="2018" destinationPoint="2019" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
@@ -14460,6 +14454,9 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2025 --- 2026" sourcePoint="2025" destinationPoint="2026" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="2026 --- 0021" sourcePoint="2026" destinationPoint="0021" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2026 --- 2027" sourcePoint="2026" destinationPoint="2027" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
@@ -14600,6 +14597,9 @@
     <path name="2050 --- 2051" sourcePoint="2050" destinationPoint="2051" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="2050 --- 2079" sourcePoint="2050" destinationPoint="2079" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="2051 --- 2052" sourcePoint="2051" destinationPoint="2052" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
@@ -14616,6 +14616,9 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2053 --- 2076" sourcePoint="2053" destinationPoint="2076" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="2054 --- 0747" sourcePoint="2054" destinationPoint="0747" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2054 --- 2055" sourcePoint="2054" destinationPoint="2055" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
@@ -14745,9 +14748,6 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2078 --- 2079" sourcePoint="2078" destinationPoint="2079" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
-        <pathLayout connectionType="DIRECT" layerId="0"/>
-    </path>
-    <path name="2079 --- 2050" sourcePoint="2079" destinationPoint="2050" length="1150" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="2079 --- 2080" sourcePoint="2079" destinationPoint="2080" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
@@ -18896,9 +18896,303 @@
     <path name="3056 --- 3055" sourcePoint="3056" destinationPoint="3055" length="800" maxVelocity="1000" maxReverseVelocity="0" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <vehicle name="Vehicle-0001" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V01"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0002" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V02"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0003" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V03"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0004" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V04"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0005" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V05"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0006" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V06"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0007" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V07"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0008" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V08"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0009" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V09"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0010" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V10"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0011" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V11"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0012" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V12"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0013" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V13"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0014" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V14"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
+    <vehicle name="Vehicle-0015" energyLevelCritical="10" energyLevelGood="90" energyLevelFullyRecharged="95" energyLevelSufficientlyRecharged="40" maxVelocity="10000" maxReverseVelocity="10000" envelopeKey="">
+        <boundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <property name="tcs:preferredAdapterClass" value="org.opentcs.fms.kernel.vda5050.AubotCommAdapterFactory"/>
+        <property name="tcs:vehicleDataTransformer" value="FMS_LASER_TRANSFORMER"/>
+        <property name="vda5050:deviationTheta" value="10"/>
+        <property name="vda5050:deviationXY" value="0.1"/>
+        <property name="vda5050:interfaceName" value="aubotagv"/>
+        <property name="vda5050:manufacturer" value="AUBOT"/>
+        <property name="vda5050:mapId" value="F1"/>
+        <property name="vda5050:maxIgnoredRejections" value="3"/>
+        <property name="vda5050:maxStepsBase" value="2"/>
+        <property name="vda5050:maxStepsHorizon" value="0"/>
+        <property name="vda5050:optionalParams.order.edges.maxSpeed" value="NOT_SUPPORTED"/>
+        <property name="vda5050:rechargeOperation" value="startCharging"/>
+        <property name="vda5050:serialNumber" value="V15"/>
+        <property name="vda5050:version" value="2.0"/>
+        <vehicleLayout color="#00FF00"/>
+    </vehicle>
     <locationType name="LType-0001">
         <locationTypeLayout locationRepresentation="NONE"/>
     </locationType>
+    <locationType name="charging">
+        <allowedOperation name="startCharging"/>
+        <locationTypeLayout locationRepresentation="NONE"/>
+    </locationType>
+    <location name="Charging-1013" positionX="2667" positionY="23088" positionZ="0" locked="false" type="charging">
+        <link point="1013"/>
+        <locationLayout labelOffsetX="0" labelOffsetY="0" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charging-1014" positionX="2667" positionY="22288" positionZ="0" locked="false" type="charging">
+        <link point="1014"/>
+        <locationLayout labelOffsetX="0" labelOffsetY="0" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charging-1015" positionX="2667" positionY="21488" positionZ="0" locked="false" type="charging">
+        <link point="1015"/>
+        <locationLayout labelOffsetX="0" labelOffsetY="0" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charging-1016" positionX="2667" positionY="20688" positionZ="0" locked="false" type="charging">
+        <link point="1016"/>
+        <locationLayout labelOffsetX="0" labelOffsetY="0" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
+    <location name="Charging-1017" positionX="54967" positionY="29338" positionZ="0" locked="false" type="charging">
+        <link point="1017"/>
+        <locationLayout labelOffsetX="0" labelOffsetY="0" locationRepresentation="DEFAULT" layerId="0"/>
+    </location>
     <visualLayout name="Layout" scaleX="5.0" scaleY="5.0">
         <layer id="0" ordinal="0" visible="true" name="Default layer" groupId="0"/>
         <layerGroup id="0" name="Default layer group" visible="true"/>
