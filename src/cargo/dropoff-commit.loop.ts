@@ -26,6 +26,7 @@ import {
 } from './domain/dropoff-lane';
 import { targetOf } from './domain/column-queue';
 import { queueOfLane } from './domain/dropoff-lane';
+import { seatTheQueue } from './domain/queue-assignment';
 import {
   laneOfLocation,
   type ZoneLane,
@@ -44,6 +45,13 @@ interface CommitCandidate {
   readonly layout: ZoneSlotLayout;
   readonly lane: ZoneLane;
   readonly depth: number;
+}
+
+interface WaitingVehicle {
+  readonly task: TransportTaskEntity;
+  readonly vehicle: string;
+  readonly cargoId: string;
+  readonly reserved: string | null;
 }
 
 interface VacatedCell {
@@ -384,14 +392,20 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
       .slice(1)
       .map(targetOf);
     const waiting = await this.waitingBehind(candidate, lane, taskByCargoId);
-    for (const [index, entry] of waiting.entries()) {
-      const target = chain[index];
+    const heldElsewhere = await this.cellsHeldOutside(candidate, waiting);
+
+    for (const { entry, target } of seatTheQueue(
+      chain,
+      waiting,
+      heldElsewhere,
+    )) {
       if (!target) {
         this.logger.warn(
           `Task ${entry.task.id}: ${entry.vehicle} has nowhere left to wait behind ${committedSlot}`,
         );
         continue;
       }
+      if (entry.reserved === target) continue;
       await this.vehicleAim.queueAt(
         entry,
         candidate.zone,
@@ -416,9 +430,7 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     candidate: CommitCandidate,
     lane: ZoneLane,
     taskByCargoId: ReadonlyMap<string, TransportTaskEntity>,
-  ): Promise<
-    { task: TransportTaskEntity; vehicle: string; cargoId: string }[]
-  > {
+  ): Promise<WaitingVehicle[]> {
     const laneTargets = new Set<string>([
       ...lane.slots.map((slot) => slot.locationName),
       ...lane.axisPoints,
@@ -431,12 +443,7 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    const waiting: {
-      task: TransportTaskEntity;
-      vehicle: string;
-      cargoId: string;
-      distance: number;
-    }[] = [];
+    const waiting: (WaitingVehicle & { distance: number })[] = [];
     for (const cargo of cargos) {
       if (cargo.id === candidate.cargo.id) continue;
       if (
@@ -455,13 +462,41 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
         task,
         vehicle,
         cargoId: cargo.id,
+        reserved: cargo.reservedLocationName,
         distance: onAxis === -1 ? Number.MAX_SAFE_INTEGER : onAxis,
       });
     }
 
     return waiting
       .sort((a, b) => a.distance - b.distance)
-      .map(({ task, vehicle, cargoId }) => ({ task, vehicle, cargoId }));
+      .map(({ task, vehicle, cargoId, reserved }) => ({
+        task,
+        vehicle,
+        cargoId,
+        reserved,
+      }));
+  }
+
+  private async cellsHeldOutside(
+    candidate: CommitCandidate,
+    waiting: readonly WaitingVehicle[],
+  ): Promise<Set<string>> {
+    const theirs = new Set(waiting.map((entry) => entry.cargoId));
+    const cargos = await this.cargoRepo.find({
+      where: {
+        status: CargoStatus.ACTIVE,
+        destinationLocationName: IsNull(),
+      },
+    });
+
+    return cargos.reduce((held, cargo) => {
+      const isSomeoneElse =
+        !theirs.has(cargo.id) && cargo.id !== candidate.cargo.id;
+      if (isSomeoneElse && cargo.reservedLocationName) {
+        held.add(cargo.reservedLocationName);
+      }
+      return held;
+    }, new Set<string>());
   }
 
   private async recordDisplaced(

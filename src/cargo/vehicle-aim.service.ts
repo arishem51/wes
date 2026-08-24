@@ -31,19 +31,35 @@ export class VehicleAimService {
     layout: ZoneSlotLayout,
     cell: string,
   ): Promise<boolean> {
+    const claimed = await this.slotReservation.claimCell(
+      aimed.cargoId,
+      cell,
+      zone,
+    );
+    if (!claimed) {
+      this.logger.warn(
+        `Task ${aimed.task.id}: ${aimed.vehicle} cannot wait at ${cell} — another cargo holds it`,
+      );
+      return false;
+    }
+
     const orderName = await this.approachOrder.aim(
       aimed.task,
       aimed.vehicle,
       approachTargetFor(layout, cell),
     );
     if (!orderName) {
+      await this.slotReservation.restoreClaim(
+        aimed.cargoId,
+        claimed.previous,
+        zone,
+      );
       this.logger.error(
-        `Task ${aimed.task.id}: ${aimed.vehicle} has no order for ${cell} — leaving it where it was aimed`,
+        `Task ${aimed.task.id}: ${aimed.vehicle} has no order for ${cell} — gave the cell back`,
       );
       return false;
     }
 
-    await this.slotReservation.aimAt(aimed.cargoId, cell, zone);
     return true;
   }
 

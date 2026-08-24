@@ -21,9 +21,15 @@ import { savePlantModel } from '../opentcs/save-plant-model';
 import {
   buildMapHealthReport,
   type MapHealthReport,
+  type MapHealthZone,
 } from './domain/map-health';
 import { MapRecordEntity } from './entities/map-record.entity';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
+import {
+  ZoneEntity,
+  ZoneStatus,
+  ZoneType,
+} from '../zones/entities/zone.entity';
 
 export type KernelMode = 'MODELLING' | 'OPERATING';
 
@@ -72,6 +78,8 @@ export class MapsService {
     private readonly repo: Repository<MapRecordEntity>,
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
+    @InjectRepository(ZoneEntity)
+    private readonly zoneRepo: Repository<ZoneEntity>,
   ) {}
 
   async getKernelStatus(): Promise<KernelStatusDto> {
@@ -119,8 +127,24 @@ export class MapsService {
       locations: model.locations,
       locationTypes: model.locationTypes,
       chargeOperation: this.kernelApi.chargeOperation,
+      loadOperation: this.kernelApi.loadOperation,
+      unloadOperation: this.kernelApi.unloadOperation,
       vehicleNames: vehicleNamesOf(raw),
+      zones: await this.zonesDrawnOn(summary.name),
     });
+  }
+
+  private async zonesDrawnOn(mapName: string): Promise<MapHealthZone[]> {
+    const zones = await this.zoneRepo.find({
+      where: { plantModelName: mapName, status: ZoneStatus.ACTIVE },
+    });
+    return zones.map((zone) => ({
+      name: zone.name,
+      type: zone.type === ZoneType.PICKUP ? 'PICKUP' : 'DROPOFF',
+      locationNames: [...zone.members]
+        .sort((a, b) => a.positionIndex - b.positionIndex)
+        .map((member) => member.locationName),
+    }));
   }
 
   async getKernelVehicles(): Promise<KernelVehicleState[]> {

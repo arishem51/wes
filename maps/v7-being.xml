@@ -19173,6 +19173,14 @@
         <allowedOperation name="startCharging"/>
         <locationTypeLayout locationRepresentation="NONE"/>
     </locationType>
+    <locationType name="Pick up">
+        <allowedOperation name="liftUp"/>
+        <locationTypeLayout locationRepresentation="NONE"/>
+    </locationType>
+    <locationType name="Drop off">
+        <allowedOperation name="liftDown"/>
+        <locationTypeLayout locationRepresentation="NONE"/>
+    </locationType>
     <location name="Charging-1013" positionX="2667" positionY="23088" positionZ="0" locked="false" type="charging">
         <link point="1013"/>
         <locationLayout labelOffsetX="0" labelOffsetY="0" locationRepresentation="DEFAULT" layerId="0"/>

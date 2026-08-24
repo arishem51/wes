@@ -37,7 +37,8 @@ const LAYOUT: ZoneSlotLayout = {
 
 function setup(metadata: Record<string, unknown> = {}) {
   const slotReservation = {
-    aimAt: jest.fn().mockResolvedValue(undefined),
+    claimCell: jest.fn().mockResolvedValue({ previous: null }),
+    restoreClaim: jest.fn().mockResolvedValue(undefined),
     releaseCommit: jest.fn().mockResolvedValue(undefined),
   };
   const approachOrder = {
@@ -62,27 +63,40 @@ function setup(metadata: Record<string, unknown> = {}) {
 }
 
 describe('queueAt', () => {
-  it('writes the reservation only after the kernel has the order', async () => {
+  it('claims the cell before asking the kernel for the order', async () => {
     const { service, slotReservation, approachOrder, aimed } = setup();
 
     await service.queueAt(aimed, ZONE, LAYOUT, CORRIDOR);
 
-    expect(approachOrder.aim.mock.invocationCallOrder[0]).toBeLessThan(
-      slotReservation.aimAt.mock.invocationCallOrder[0],
+    expect(slotReservation.claimCell.mock.invocationCallOrder[0]).toBeLessThan(
+      approachOrder.aim.mock.invocationCallOrder[0],
     );
-    expect(slotReservation.aimAt).toHaveBeenCalledWith(
+    expect(slotReservation.claimCell).toHaveBeenCalledWith(
       'cargo-1',
       CORRIDOR,
       ZONE,
     );
   });
 
-  it('leaves the reservation alone when the order cannot be created', async () => {
+  it('never orders a vehicle to a cell another cargo holds', async () => {
     const { service, slotReservation, approachOrder, aimed } = setup();
+    slotReservation.claimCell.mockResolvedValueOnce(null);
+
+    expect(await service.queueAt(aimed, ZONE, LAYOUT, CORRIDOR)).toBe(false);
+    expect(approachOrder.aim).not.toHaveBeenCalled();
+  });
+
+  it('gives the cell back when the order cannot be created', async () => {
+    const { service, slotReservation, approachOrder, aimed } = setup();
+    slotReservation.claimCell.mockResolvedValueOnce({ previous: SLOT });
     approachOrder.aim.mockResolvedValueOnce(null);
 
     expect(await service.queueAt(aimed, ZONE, LAYOUT, CORRIDOR)).toBe(false);
-    expect(slotReservation.aimAt).not.toHaveBeenCalled();
+    expect(slotReservation.restoreClaim).toHaveBeenCalledWith(
+      'cargo-1',
+      SLOT,
+      ZONE,
+    );
   });
 
   it('sends a drop-off cell as a location and a corridor point as a point', async () => {

@@ -32,6 +32,10 @@ export interface SlotCommitResult {
   displaced: DisplacedCargo | null;
 }
 
+export interface ClaimedCell {
+  readonly previous: string | null;
+}
+
 export interface SlotCommitOptions {
   readonly blockedLocationNames: ReadonlySet<string>;
   readonly unstealableLocationNames: ReadonlySet<string>;
@@ -225,9 +229,31 @@ export class SlotReservationService {
     return replacementSlot;
   }
 
-  async aimAt(
+  async claimCell(
     cargoId: string,
     target: string,
+    zone: ZoneEntity,
+  ): Promise<ClaimedCell | null> {
+    return this.withZoneLock(zone, async (manager) => {
+      const repo = manager.getRepository(CargoEntity);
+      const cargo = await repo.findOne({ where: { id: cargoId } });
+      if (!cargo || cargo.destinationLocationName) return null;
+      if (cargo.reservedLocationName === target) return { previous: target };
+
+      const holder = await repo.findOne({
+        where: { status: CargoStatus.ACTIVE, reservedLocationName: target },
+      });
+      if (holder && holder.id !== cargoId) return null;
+
+      const previous = cargo.reservedLocationName;
+      await this.writeReservation(manager, cargo, target);
+      return { previous };
+    });
+  }
+
+  async restoreClaim(
+    cargoId: string,
+    target: string | null,
     zone: ZoneEntity,
   ): Promise<void> {
     await this.withZoneLock(zone, async (manager) => {
@@ -235,7 +261,6 @@ export class SlotReservationService {
         .getRepository(CargoEntity)
         .findOne({ where: { id: cargoId } });
       if (!cargo || cargo.destinationLocationName) return;
-      if (cargo.reservedLocationName === target) return;
       await this.writeReservation(manager, cargo, target);
     });
   }

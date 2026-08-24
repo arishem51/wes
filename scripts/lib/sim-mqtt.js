@@ -25,6 +25,7 @@ function config({ host = 'localhost', port = '1883' } = {}) {
     manufacturer: process.env.VDA5050_MANUFACTURER || 'AUBOT',
     interfaceName: process.env.VDA5050_INTERFACE_NAME || 'aubotagv',
     protocolVersion: process.env.VDA5050_VERSION || '2.0.0',
+    discoverMs: Number(process.env.DISCOVER_MS || 1500),
     verifyMs: Number(process.env.VERIFY_MS || 2500),
   };
 }
@@ -100,6 +101,42 @@ function readLatest(client, topic, windowMs, qos = 1) {
   });
 }
 
+function collect(client, topic, windowMs, onMessage, qos = 1) {
+  return new Promise((resolve, reject) => {
+    const handler = (receivedTopic, raw) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
+      onMessage(parsed, receivedTopic);
+    };
+    client.on('message', handler);
+    client.subscribe(topic, { qos }, (err) => {
+      if (err) {
+        client.off('message', handler);
+        reject(err);
+        return;
+      }
+      setTimeout(() => {
+        client.off('message', handler);
+        client.unsubscribe(topic, () => resolve());
+      }, windowMs);
+    });
+  });
+}
+
+async function discoverOnline(client, cfg) {
+  const online = new Set();
+  await collect(client, vehicleTopic(cfg, '+', 'connection'), cfg.discoverMs, (msg) => {
+    if (!msg.serialNumber) return;
+    if (msg.connectionState === 'ONLINE') online.add(msg.serialNumber);
+    else online.delete(msg.serialNumber);
+  });
+  return [...online].sort();
+}
+
 function arg(args, name, fallback) {
   const i = args.indexOf(`--${name}`);
   return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : fallback;
@@ -115,5 +152,6 @@ module.exports = {
   connect,
   publish,
   readLatest,
+  discoverOnline,
   arg,
 };

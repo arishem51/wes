@@ -269,6 +269,25 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
     expect(dispatchedTaskIds).toEqual(['t2', 't3']);
   });
 
+  it('dispatches the rest of the batch when one task blocks just before its order goes out', async () => {
+    const { service, kernelApi, pickupDependency } = build();
+    const checks = new Map<string, number>();
+    pickupDependency.isBlocked.mockImplementation((task: { id: string }) => {
+      const count = (checks.get(task.id) ?? 0) + 1;
+      checks.set(task.id, count);
+      return Promise.resolve(task.id === 't1' && count === 2);
+    });
+
+    await service.run();
+
+    const dispatchedTaskIds = kernelApi.createTransportOrder.mock.calls.map(
+      (call: unknown[]) =>
+        (call[3] as Record<string, string>)[ORDER_PROP.TASK_ID],
+    );
+    expect(dispatchedTaskIds).not.toContain('t1');
+    expect(dispatchedTaskIds).toEqual(['t2', 't3']);
+  });
+
   it('quarantines a failed vehicle but continues independent assignments', async () => {
     const { service, kernelApi, transportTask } = build();
     kernelApi.createTransportOrder.mockImplementation(

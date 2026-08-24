@@ -20,14 +20,20 @@ import {
   type VehicleCandidate,
   hasDispatchableVehicle,
   isEligible,
-  planVehicleAssignments,
-  planVehicleAssignmentsGreedy,
 } from './domain/dispatch.policy';
+import {
+  type DispatchRound,
+  counterfactualMatcher,
+  planDispatchRound,
+} from './domain/dispatch-round';
 import {
   comparableCounterfactual,
   summariseDistance,
 } from './domain/dispatch-counterfactual';
-import type { DispatchContext, PlannedAction } from './assignment-engine.types';
+import type {
+  DispatchContext,
+  DispatchSession,
+} from './assignment-engine.types';
 
 const BUSY_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
 
@@ -58,20 +64,41 @@ export class AssignmentEngineService {
     }
     this.logger.log(
       `Dispatch matcher: ${this.matcher.toUpperCase()} ` +
-        `(counterfactual ${this.counterfactualMatcher().toUpperCase()} recorded on every assignment)`,
+        `(counterfactual ${counterfactualMatcher(this.matcher).toUpperCase()} recorded on every assignment)`,
     );
   }
 
-  private counterfactualMatcher(): DispatchMatcher {
-    return this.matcher === 'greedy' ? 'hungarian' : 'greedy';
+  async run(): Promise<void> {
+    const session = await this.openSession();
+    if (!session) return;
+
+    for (;;) {
+      await this.refillPending(session);
+      if (session.pending.size === 0) break;
+      if (this.freeVehicleCount(session) === 0) break;
+
+      const round = planDispatchRound(
+        this.availableCandidates(session),
+        [...session.pending.values()].map(toTaskCandidate),
+        session.batteryWeight,
+        this.matcher,
+      );
+
+      if (this.deferUnreachable(session, round)) continue;
+
+      this.logRound(round);
+      if (round.assignments.length === 0) break;
+
+      await this.dispatchRound(session, round);
+    }
   }
 
-  async run(): Promise<void> {
+  private async openSession(): Promise<DispatchSession | null> {
     const tasks = await this.taskRepo.find({
       where: { status: TaskStatus.READY_TO_ASSIGN },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
-    if (tasks.length === 0) return;
+    if (tasks.length === 0) return null;
 
     const busyTasks = await this.busyTasksByVehicle();
     const weights = await this.dispatchPolicy.getActiveWeights();
@@ -79,148 +106,126 @@ export class AssignmentEngineService {
     const candidates = await this.vehicleCandidates.build(busyTasks);
     this.logCandidates(tasks.length, candidates);
 
-    const quarantinedVehicleNames = new Set<string>();
-    const dispatchCandidates = (): VehicleCandidate[] =>
-      candidates.filter(
-        (candidate) => !quarantinedVehicleNames.has(candidate.name),
-      );
-    const freeVehicleCount = (): number =>
-      new Set(
-        dispatchCandidates()
-          .filter(isEligible)
-          .map((candidate) => candidate.name),
-      ).size;
-    if (freeVehicleCount() === 0) return;
-
-    const pendingTasks: DispatchContext[] = [];
-    let taskCursor = 0;
-
-    const fillPendingTasks = async (): Promise<void> => {
-      const capacity = freeVehicleCount();
-      while (pendingTasks.length < capacity && taskCursor < tasks.length) {
-        const task = tasks[taskCursor++];
-
-        if (await this.pickupDependency.isBlocked(task)) {
-          this.logger.debug(
-            `Task ${task.id} blocked at assign time — skipping`,
-          );
-          continue;
-        }
-
-        const context = await this.buildContext(task, distances);
-        if (context) pendingTasks.push(context);
-      }
+    const session: DispatchSession = {
+      tasks,
+      candidates,
+      distances,
+      batteryWeight: weights?.battery ?? 0,
+      pending: new Map(),
+      quarantined: new Set(),
+      cursor: 0,
     };
+    return this.freeVehicleCount(session) === 0 ? null : session;
+  }
 
-    const removePendingTask = (taskId: string): void => {
-      const index = pendingTasks.findIndex(
-        (context) => context.task.id === taskId,
-      );
-      if (index >= 0) pendingTasks.splice(index, 1);
-    };
+  private availableCandidates(
+    session: DispatchSession,
+  ): readonly VehicleCandidate[] {
+    return session.candidates.filter(
+      (candidate) => !session.quarantined.has(candidate.name),
+    );
+  }
 
-    for (;;) {
-      await fillPendingTasks();
-      if (pendingTasks.length === 0) break;
-      if (freeVehicleCount() === 0) break;
+  private freeVehicleCount(session: DispatchSession): number {
+    return new Set(
+      this.availableCandidates(session)
+        .filter(isEligible)
+        .map((candidate) => candidate.name),
+    ).size;
+  }
 
-      const availableCandidates = dispatchCandidates();
-      const batteryWeight = weights?.battery ?? 0;
-      const taskCandidates = pendingTasks.map(toTaskCandidate);
-      const hungarianPlan = planVehicleAssignments(
-        availableCandidates,
-        taskCandidates,
-        batteryWeight,
-      );
-      const greedyPlan = planVehicleAssignmentsGreedy(
-        availableCandidates,
-        taskCandidates,
-        batteryWeight,
-      );
-      const assignments =
-        this.matcher === 'greedy' ? greedyPlan : hungarianPlan;
-      const counterfactual =
-        this.matcher === 'greedy' ? hungarianPlan : greedyPlan;
-      const counterfactualByTask = new Map(
-        counterfactual.map((assignment) => [assignment.taskId, assignment]),
-      );
+  private async refillPending(session: DispatchSession): Promise<void> {
+    const capacity = this.freeVehicleCount(session);
+    while (
+      session.pending.size < capacity &&
+      session.cursor < session.tasks.length
+    ) {
+      const task = session.tasks[session.cursor++];
 
-      const plannedTaskIds = new Set(
-        assignments.map((assignment) => assignment.taskId),
-      );
-      const unreachableTaskIds = pendingTasks
-        .filter((context) => !plannedTaskIds.has(context.task.id))
-        .filter(
-          (context) =>
-            !hasDispatchableVehicle(availableCandidates, {
-              taskId: context.task.id,
-              distanceByPoint: context.distanceByPoint,
-            }),
-        )
-        .map((context) => context.task.id);
-      if (unreachableTaskIds.length > 0) {
-        for (const taskId of unreachableTaskIds) {
-          removePendingTask(taskId);
-          this.logger.warn(
-            `Task ${taskId} has no reachable eligible vehicle — deferred`,
-          );
-        }
+      if (await this.pickupDependency.isBlocked(task)) {
+        this.logger.debug(`Task ${task.id} blocked at assign time — skipping`);
         continue;
       }
 
-      this.logger.debug(
-        `${this.matcher} plan: ${assignments
-          .map(
-            ({ taskId, vehicle, distance }) =>
-              `${taskId}->${vehicle.name}(${distance ?? '?'})`,
-          )
-          .join(' ')}` +
-          ` | counterfactual ${summariseDistance(counterfactual)} vs ${summariseDistance(assignments)}`,
+      const context = await this.buildContext(task, session.distances);
+      if (context) session.pending.set(task.id, context);
+    }
+  }
+
+  private deferUnreachable(
+    session: DispatchSession,
+    round: DispatchRound,
+  ): boolean {
+    const planned = new Set(round.assignments.map(({ taskId }) => taskId));
+    const candidates = this.availableCandidates(session);
+
+    let deferred = false;
+    for (const [taskId, context] of [...session.pending]) {
+      if (planned.has(taskId)) continue;
+      if (
+        hasDispatchableVehicle(candidates, {
+          taskId,
+          distanceByPoint: context.distanceByPoint,
+        })
+      ) {
+        continue;
+      }
+      session.pending.delete(taskId);
+      this.logger.warn(
+        `Task ${taskId} has no reachable eligible vehicle — deferred`,
       );
+      deferred = true;
+    }
+    return deferred;
+  }
 
-      const dispatches: PlannedAction[] = [];
-      for (const { taskId, vehicle, distance } of assignments) {
-        const pending = pendingTasks.find(
-          (context) => context.task.id === taskId,
-        );
-        if (pending) dispatches.push({ context: pending, vehicle, distance });
+  private logRound(round: DispatchRound): void {
+    this.logger.debug(
+      `${round.matcher} plan: ${round.assignments
+        .map(
+          ({ taskId, vehicle, distance }) =>
+            `${taskId}->${vehicle.name}(${distance ?? '?'})`,
+        )
+        .join(' ')}` +
+        ` | counterfactual ${summariseDistance(round.counterfactual)} vs ${summariseDistance(round.assignments)}`,
+    );
+  }
+
+  private async dispatchRound(
+    session: DispatchSession,
+    round: DispatchRound,
+  ): Promise<void> {
+    for (const { taskId, vehicle, distance } of round.assignments) {
+      const context = session.pending.get(taskId);
+      if (!context) continue;
+      session.pending.delete(taskId);
+
+      if (await this.pickupDependency.isBlocked(context.task)) {
+        this.logger.debug(`Task ${taskId} blocked before dispatch — skipping`);
+        continue;
       }
-      if (dispatches.length === 0) break;
 
-      for (const action of dispatches) {
-        const { context, vehicle, distance } = action;
-        removePendingTask(context.task.id);
-
-        if (await this.pickupDependency.isBlocked(context.task)) {
-          this.logger.debug(
-            `Task ${context.task.id} blocked before dispatch — skipping`,
-          );
-          break;
-        }
-
-        const issued = await this.pickupOrders.issue(
-          context.task,
-          context.cargo,
-          vehicle.name,
-          distance,
-          {
-            matcher: this.matcher,
-            batchSize: assignments.length,
-            approachDistance: context.approachDistance,
-            ...comparableCounterfactual(
-              counterfactualByTask.get(context.task.id),
-            ),
-          },
+      const issued = await this.pickupOrders.issue(
+        context.task,
+        context.cargo,
+        vehicle.name,
+        distance,
+        {
+          matcher: this.matcher,
+          batchSize: round.assignments.length,
+          approachDistance: context.approachDistance,
+          ...comparableCounterfactual(round.counterfactualByTask.get(taskId)),
+        },
+      );
+      if (!issued) {
+        session.quarantined.add(vehicle.name);
+        this.logger.warn(
+          `Vehicle ${vehicle.name} assignment failed — quarantined for this cycle`,
         );
-        if (!issued) {
-          quarantinedVehicleNames.add(vehicle.name);
-          this.logger.warn(
-            `Vehicle ${vehicle.name} assignment failed — quarantined for this cycle`,
-          );
-          continue;
-        }
-        vehicle.hasActiveTask = true;
+        continue;
       }
+
+      vehicle.hasActiveTask = true;
     }
   }
 

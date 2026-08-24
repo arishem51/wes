@@ -3,12 +3,14 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { MapsService } from './maps.service';
 import { MapRecordEntity } from './entities/map-record.entity';
 import { CargoEntity } from '../cargo/entities/cargo.entity';
+import { ZoneEntity } from '../zones/entities/zone.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { TransportOrderService } from '../opentcs/transport-order.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 
 void MapRecordEntity;
 void CargoEntity;
+void ZoneEntity;
 
 type RepoMock = {
   find: jest.Mock;
@@ -30,6 +32,7 @@ describe('MapsService', () => {
   let service: MapsService;
   let mapRepo: RepoMock;
   let cargoRepo: RepoMock;
+  let zoneRepo: RepoMock;
   let kernelApi: {
     getRawPlantModel: jest.Mock;
     isReachable: jest.Mock;
@@ -40,6 +43,8 @@ describe('MapsService', () => {
   beforeEach(async () => {
     mapRepo = makeRepo();
     cargoRepo = makeRepo();
+    zoneRepo = makeRepo();
+    zoneRepo.find.mockResolvedValue([]);
     kernelApi = {
       getRawPlantModel: jest.fn(),
       isReachable: jest.fn(),
@@ -60,6 +65,7 @@ describe('MapsService', () => {
         { provide: VehicleStateStore, useValue: { get: jest.fn() } },
         { provide: getRepositoryToken(MapRecordEntity), useValue: mapRepo },
         { provide: getRepositoryToken(CargoEntity), useValue: cargoRepo },
+        { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
       ],
     }).compile();
 

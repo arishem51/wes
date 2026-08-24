@@ -82,6 +82,7 @@ function makeLoop(
     fleet?: FleetMember[];
     commits?: Record<string, SlotCommitResult | null>;
     victimTask?: Record<string, unknown> | null;
+    cargoWithoutATask?: { id: string; reserved: string }[];
   } = {},
 ) {
   const fleet = options.fleet ?? solo(OUTSIDE);
@@ -96,14 +97,23 @@ function makeLoop(
       ...(member.unloaded ? { unloadedAt: '2026-08-18T00:00:00.000Z' } : {}),
     },
   }));
-  const cargos = fleet.map((member) => ({
-    id: member.cargoId,
-    destinationZoneId: 'zone-1',
-    destinationLocationName: null,
-    reservedLocationName: 'D3',
-    status: CargoStatus.ACTIVE,
-    ...member.cargo,
-  }));
+  const cargos = [
+    ...fleet.map((member) => ({
+      id: member.cargoId,
+      destinationZoneId: 'zone-1',
+      destinationLocationName: null,
+      reservedLocationName: 'D3',
+      status: CargoStatus.ACTIVE,
+      ...member.cargo,
+    })),
+    ...(options.cargoWithoutATask ?? []).map((orphan) => ({
+      id: orphan.id,
+      destinationZoneId: 'zone-1',
+      destinationLocationName: null,
+      reservedLocationName: orphan.reserved,
+      status: CargoStatus.ACTIVE,
+    })),
+  ];
   const positionByVehicle = new Map(
     fleet.map((member) => [member.vehicle, member.position]),
   );
@@ -157,7 +167,8 @@ function makeLoop(
   };
   const deliverySlotEngine = { layoutFor: jest.fn().mockResolvedValue(LAYOUT) };
   const slotReservation = {
-    aimAt: jest.fn().mockResolvedValue(undefined),
+    claimCell: jest.fn().mockResolvedValue({ previous: null }),
+    restoreClaim: jest.fn().mockResolvedValue(undefined),
     releaseCommit: jest.fn().mockResolvedValue(undefined),
     commit: jest.fn((cargoId: string) =>
       Promise.resolve(
@@ -868,5 +879,98 @@ describe('DropoffCommitLoop cells held ahead', () => {
       (candidate) => candidate[0] === 'cargo-1',
     );
     expect(unstealableIn(call)).toEqual([]);
+  });
+});
+
+describe('DropoffCommitLoop queue seating', () => {
+  const laneQueue = (): FleetMember[] => [
+    { vehicle: 'V1', taskId: 'task-1', cargoId: 'cargo-1', position: 'D3' },
+    {
+      vehicle: 'V2',
+      taskId: 'task-2',
+      cargoId: 'cargo-2',
+      position: 'W-D',
+      cargo: { reservedLocationName: 'D2' },
+    },
+  ];
+
+  it('skips a waiting cell that a cargo outside the queue already holds', async () => {
+    const { loop, approachOrder, tasks } = makeLoop({
+      fleet: laneQueue(),
+      commits: { 'cargo-2': null },
+      victimTask: null,
+      cargoWithoutATask: [{ id: 'cargo-9', reserved: 'W-D' }],
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.aim).toHaveBeenCalledWith(tasks[1], 'V2', {
+      pointName: 'W-D2',
+    });
+  });
+
+  it('takes the nearest waiting cell when nobody else holds it', async () => {
+    const { loop, approachOrder, tasks } = makeLoop({
+      fleet: laneQueue(),
+      commits: { 'cargo-2': null },
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.aim).toHaveBeenCalledWith(tasks[1], 'V2', {
+      pointName: 'W-D',
+    });
+  });
+
+  it('leaves a vehicle alone when it already waits where it belongs', async () => {
+    const { loop, approachOrder } = makeLoop({
+      fleet: [
+        { vehicle: 'V1', taskId: 'task-1', cargoId: 'cargo-1', position: 'D3' },
+        {
+          vehicle: 'V2',
+          taskId: 'task-2',
+          cargoId: 'cargo-2',
+          position: 'W-D',
+          cargo: { reservedLocationName: 'W-D' },
+        },
+      ],
+      commits: { 'cargo-2': null },
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.aim).not.toHaveBeenCalled();
+  });
+});
+
+describe('DropoffCommitLoop queue seating stays put', () => {
+  it('does not shuffle the queue when two vehicles pass each other', async () => {
+    const { loop, approachOrder } = makeLoop({
+      fleet: [
+        { vehicle: 'V1', taskId: 'task-1', cargoId: 'cargo-1', position: 'D3' },
+        {
+          vehicle: 'V2',
+          taskId: 'task-2',
+          cargoId: 'cargo-2',
+          position: 'W-D2',
+          cargo: { reservedLocationName: 'W-D' },
+        },
+        {
+          vehicle: 'V3',
+          taskId: 'task-3',
+          cargoId: 'cargo-3',
+          position: 'W-D',
+          cargo: { reservedLocationName: 'W-D2' },
+        },
+      ],
+      commits: { 'cargo-2': null, 'cargo-3': null },
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.aim).not.toHaveBeenCalled();
   });
 });

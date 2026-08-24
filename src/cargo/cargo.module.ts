@@ -22,6 +22,7 @@ import { TransportTaskSaga } from './transport-task.saga';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
 import { SlotReservationService } from './slot-reservation.service';
+import { SlotReclaimService } from './slot-reclaim.service';
 import { DropoffOrderService } from './dropoff-order.service';
 import { VehicleAimService } from './vehicle-aim.service';
 import { DropoffCommitLoop } from './dropoff-commit.loop';
@@ -54,6 +55,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     TaskTerminationService,
     DeliverySlotEngine,
     SlotReservationService,
+    SlotReclaimService,
     DropoffOrderService,
     VehicleAimService,
     DropoffCommitLoop,

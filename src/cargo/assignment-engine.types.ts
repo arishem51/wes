@@ -4,6 +4,7 @@ import type {
   DispatchMatcher,
   VehicleCandidate,
 } from './domain/dispatch.policy';
+import type { DispatchDistances } from './dispatch-distance.service';
 
 export interface DispatchMeasurement {
   readonly matcher: DispatchMatcher;
@@ -20,8 +21,12 @@ export interface DispatchContext {
   readonly approachDistance: number | null;
 }
 
-export interface PlannedAction {
-  readonly context: DispatchContext;
-  readonly vehicle: VehicleCandidate;
-  readonly distance: number | null;
+export interface DispatchSession {
+  readonly tasks: readonly TransportTaskEntity[];
+  readonly candidates: readonly VehicleCandidate[];
+  readonly distances: DispatchDistances;
+  readonly batteryWeight: number;
+  readonly pending: Map<string, DispatchContext>;
+  readonly quarantined: Set<string>;
+  cursor: number;
 }

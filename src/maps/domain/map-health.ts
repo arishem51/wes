@@ -10,7 +10,11 @@ import type {
   KernelPoint,
 } from '../../opentcs/domain/kernel-model';
 
-export type MapHealthCode = 'MISALIGNED_POINT' | 'PARK_CAPACITY' | 'SINK_POINT';
+export type MapHealthCode =
+  | 'MISALIGNED_POINT'
+  | 'PARK_CAPACITY'
+  | 'SINK_POINT'
+  | 'ZONE_OPERATION_MISMATCH';
 
 export type MapHealthSeverity = 'ok' | 'warn';
 
@@ -35,6 +39,12 @@ export interface MapHealthReport {
   readonly checks: readonly MapHealthCheck[];
 }
 
+export interface MapHealthZone {
+  readonly name: string;
+  readonly type: 'PICKUP' | 'DROPOFF';
+  readonly locationNames: readonly string[];
+}
+
 export interface MapHealthInput {
   readonly mapName: string | null;
   readonly points: readonly KernelPoint[];
@@ -42,7 +52,10 @@ export interface MapHealthInput {
   readonly locations: readonly KernelLocation[];
   readonly locationTypes: readonly KernelLocationType[];
   readonly chargeOperation: string;
+  readonly loadOperation: string;
+  readonly unloadOperation: string;
   readonly vehicleNames: readonly string[];
+  readonly zones: readonly MapHealthZone[];
 }
 
 export function buildMapHealthReport(
@@ -53,6 +66,7 @@ export function buildMapHealthReport(
     misalignedPoints(input, toleranceMm),
     parkCapacity(input),
     sinkPoints(input),
+    zoneOperations(input),
   ];
 
   return {
@@ -169,6 +183,101 @@ function sinkPoints({ points, paths }: MapHealthInput): MapHealthCheck {
       locationNames: [],
     })),
   });
+}
+
+const ZONE_LABEL: Record<MapHealthZone['type'], string> = {
+  PICKUP: 'lấy hàng',
+  DROPOFF: 'trả hàng',
+};
+
+function zoneOperations(input: MapHealthInput): MapHealthCheck {
+  const typeOfLocation = new Map(
+    input.locations.map((location) => [
+      location.name,
+      location.typeName ?? location.type ?? '',
+    ]),
+  );
+  const operationsOfType = new Map(
+    input.locationTypes.map((type) => [type.name, type.allowedOperations]),
+  );
+  const findings = input.zones.flatMap((zone) =>
+    zoneOperationFinding(input, zone, typeOfLocation, operationsOfType),
+  );
+
+  return check({
+    code: 'ZONE_OPERATION_MISMATCH',
+    title: 'Khu WES lệch loại vị trí trên bản đồ',
+    okSummary: input.zones.length
+      ? `${input.zones.length} khu của WES đều trỏ vào vị trí nhận đúng thao tác`
+      : 'Chưa có khu nào của WES gắn với bản đồ này',
+    warnSummary:
+      `${findings.length}/${input.zones.length} khu có vị trí không nhận được` +
+      ' thao tác WES sẽ ra lệnh — xe chạy tới tận nơi rồi order mới hỏng',
+    findings,
+  });
+}
+
+function zoneOperationFinding(
+  input: MapHealthInput,
+  zone: MapHealthZone,
+  typeOfLocation: ReadonlyMap<string, string>,
+  operationsOfType: ReadonlyMap<string, readonly string[]>,
+): MapHealthFinding[] {
+  const operation =
+    zone.type === 'PICKUP' ? input.loadOperation : input.unloadOperation;
+
+  const groups = new Map<string, string[]>();
+  for (const locationName of zone.locationNames) {
+    const typeName = typeOfLocation.get(locationName);
+    if (typeName === undefined) {
+      groupUnder(groups, 'không có trên bản đồ', locationName);
+      continue;
+    }
+    const allowed = operationsOfType.get(typeName) ?? [];
+    if (allowed.includes(operation)) continue;
+    groupUnder(groups, describeLocationType(typeName, allowed), locationName);
+  }
+  if (groups.size === 0) return [];
+
+  const offenders = [...groups.values()].flat();
+  return [
+    {
+      detail:
+        `Khu ${ZONE_LABEL[zone.type]} "${zone.name}" cần ${operation} nhưng ` +
+        `${offenders.length}/${zone.locationNames.length} vị trí ` +
+        describeGroups(groups),
+      pointNames: [],
+      locationNames: offenders,
+    },
+  ];
+}
+
+function describeLocationType(
+  typeName: string,
+  allowed: readonly string[],
+): string {
+  return allowed.length > 0
+    ? `thuộc kiểu ${typeName} (chỉ cho ${allowed.join(', ')})`
+    : `thuộc kiểu ${typeName} (không cho thao tác nào)`;
+}
+
+function describeGroups(
+  groups: ReadonlyMap<string, readonly string[]>,
+): string {
+  if (groups.size === 1) return [...groups.keys()][0];
+  return [...groups]
+    .map(([reason, names]) => `${names.length} ô ${reason}`)
+    .join(', ');
+}
+
+function groupUnder(
+  groups: Map<string, string[]>,
+  reason: string,
+  locationName: string,
+): void {
+  const named = groups.get(reason);
+  if (named) named.push(locationName);
+  else groups.set(reason, [locationName]);
 }
 
 function check(spec: {

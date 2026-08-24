@@ -67,8 +67,19 @@ function options(
 
 function makeService(cargos: FakeCargo[]) {
   const repo = {
-    findOne: ({ where }: { where: { id: string } }) =>
-      Promise.resolve(cargos.find((c) => c.id === where.id) ?? null),
+    findOne: ({
+      where,
+    }: {
+      where: { id?: string; reservedLocationName?: string };
+    }) =>
+      Promise.resolve(
+        cargos.find((c) =>
+          where.id !== undefined
+            ? c.id === where.id
+            : c.reservedLocationName === where.reservedLocationName &&
+              c.status === CargoStatus.ACTIVE,
+        ) ?? null,
+      ),
     find: ({ where }: { where: { destinationZoneId: string } }) =>
       Promise.resolve(
         cargos.filter(
@@ -437,5 +448,97 @@ describe('SlotReservationService.commit in a lane deeper than the retreat', () =
     ]);
 
     await expect(service.commit('c2', ZONE, deepOptions())).resolves.toBeNull();
+  });
+});
+
+describe('SlotReservationService.claimCell', () => {
+  it('writes the claim and reports what it replaced', async () => {
+    const { service, cargos } = makeService([
+      cargo('c1', { reservedLocationName: 'D1' }),
+    ]);
+
+    const claimed = await service.claimCell('c1', 'D2', ZONE);
+
+    expect(claimed).toEqual({ previous: 'D1' });
+    expect(cargos[0].reservedLocationName).toBe('D2');
+  });
+
+  it('refuses a cell another cargo already holds', async () => {
+    const { service, cargos } = makeService([
+      cargo('c1', { reservedLocationName: 'D3' }),
+      cargo('c2', { reservedLocationName: 'D2' }),
+    ]);
+
+    const claimed = await service.claimCell('c2', 'D3', ZONE);
+
+    expect(claimed).toBeNull();
+    expect(cargos[1].reservedLocationName).toBe('D2');
+  });
+
+  it('is happy to re-claim the cell it already holds', async () => {
+    const { service } = makeService([
+      cargo('c1', { reservedLocationName: 'D2' }),
+    ]);
+
+    await expect(service.claimCell('c1', 'D2', ZONE)).resolves.toEqual({
+      previous: 'D2',
+    });
+  });
+
+  it('claims nothing once the cargo has a committed slot', async () => {
+    const { service, cargos } = makeService([
+      cargo('c1', { destinationLocationName: 'D3' }),
+    ]);
+
+    const claimed = await service.claimCell('c1', 'D2', ZONE);
+
+    expect(claimed).toBeNull();
+    expect(cargos[0].reservedLocationName).toBeNull();
+  });
+
+  it('takes the advisory lock on the zone before it writes', async () => {
+    const { service, manager } = makeService([cargo('c1')]);
+
+    await service.claimCell('c1', 'D2', ZONE);
+
+    expect(manager.query).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
+      ['zone-1'],
+    );
+  });
+});
+
+describe('SlotReservationService.restoreClaim', () => {
+  it('puts the cargo back on the cell it held before', async () => {
+    const { service, cargos } = makeService([
+      cargo('c1', { reservedLocationName: 'D2' }),
+    ]);
+
+    await service.restoreClaim('c1', 'D1', ZONE);
+
+    expect(cargos[0].reservedLocationName).toBe('D1');
+  });
+
+  it('leaves the cargo holding nothing when it held nothing before', async () => {
+    const { service, cargos } = makeService([
+      cargo('c1', { reservedLocationName: 'D2' }),
+    ]);
+
+    await service.restoreClaim('c1', null, ZONE);
+
+    expect(cargos[0].reservedLocationName).toBeNull();
+  });
+
+  it('never disturbs a cargo that has since committed', async () => {
+    const { service, cargos } = makeService([
+      cargo('c1', {
+        destinationLocationName: 'D3',
+        reservedLocationName: null,
+      }),
+    ]);
+
+    await service.restoreClaim('c1', 'D1', ZONE);
+
+    expect(cargos[0].reservedLocationName).toBeNull();
   });
 });

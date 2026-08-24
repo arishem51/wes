@@ -1,346 +1,346 @@
 {
-  "label": "fullpick_68cargo_4zone_15agv",
-  "notes": "Full pickup on v7-vda5050: 1 cargo per pickup slot (0110-0177), round-robin 17/zone across the 4 dropoff zones (trả hàng 1 / trả hàng 2 / trả hàng 3 / trả hàng 4). Zone ids regenerated from live DB.",
+  "label": "fullpick_68cargo_4zone_11agv",
+  "notes": "Full pickup on v7-vda5050: 68 cargo (0110-0177), round-robin 17/zone across trả hàng 1 / trả hàng 2 / trả hàng 3 / trả hàng 4.",
   "cargos": [
     {
       "atMs": 0,
       "sourcePointName": "0110",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0111",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0112",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0113",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0114",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0115",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0116",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0117",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0118",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0119",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0120",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0121",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0122",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0123",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0124",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0125",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0126",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0127",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0128",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0129",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0130",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0131",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0132",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0133",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0134",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0135",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0136",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0137",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0138",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0139",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0140",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0141",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0142",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0143",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0144",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0145",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0146",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0147",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0148",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0149",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0150",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0151",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0152",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0153",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0154",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0155",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0156",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0157",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0158",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0159",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0160",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0161",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0162",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0163",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0164",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0165",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0166",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0167",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0168",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0169",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0170",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0171",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0172",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0173",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     },
     {
       "atMs": 0,
       "sourcePointName": "0174",
-      "destinationZoneId": "a7418268-e67b-40f8-a05a-ce0180a84470"
+      "destinationZoneId": "307c8d5e-6bde-4bed-bba4-c6d6c397e006"
     },
     {
       "atMs": 0,
       "sourcePointName": "0175",
-      "destinationZoneId": "5d4c3889-c601-49e6-958b-6019548730b7"
+      "destinationZoneId": "9ef25cfc-4fbf-4170-b93b-8c0536c38555"
     },
     {
       "atMs": 0,
       "sourcePointName": "0176",
-      "destinationZoneId": "afc84799-98cc-409b-a0e5-062b88ad20b4"
+      "destinationZoneId": "9c6cf6f0-d8dd-4415-a7da-d59e20f28623"
     },
     {
       "atMs": 0,
       "sourcePointName": "0177",
-      "destinationZoneId": "5ce77d8b-80b1-48d4-b262-81e30f7a51f7"
+      "destinationZoneId": "a2a13a4d-7c87-4f1c-a6bd-5d5f28cff113"
     }
   ]
 }
