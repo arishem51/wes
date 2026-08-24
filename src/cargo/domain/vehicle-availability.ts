@@ -13,7 +13,8 @@ export function isFmsDispatchable(
   return (
     (state.procState === 'IDLE' || state.procState === 'AWAITING_ORDER') &&
     state.integrationLevel === 'TO_BE_UTILIZED' &&
-    state.state !== 'CHARGING'
+    state.state !== 'CHARGING' &&
+    state.currentPosition != null
   );
 }
 

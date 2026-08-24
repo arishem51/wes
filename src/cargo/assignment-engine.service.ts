@@ -99,7 +99,6 @@ export class AssignmentEngineService {
       order: { createdAt: 'ASC', id: 'ASC' },
     });
     if (tasks.length === 0) return null;
-
     const busyTasks = await this.busyTasksByVehicle();
     const weights = await this.dispatchPolicy.getActiveWeights();
     const distances = await this.distanceSource.open();
