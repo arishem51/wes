@@ -19,6 +19,7 @@ import {
 } from './domain/zone-slot-layout';
 
 const OCCUPYING_STATUSES = [CargoStatus.ACTIVE, CargoStatus.DELIVERED];
+const NO_SLOT_LOG_EVERY_MS = 30_000;
 
 export interface DisplacedCargo {
   cargoId: string;
@@ -45,6 +46,7 @@ export interface SlotCommitOptions {
 @Injectable()
 export class SlotReservationService {
   private readonly logger = new Logger(SlotReservationService.name);
+  private readonly noSlotLoggedAt = new Map<string, number>();
 
   constructor(
     @InjectDataSource()
@@ -115,11 +117,14 @@ export class SlotReservationService {
       const occupancy = ZoneOccupancy.of(zoneCargos, layout);
       const chosen = this.chooseSlot(layout, occupancy, options);
       if (!chosen) {
-        this.logger.debug(
-          `Cargo ${cargoId}: zone "${zone.name}" offered no slot to commit yet`,
-        );
+        if (this.dueToRepeatNoSlot(cargoId)) {
+          this.logger.debug(
+            `Cargo ${cargoId}: zone "${zone.name}" offered no slot to commit yet`,
+          );
+        }
         return null;
       }
+      this.noSlotLoggedAt.delete(cargoId);
 
       const holder = occupancy.holderOf(chosen, cargo);
 
@@ -162,6 +167,7 @@ export class SlotReservationService {
   }
 
   async releaseCommit(cargoId: string, zone: ZoneEntity): Promise<void> {
+    this.noSlotLoggedAt.delete(cargoId);
     await this.withZoneLock(zone, async (manager) => {
       const cargo = await manager
         .getRepository(CargoEntity)
@@ -177,6 +183,15 @@ export class SlotReservationService {
       cargo.slotDecisionSeq = nextSeq;
     });
     this.announceReleasedSlot(zone.id);
+  }
+
+  private dueToRepeatNoSlot(cargoId: string): boolean {
+    const now = Date.now();
+    const last = this.noSlotLoggedAt.get(cargoId);
+    if (last !== undefined && now - last < NO_SLOT_LOG_EVERY_MS) return false;
+
+    this.noSlotLoggedAt.set(cargoId, now);
+    return true;
   }
 
   private chooseSlot(

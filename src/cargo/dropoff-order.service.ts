@@ -62,6 +62,27 @@ export class DropoffOrderService {
     return orderName;
   }
 
+  async cancel(task: TransportTaskEntity): Promise<void> {
+    const current = task.metadata?.dropoffOrderName;
+    if (!current) return;
+
+    try {
+      await this.transportOrders.cancel(current);
+    } catch (err) {
+      this.logger.error(
+        `Task ${task.id}: could not withdraw ${current} — leaving the reference so it can be retried: ${(err as Error).message}`,
+      );
+      return;
+    }
+
+    task.metadata = {
+      ...task.metadata,
+      dropoffOrderName: undefined,
+      retreatPointName: undefined,
+    };
+    await this.taskRepo.save(task);
+  }
+
   async reissue(
     task: TransportTaskEntity,
     vehicle: string,

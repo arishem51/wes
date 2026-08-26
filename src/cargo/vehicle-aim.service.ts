@@ -66,6 +66,10 @@ export class VehicleAimService {
   async stopApproaching(aimed: AimedVehicle): Promise<void> {
     await this.approachOrder.cancel(aimed.task);
   }
+
+  async stopDropping(aimed: AimedVehicle): Promise<void> {
+    await this.dropoffOrder.cancel(aimed.task);
+  }
   async dropAt(
     aimed: AimedVehicle,
     zone: ZoneEntity,

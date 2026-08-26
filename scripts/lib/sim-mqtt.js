@@ -152,6 +152,7 @@ module.exports = {
   connect,
   publish,
   readLatest,
+  collect,
   discoverOnline,
   arg,
 };

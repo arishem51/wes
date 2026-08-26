@@ -32,10 +32,23 @@ import {
   type ZoneLane,
   type ZoneSlotLayout,
 } from './domain/zone-slot-layout';
+import {
+  afterMoving,
+  depthOfTarget,
+  inversionIn,
+  stuckForMs,
+  LANE_LATCH_MS,
+  MAX_SLOT_SWAPS,
+  NO_PROGRESS_MS,
+  type LaneStanding,
+  type LaneWatermark,
+} from './domain/lane-order';
 
 const TICK_MS = 200;
 const SINGLE_RUNNER_LOCK_KEY = 815_004_711;
 const RUNNER_LOCK_RECHECK_MS = 10_000;
+const FULL_PASS_EVERY_MS = 2_000;
+const STUCK_SWEEP_EVERY_MS = 1_000;
 
 interface CommitCandidate {
   readonly task: TransportTaskEntity;
@@ -59,6 +72,24 @@ interface VacatedCell {
   readonly fallback: string | null;
 }
 
+interface Standing extends LaneStanding {
+  readonly task: TransportTaskEntity;
+  readonly vehicle: string;
+}
+
+interface LaneLineup {
+  readonly key: string;
+  readonly zone: ZoneEntity;
+  readonly layout: ZoneSlotLayout;
+  readonly lane: ZoneLane;
+  readonly standings: Standing[];
+}
+
+interface ZoneWithLayout {
+  readonly zone: ZoneEntity;
+  readonly layout: ZoneSlotLayout;
+}
+
 @Injectable()
 export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DropoffCommitLoop.name);
@@ -66,6 +97,10 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
   private ticking = false;
   private runnerLock: RunnerLock | null = null;
   private lockVerifiedAt = 0;
+  private lastFingerprint = '';
+  private lastSweepAt = 0;
+  private readonly watermarkByLane = new Map<string, LaneWatermark>();
+  private readonly latchedUntilByLane = new Map<string, number>();
 
   constructor(
     @InjectRepository(TransportTaskEntity)
@@ -99,15 +134,22 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
       if (!(await this.holdsRunnerLock())) return;
 
       const tasks = await this.tasksAwaitingCommit();
-      const candidates = await this.commitCandidates(tasks);
       const taskByCargoId = new Map(
         tasks
           .filter((task) => task.cargoId)
           .map((task) => [task.cargoId!, task] as const),
       );
-      for (const candidate of serveOrder(candidates)) {
-        await this.commitOne(candidate, taskByCargoId);
+
+      const fingerprint = this.fingerprintOf(tasks);
+      if (fingerprint !== this.lastFingerprint) {
+        this.lastFingerprint = fingerprint;
+        const candidates = await this.commitCandidates(tasks);
+        for (const candidate of serveOrder(candidates)) {
+          await this.commitOne(candidate, taskByCargoId);
+        }
       }
+
+      await this.sweepStuckLanes(tasks);
     } catch (err) {
       this.logger.error(
         `Drop-off commit tick failed: ${(err as Error).message}`,
@@ -122,6 +164,201 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
       where: { status: TaskStatus.DELIVERING, cargoId: Not(IsNull()) },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
+  }
+
+  private fingerprintOf(tasks: readonly TransportTaskEntity[]): string {
+    const marks = tasks.map((task) => {
+      const vehicle = task.metadata?.assignedVehicleName ?? '';
+      const position = vehicle
+        ? (this.vehicleStore.get(vehicle)?.currentPosition ?? '')
+        : '';
+      return [
+        task.id,
+        task.status,
+        vehicle,
+        position,
+        task.metadata?.unloadedAt ?? '',
+      ].join(':');
+    });
+    return [Math.floor(Date.now() / FULL_PASS_EVERY_MS), ...marks].join('|');
+  }
+
+  private async sweepStuckLanes(
+    tasks: readonly TransportTaskEntity[],
+  ): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastSweepAt < STUCK_SWEEP_EVERY_MS) return;
+    this.lastSweepAt = now;
+
+    const lineups = await this.laneLineups(tasks);
+    this.forgetLanesOutOfPlay(lineups);
+
+    for (const lineup of lineups) {
+      const mark = afterMoving(
+        this.watermarkByLane.get(lineup.key),
+        lineup.standings,
+        now,
+      );
+      this.watermarkByLane.set(lineup.key, mark);
+
+      if ((this.latchedUntilByLane.get(lineup.key) ?? 0) > now) continue;
+      if (stuckForMs(mark, now) < NO_PROGRESS_MS) continue;
+      if (!(await this.repairLane(lineup))) continue;
+
+      this.latchedUntilByLane.set(lineup.key, now + LANE_LATCH_MS);
+      this.watermarkByLane.delete(lineup.key);
+    }
+  }
+
+  private forgetLanesOutOfPlay(lineups: readonly LaneLineup[]): void {
+    const inPlay = new Set(lineups.map((lineup) => lineup.key));
+    for (const key of [...this.watermarkByLane.keys()]) {
+      if (!inPlay.has(key)) this.watermarkByLane.delete(key);
+    }
+    for (const key of [...this.latchedUntilByLane.keys()]) {
+      if (!inPlay.has(key)) this.latchedUntilByLane.delete(key);
+    }
+  }
+
+  private async laneLineups(
+    tasks: readonly TransportTaskEntity[],
+  ): Promise<LaneLineup[]> {
+    const lineups = new Map<string, LaneLineup>();
+    const zones = new Map<string, ZoneWithLayout | null>();
+
+    for (const task of tasks) {
+      const standing = await this.standingOf(task, zones);
+      if (!standing) continue;
+
+      const lineup = lineups.get(standing.key) ?? {
+        key: standing.key,
+        zone: standing.zone,
+        layout: standing.layout,
+        lane: standing.lane,
+        standings: [],
+      };
+      lineup.standings.push(standing.standing);
+      lineups.set(standing.key, lineup);
+    }
+    return [...lineups.values()];
+  }
+
+  private async standingOf(
+    task: TransportTaskEntity,
+    zones: Map<string, ZoneWithLayout | null>,
+  ): Promise<{
+    key: string;
+    zone: ZoneEntity;
+    layout: ZoneSlotLayout;
+    lane: ZoneLane;
+    standing: Standing;
+  } | null> {
+    const vehicle = task.metadata?.assignedVehicleName;
+    const position = vehicle
+      ? this.vehicleStore.get(vehicle)?.currentPosition
+      : null;
+    if (!vehicle || !position || !task.cargoId) return null;
+
+    const cargo = await this.cargoRepo.findOne({
+      where: { id: task.cargoId, status: In([CargoStatus.ACTIVE]) },
+    });
+    if (!cargo?.destinationZoneId) return null;
+
+    const target = cargo.destinationLocationName ?? cargo.reservedLocationName;
+    if (!target) return null;
+
+    const known = await this.zoneWithLayout(zones, cargo.destinationZoneId);
+    if (!known) return null;
+
+    const laneIndex = known.layout.lanes.findIndex((lane) =>
+      lane.axisPoints.includes(position),
+    );
+    if (laneIndex === -1) return null;
+
+    const lane = known.layout.lanes[laneIndex];
+    const targetDepth = depthOfTarget(lane, target);
+    if (targetDepth === -1) return null;
+
+    return {
+      key: `${cargo.destinationZoneId}#${laneIndex}`,
+      zone: known.zone,
+      layout: known.layout,
+      lane,
+      standing: {
+        task,
+        vehicle,
+        cargoId: cargo.id,
+        posDepth: lane.axisPoints.indexOf(position),
+        targetDepth,
+        committed: cargo.destinationLocationName !== null,
+        unloaded: task.metadata?.unloadedAt != null,
+        swapCount: task.metadata?.swapCount ?? 0,
+      },
+    };
+  }
+
+  private async zoneWithLayout(
+    zones: Map<string, ZoneWithLayout | null>,
+    zoneId: string,
+  ): Promise<ZoneWithLayout | null> {
+    if (zones.has(zoneId)) return zones.get(zoneId) ?? null;
+
+    const zone = await this.zoneRepo.findOne({
+      where: { id: zoneId },
+      relations: { members: true },
+    });
+    const layout = zone ? await this.deliverySlotEngine.layoutFor(zone) : null;
+    const known = zone && layout ? { zone, layout } : null;
+    zones.set(zoneId, known);
+    return known;
+  }
+
+  private async repairLane(lineup: LaneLineup): Promise<boolean> {
+    const inversion = inversionIn(lineup.standings);
+    if (!inversion) return false;
+
+    const { ahead, holder } = inversion;
+    if (holder.swapCount >= MAX_SLOT_SWAPS) {
+      this.logger.error(
+        `Task ${holder.task.id}: ${holder.vehicle} already gave up its slot ${holder.swapCount} times — leaving lane ${lineup.lane.axis} of "${lineup.zone.name}" stuck behind ${ahead.vehicle}`,
+      );
+      return false;
+    }
+
+    this.logger.warn(
+      `Lane ${lineup.lane.axis} of "${lineup.zone.name}" made no progress for ${NO_PROGRESS_MS}ms: ${ahead.vehicle} stands deeper than ${holder.vehicle} yet ${holder.vehicle} holds the deeper slot — taking that slot back`,
+    );
+
+    const aimed: AimedVehicle = {
+      task: holder.task,
+      vehicle: holder.vehicle,
+      cargoId: holder.cargoId,
+    };
+    await this.slotReservation.releaseCommit(holder.cargoId, lineup.zone);
+    await this.vehicleAim.stopDropping(aimed);
+    await this.countSwap(holder.task);
+
+    const queued = await this.slotReservation.reserve(
+      holder.cargoId,
+      lineup.zone,
+    );
+    if (!queued) {
+      this.logger.error(
+        `Task ${holder.task.id}: ${holder.vehicle} gave up its slot but zone "${lineup.zone.name}" had nowhere to queue it`,
+      );
+      return true;
+    }
+
+    await this.vehicleAim.queueAt(aimed, lineup.zone, lineup.layout, queued);
+    return true;
+  }
+
+  private async countSwap(task: TransportTaskEntity): Promise<void> {
+    task.metadata = {
+      ...task.metadata,
+      swapCount: (task.metadata?.swapCount ?? 0) + 1,
+    };
+    await this.taskRepo.save(task);
   }
 
   private async commitCandidates(
