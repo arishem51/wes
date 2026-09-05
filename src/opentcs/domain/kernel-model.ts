@@ -10,6 +10,8 @@ export interface KernelVehicleGoal {
   orderName: string;
   destinationName: string;
   operation: string;
+  creationTime?: string;
+  receivedAt?: string;
 }
 
 export interface KernelVehicleState {

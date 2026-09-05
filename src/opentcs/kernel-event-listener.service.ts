@@ -380,7 +380,9 @@ export class KernelEventListenerService
 
     this.vehicleStateStore.set(update.vehicleName, {
       ...existing,
-      goal: update.goal,
+      goal: update.goal
+        ? { ...update.goal, receivedAt: new Date().toISOString() }
+        : null,
     });
   }
 

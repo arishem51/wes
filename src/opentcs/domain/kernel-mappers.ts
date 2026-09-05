@@ -387,6 +387,17 @@ export interface VehicleGoalUpdate {
 
 type PendingDestination = Omit<KernelVehicleGoal, 'orderName'>;
 
+function creationTimeOf(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const raw = isRecord(value.creationTime)
+    ? value.creationTime.creationTime
+    : value.creationTime;
+  if (typeof raw !== 'string' || Number.isNaN(Date.parse(raw))) {
+    return undefined;
+  }
+  return raw;
+}
+
 function unfinished(value: unknown, from: number): unknown[] {
   if (!Array.isArray(value)) return [];
   return from > 0 ? value.slice(from) : value;
@@ -452,6 +463,14 @@ export function toVehicleGoal(value: unknown): VehicleGoalUpdate | null {
 
   return {
     vehicleName,
-    goal: destination ? { orderName: value.name, ...destination } : null,
+    goal: destination
+      ? {
+          orderName: value.name,
+          ...destination,
+          ...(creationTimeOf(value) && {
+            creationTime: creationTimeOf(value),
+          }),
+        }
+      : null,
   };
 }

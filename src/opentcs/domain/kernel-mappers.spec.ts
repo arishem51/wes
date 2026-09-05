@@ -343,6 +343,28 @@ describe('toVehicleGoal', () => {
     });
   });
 
+  it('keeps the transport order creation time for goal latency telemetry', () => {
+    expect(
+      toVehicleGoal({
+        name: 'PICKUP-1',
+        state: 'BEING_PROCESSED',
+        processingVehicle: 'Vehicle-0001',
+        creationTime: '2026-09-05T10:00:00.123Z',
+        destinations: [
+          { locationName: 'LOC-1', operation: 'liftUp', state: 'TRAVELLING' },
+        ],
+      }),
+    ).toEqual({
+      vehicleName: 'Vehicle-0001',
+      goal: {
+        orderName: 'PICKUP-1',
+        destinationName: 'LOC-1',
+        operation: 'liftUp',
+        creationTime: '2026-09-05T10:00:00.123Z',
+      },
+    });
+  });
+
   it('clears the goal once the order settles', () => {
     for (const state of ['FINISHED', 'FAILED', 'UNROUTABLE', 'WITHDRAWN']) {
       expect(

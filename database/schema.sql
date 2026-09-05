@@ -805,6 +805,9 @@ CREATE TABLE public.vehicle_state_transitions (
     proc_state character varying(30),
     vehicle_state character varying(30),
     order_name character varying(80),
+    goal_order_name character varying(80),
+    order_created_at timestamp with time zone,
+    goal_received_at timestamp with time zone,
     occurred_at timestamp with time zone NOT NULL,
     observed_at timestamp with time zone
 );
