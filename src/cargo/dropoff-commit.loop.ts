@@ -642,7 +642,8 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
         );
         continue;
       }
-      if (entry.reserved === target) continue;
+      if (entry.reserved === target && entry.task.metadata?.approachOrderName)
+        continue;
       await this.vehicleAim.queueAt(
         entry,
         candidate.zone,
