@@ -116,6 +116,99 @@ describe('ZoneGeometryService', () => {
   });
 });
 
+const RACK_ZONE = {
+  id: 'zone-rack',
+  name: 'khu tra hang 4',
+  members: [
+    { locationName: 'location_0157' },
+    { locationName: 'location_0158' },
+    { locationName: 'location_0167' },
+    { locationName: 'location_0168' },
+    { locationName: 'location_0177' },
+    { locationName: 'location_0178' },
+  ],
+} as never;
+
+function rackModel() {
+  const cells = {
+    '0157': { x: 5450, y: -7250 },
+    '0158': { x: 4500, y: -7250 },
+    '0167': { x: 5450, y: -8050 },
+    '0168': { x: 4500, y: -8050 },
+    '0177': { x: 5450, y: -8850 },
+    '0178': { x: 4500, y: -8850 },
+  };
+  const way = (
+    srcPointName: string,
+    destPointName: string,
+    maxVelocity: number,
+    maxReverseVelocity: number,
+  ) => ({ srcPointName, destPointName, maxVelocity, maxReverseVelocity });
+
+  return {
+    points: [
+      ...Object.entries(cells).map(([name, position]) => ({ name, position })),
+      { name: '0147', position: { x: 5450, y: -6450 } },
+      { name: '0148', position: { x: 4500, y: -6450 } },
+      { name: '0156', position: { x: 6400, y: -7250 } },
+      { name: '0166', position: { x: 6400, y: -8050 } },
+      { name: '0176', position: { x: 6400, y: -8850 } },
+    ],
+    paths: [
+      way('0147', '0157', 1000, 1000),
+      way('0148', '0158', 1000, 1000),
+      way('0157', '0156', 1000, 0),
+      way('0167', '0166', 1000, 0),
+      way('0177', '0176', 1000, 0),
+      way('0157', '0167', 1000, 1000),
+      way('0167', '0177', 1000, 1000),
+      way('0158', '0168', 1000, 1000),
+      way('0168', '0178', 1000, 1000),
+    ],
+    locations: Object.keys(cells).map((name) => ({
+      name: `location_${name}`,
+      links: [{ pointName: name }],
+    })),
+  };
+}
+
+describe('ZoneGeometryService rack geometry', () => {
+  it('ignores one-way exits and reads the depth axis off the way in', async () => {
+    const axes = await makeService(rackModel()).computeMemberAxes(RACK_ZONE);
+
+    const lane = (name: string) => axes!.get(`location_${name}`)!.laneKey;
+    const depth = (name: string) => axes!.get(`location_${name}`)!.depthKey;
+
+    expect(lane('0157')).toBe(lane('0167'));
+    expect(lane('0167')).toBe(lane('0177'));
+    expect(lane('0158')).toBe(lane('0168'));
+    expect(lane('0158')).not.toBe(lane('0157'));
+
+    expect(depth('0157')).toBeLessThan(depth('0167'));
+    expect(depth('0167')).toBeLessThan(depth('0177'));
+  });
+
+  it('separates cells one pitch apart even when the pitch is not a round 1000', async () => {
+    const axes = await makeService(rackModel()).computeMemberAxes(RACK_ZONE);
+
+    const depths = ['0157', '0167', '0177'].map(
+      (name) => axes!.get(`location_${name}`)!.depthKey,
+    );
+
+    expect(new Set(depths).size).toBe(3);
+  });
+
+  it('keeps two lanes 950 apart from collapsing into one', async () => {
+    const axes = await makeService(rackModel()).computeMemberAxes(RACK_ZONE);
+
+    const lanes = new Set(
+      [...axes!.values()].map((memberAxes) => memberAxes.laneKey),
+    );
+
+    expect(lanes.size).toBe(2);
+  });
+});
+
 const POINT_NAMES = new Map([
   ['location_0100', ['0100']],
   ['location_0110', ['0110']],

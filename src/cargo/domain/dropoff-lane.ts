@@ -80,10 +80,45 @@ export function whereToQueue(
 ): string | null {
   const claims = occupancy.columnClaims();
   for (const index of lanesWorthAsking(layout, occupancy)) {
-    const node = queueOfLane(layout, index, claims).next('reserve');
-    if (node) return targetOf(node);
+    const target = backOfTheQueueIn(layout, index, claims);
+    if (target) return target;
   }
   return null;
+}
+
+function targetOfPoint(lane: ZoneLane, pointName: string): string {
+  return (
+    lane.slots.find((slot) => slot.pointName === pointName)?.locationName ??
+    pointName
+  );
+}
+
+function backOfTheQueueIn(
+  layout: ZoneSlotLayout,
+  laneIndex: number,
+  claims: ColumnClaims,
+): string | null {
+  const lane = layout.lanes[laneIndex];
+  const isHeld = (target: string): boolean =>
+    claims.reserved.has(target) || claims.committed.has(target);
+
+  const deepestHeld = lane.axisPoints.reduce(
+    (deepest, pointName, index) =>
+      isHeld(targetOfPoint(lane, pointName)) ? index : deepest,
+    -1,
+  );
+  const depthOf = new Map(
+    lane.axisPoints.map((pointName, index) => [pointName, index] as const),
+  );
+
+  const free = queueOfLane(layout, laneIndex, claims)
+    .standing()
+    .find(
+      (node) =>
+        (depthOf.get(node.pointName) ?? -1) > deepestHeld &&
+        !isHeld(targetOf(node)),
+    );
+  return free ? targetOf(free) : null;
 }
 
 export function queueDiagnosis(

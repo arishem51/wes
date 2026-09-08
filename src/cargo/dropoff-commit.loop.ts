@@ -341,6 +341,7 @@ export class DropoffCommitLoop implements OnModuleInit, OnModuleDestroy {
     const queued = await this.slotReservation.reserve(
       holder.cargoId,
       lineup.zone,
+      holder.vehicle,
     );
     if (!queued) {
       this.logger.error(

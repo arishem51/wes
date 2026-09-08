@@ -16,9 +16,10 @@ import {
   resolveLocationPoints,
   type PlantLocation,
 } from '../../zones/domain/member-points';
-import { DROPOFF_RETREAT_CELLS, behindChain } from './retreat-point';
+import { behindChain } from './retreat-point';
 
 export const MAX_COLUMN_LEAD = 3;
+const CELLS_PER_WAITING_SPOT = 2;
 
 export interface PlantPointPosition {
   x: number;
@@ -91,11 +92,12 @@ export function buildZoneSlotLayout(
     positioned,
     laneAxis,
   );
+  const mainlinePoints = mainlinePointNames(findMainlines(points, paths));
   return {
-    mainlinePoints: mainlinePointNames(findMainlines(points, paths)),
+    mainlinePoints,
     columns: lanes.map((lane) => lane.map(bareSlot)),
     lanes: lanes.map((lane) => {
-      const axis = axisOf(lane, points, paths, laneAxis);
+      const axis = axisOf(lane, points, paths, laneAxis, mainlinePoints);
       return {
         axis: acrossLane(laneAxis, lane[0]),
         slots: lane.map(bareSlot),
@@ -119,16 +121,17 @@ function axisOf(
   points: readonly PlantPoint[],
   paths: readonly PlantPath[],
   laneAxis: LaneAxis,
+  mainlinePoints: ReadonlySet<string>,
 ): AxisCell[] {
   const positionOf = new Map(
     points.map((point) => [point.name, point.position] as const),
   );
   const shallowest = lane[lane.length - 1];
-  const behind = behindChain(
-    { points, paths },
-    shallowest.pointName,
-    laneAxis,
-  ).slice(0, DROPOFF_RETREAT_CELLS);
+  const behind = queueTail(
+    behindChain({ points, paths }, shallowest.pointName, laneAxis),
+    mainlinePoints,
+    lane.length,
+  );
 
   return [
     ...lane.map((slot) => ({
@@ -143,6 +146,20 @@ function axisOf(
       return cells;
     }, []),
   ];
+}
+
+function queueTail(
+  behind: readonly string[],
+  mainlinePoints: ReadonlySet<string>,
+  slotCount: number,
+): string[] {
+  const tail: string[] = [];
+  for (const pointName of behind) {
+    tail.push(pointName);
+    if (mainlinePoints.has(pointName)) break;
+    if (tail.length === slotCount * CELLS_PER_WAITING_SPOT) break;
+  }
+  return tail;
 }
 
 function bareSlot({ locationName, pointName }: PositionedSlot): ZoneSlot {

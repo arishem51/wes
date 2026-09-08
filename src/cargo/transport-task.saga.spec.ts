@@ -193,10 +193,11 @@ describe('TransportTaskSaga pick-up finished', () => {
 
     await saga.onTransportOrderFinished(pickupFinished());
 
-    expect(slotReservation.reserve).toHaveBeenCalledWith('cargo-1', {
-      id: 'zone-1',
-      name: 'zone_1',
-    });
+    expect(slotReservation.reserve).toHaveBeenCalledWith(
+      'cargo-1',
+      { id: 'zone-1', name: 'zone_1' },
+      'V1',
+    );
     expect(approachOrder.aim).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'task-1' }),
       'V1',

@@ -5,11 +5,14 @@ import type { ZoneEntity } from '../zones/entities/zone.entity';
 import { laneAxisOf, type LaneAxis } from '../zones/domain/mainline';
 import {
   buildZoneSlotLayout,
+  laneIndexOfTarget,
   rankSlots,
   usableSlotCount,
   type ZoneSlot,
   type ZoneSlotLayout,
 } from './domain/zone-slot-layout';
+import { columnUpToMainline } from './domain/column-occupancy';
+import { behindChain } from './domain/retreat-point';
 
 const PLANT_MODEL_TTL_MS = 30_000;
 
@@ -77,6 +80,33 @@ export class DeliverySlotEngine {
     activeCountByLane?: readonly number[],
   ): ZoneSlot[] {
     return rankSlots(layout, unavailableLocationNames, activeCountByLane);
+  }
+
+  async columnPointsFor(
+    zone: ZoneEntity,
+    target: string,
+  ): Promise<ReadonlySet<string>> {
+    const layout = await this.layoutFor(zone);
+    if (!layout) return new Set();
+
+    const laneIndex = laneIndexOfTarget(layout, target);
+    if (laneIndex === null) return new Set();
+
+    const shallowest = layout.lanes[laneIndex].slots.at(-1);
+    const plantModel = await this.currentPlantModel();
+    if (!shallowest || !plantModel) return new Set();
+
+    return new Set(
+      columnUpToMainline(
+        layout.lanes[laneIndex].slots.map((slot) => slot.pointName),
+        behindChain(
+          plantModel,
+          shallowest.pointName,
+          this.laneAxisFor(plantModel),
+        ),
+        layout.mainlinePoints,
+      ),
+    );
   }
 
   capacityOf(layout: ZoneSlotLayout): number {

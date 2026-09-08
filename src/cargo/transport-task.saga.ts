@@ -257,7 +257,11 @@ export class TransportTaskSaga {
       return;
     }
 
-    const reservedSlot = await this.slotReservation.reserve(cargo.id, zone);
+    const reservedSlot = await this.slotReservation.reserve(
+      cargo.id,
+      zone,
+      vehicle,
+    );
     if (!reservedSlot) {
       this.logger.warn(
         `Task ${task.id}: zone "${zone.name}" offered no slot to reserve — leaving PICKING_UP for the reconcile backstop to retry`,

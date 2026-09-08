@@ -4,7 +4,9 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In } from 'typeorm';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { DeliverySlotEngine } from './delivery-slot.engine';
+import { vehicleParkedInColumn } from './domain/column-occupancy';
 import { ZoneOccupancy } from './domain/zone-occupancy';
 import { ZONE_EVENTS } from './domain/events';
 import {
@@ -46,20 +48,25 @@ export interface SlotCommitOptions {
 @Injectable()
 export class SlotReservationService {
   private readonly logger = new Logger(SlotReservationService.name);
-  private readonly noSlotLoggedAt = new Map<string, number>();
+  private readonly lastLoggedAt = new Map<string, number>();
 
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly deliverySlotEngine: DeliverySlotEngine,
     private readonly eventEmitter: EventEmitter2,
+    private readonly vehicleStore: VehicleStateStore,
   ) {}
 
   private announceReleasedSlot(zoneId: string): void {
     this.eventEmitter.emit(ZONE_EVENTS.SLOT_RELEASED, { zoneId });
   }
 
-  async reserve(cargoId: string, zone: ZoneEntity): Promise<string | null> {
+  async reserve(
+    cargoId: string,
+    zone: ZoneEntity,
+    requesterVehicleName: string | null = null,
+  ): Promise<string | null> {
     const layout = await this.deliverySlotEngine.layoutFor(zone);
     if (!layout) return null;
 
@@ -85,6 +92,21 @@ export class SlotReservationService {
         );
         return null;
       }
+
+      const parked = await this.vehicleParkedInTheColumnOf(
+        zone,
+        target,
+        requesterVehicleName,
+      );
+      if (parked) {
+        if (this.dueToRepeat(`column:${cargoId}`)) {
+          this.logger.log(
+            `Cargo ${cargoId}: ${target} is free but ${parked.name} stands at ${parked.currentPosition} in the same column with no order — holding`,
+          );
+        }
+        return null;
+      }
+      this.lastLoggedAt.delete(`column:${cargoId}`);
 
       await this.writeReservation(manager, cargo, target);
       return target;
@@ -117,14 +139,14 @@ export class SlotReservationService {
       const occupancy = ZoneOccupancy.of(zoneCargos, layout);
       const chosen = this.chooseSlot(layout, occupancy, options);
       if (!chosen) {
-        if (this.dueToRepeatNoSlot(cargoId)) {
+        if (this.dueToRepeat(`commit:${cargoId}`)) {
           this.logger.debug(
             `Cargo ${cargoId}: zone "${zone.name}" offered no slot to commit yet`,
           );
         }
         return null;
       }
-      this.noSlotLoggedAt.delete(cargoId);
+      this.lastLoggedAt.delete(`commit:${cargoId}`);
 
       const holder = occupancy.holderOf(chosen, cargo);
 
@@ -167,7 +189,7 @@ export class SlotReservationService {
   }
 
   async releaseCommit(cargoId: string, zone: ZoneEntity): Promise<void> {
-    this.noSlotLoggedAt.delete(cargoId);
+    this.lastLoggedAt.delete(`commit:${cargoId}`);
     await this.withZoneLock(zone, async (manager) => {
       const cargo = await manager
         .getRepository(CargoEntity)
@@ -185,12 +207,30 @@ export class SlotReservationService {
     this.announceReleasedSlot(zone.id);
   }
 
-  private dueToRepeatNoSlot(cargoId: string): boolean {
+  private async vehicleParkedInTheColumnOf(
+    zone: ZoneEntity,
+    target: string,
+    requesterVehicleName: string | null,
+  ): Promise<{ name: string; currentPosition: string | null } | null> {
+    const columnPoints = await this.deliverySlotEngine.columnPointsFor(
+      zone,
+      target,
+    );
+    if (columnPoints.size === 0) return null;
+
+    return vehicleParkedInColumn(
+      this.vehicleStore.getAll(),
+      columnPoints,
+      requesterVehicleName,
+    );
+  }
+
+  private dueToRepeat(key: string): boolean {
     const now = Date.now();
-    const last = this.noSlotLoggedAt.get(cargoId);
+    const last = this.lastLoggedAt.get(key);
     if (last !== undefined && now - last < NO_SLOT_LOG_EVERY_MS) return false;
 
-    this.noSlotLoggedAt.set(cargoId, now);
+    this.lastLoggedAt.set(key, now);
     return true;
   }
 

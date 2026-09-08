@@ -1,21 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { resolveLocationPoints } from '../zones/domain/member-points';
+import {
+  axesOf,
+  clusterKeys,
+  projectOnto,
+  wayIntoZone,
+} from './domain/lane-axes';
+import type { BoundaryEdge, MemberAxes, PointCoords } from './domain/lane-axes';
 import type { KernelPlantModel } from '../opentcs/domain/kernel-model';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
 import type { ZoneMemberEntity } from '../zones/entities/zone-member.entity';
 
-const GRID_ROUND = 1000;
-
-interface PointCoords {
-  x: number;
-  y: number;
-}
-
-export interface MemberAxes {
-  depthKey: number;
-  laneKey: number;
-}
+export type { MemberAxes };
 
 export interface LaneIndex {
   axesByLocation: Map<string, MemberAxes>;
@@ -112,9 +109,47 @@ export class ZoneGeometryService {
     );
     const memberPointNames = new Set<string>(memberPoints.values());
 
-    const aisleRefCoords: PointCoords[] = [];
-    let depthDirX = 0;
-    let depthDirY = 0;
+    const wayIn = wayIntoZone(
+      this.boundaryEdges(plantModel, pointMap, memberPointNames),
+    );
+    if (!wayIn) {
+      this.logger.warn(
+        `Zone "${zone.name}": no external inbound paths found — cannot compute axes`,
+      );
+      return null;
+    }
+    const axes = axesOf(wayIn);
+
+    const projected = new Map<string, { depth: number; lane: number }>();
+    for (const member of members) {
+      const pointName = memberPoints.get(member.locationName);
+      const coords = pointName ? pointMap.get(pointName) : undefined;
+      if (!coords) {
+        this.logger.warn(`No point for location "${member.locationName}"`);
+        continue;
+      }
+      projected.set(member.locationName, projectOnto(axes, coords));
+    }
+
+    const depthKeys = clusterKeys([...projected.values()].map((p) => p.depth));
+    const laneKeys = clusterKeys([...projected.values()].map((p) => p.lane));
+
+    const result = new Map<string, MemberAxes>();
+    for (const [locationName, { depth, lane }] of projected) {
+      result.set(locationName, {
+        depthKey: depthKeys.get(depth) ?? 0,
+        laneKey: laneKeys.get(lane) ?? 0,
+      });
+    }
+    return result;
+  }
+
+  private boundaryEdges(
+    plantModel: KernelPlantModel,
+    pointMap: ReadonlyMap<string, PointCoords>,
+    memberPointNames: ReadonlySet<string>,
+  ): BoundaryEdge[] {
+    const edges: BoundaryEdge[] = [];
     for (const path of plantModel.paths) {
       const srcInside = memberPointNames.has(path.srcPointName);
       const destInside = memberPointNames.has(path.destPointName);
@@ -128,47 +163,15 @@ export class ZoneGeometryService {
       );
       if (!outside || !inside) continue;
 
-      aisleRefCoords.push(outside);
-      depthDirX += inside.x - outside.x;
-      depthDirY += inside.y - outside.y;
-    }
-
-    if (aisleRefCoords.length === 0) {
-      this.logger.warn(
-        `Zone "${zone.name}": no external inbound paths found — cannot compute axes`,
-      );
-      return null;
-    }
-
-    const aisleCenter: PointCoords = {
-      x: aisleRefCoords.reduce((s, p) => s + p.x, 0) / aisleRefCoords.length,
-      y: aisleRefCoords.reduce((s, p) => s + p.y, 0) / aisleRefCoords.length,
-    };
-
-    const depthLen = Math.hypot(depthDirX, depthDirY) || 1;
-    const dx = depthDirX / depthLen;
-    const dy = depthDirY / depthLen;
-    const lx = -dy;
-    const ly = dx;
-
-    const result = new Map<string, MemberAxes>();
-    for (const member of members) {
-      const pointName = memberPoints.get(member.locationName);
-      const coords = pointName ? pointMap.get(pointName) : undefined;
-      if (!coords) {
-        this.logger.warn(`No point for location "${member.locationName}"`);
-        continue;
-      }
-      const relX = coords.x - aisleCenter.x;
-      const relY = coords.y - aisleCenter.y;
-      const depth = relX * dx + relY * dy;
-      const lane = relX * lx + relY * ly;
-      result.set(member.locationName, {
-        depthKey: Math.round(depth / GRID_ROUND) * GRID_ROUND,
-        laneKey: Math.round(lane / GRID_ROUND) * GRID_ROUND,
+      edges.push({
+        outside,
+        inside,
+        enterable: srcInside
+          ? path.maxReverseVelocity > 0
+          : path.maxVelocity > 0,
       });
     }
-    return result;
+    return edges;
   }
 
   private warnAboutLaneCellsWithoutASlot(

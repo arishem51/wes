@@ -106,14 +106,26 @@ function makeService(cargos: FakeCargo[]) {
     layoutFor: jest.fn().mockResolvedValue(LAYOUT),
     rank: (layout: ZoneSlotLayout, occupied: ReadonlySet<string>) =>
       rankSlots(layout, occupied),
+    columnPointsFor: jest
+      .fn()
+      .mockResolvedValue(new Set(['D3', 'D2', 'D1', 'WD1', 'WD2'])),
   };
   const eventEmitter = { emit: jest.fn() };
+  const vehicleStore = { getAll: jest.fn().mockReturnValue([]) };
   const service = new SlotReservationService(
     dataSource as never,
     deliverySlotEngine as never,
     eventEmitter as never,
+    vehicleStore as never,
   );
-  return { service, cargos, manager, deliverySlotEngine, eventEmitter };
+  return {
+    service,
+    cargos,
+    manager,
+    deliverySlotEngine,
+    eventEmitter,
+    vehicleStore,
+  };
 }
 
 describe('SlotReservationService.reserve', () => {
@@ -121,6 +133,39 @@ describe('SlotReservationService.reserve', () => {
     const { service } = makeService([cargo('c1')]);
 
     await expect(service.reserve('c1', ZONE)).resolves.toBe('D3');
+  });
+
+  it('holds when an orderless vehicle still stands in the column of the target', async () => {
+    const { service, vehicleStore, cargos } = makeService([cargo('c1')]);
+    vehicleStore.getAll.mockReturnValue([
+      { name: 'V9', currentPosition: 'WD1', procState: 'IDLE' },
+    ]);
+
+    await expect(service.reserve('c1', ZONE, 'V1')).resolves.toBeNull();
+    expect(cargos[0].reservedLocationName).toBeNull();
+  });
+
+  it('reserves once the vehicle standing in the column has an order again', async () => {
+    const { service, vehicleStore } = makeService([cargo('c1')]);
+    vehicleStore.getAll.mockReturnValue([
+      {
+        name: 'V9',
+        currentPosition: 'WD1',
+        procState: 'PROCESSING_ORDER',
+        transportOrder: 'PARK-V9-P1',
+      },
+    ]);
+
+    await expect(service.reserve('c1', ZONE, 'V1')).resolves.toBe('D3');
+  });
+
+  it('ignores the requesting vehicle itself when it already stands in the column', async () => {
+    const { service, vehicleStore } = makeService([cargo('c1')]);
+    vehicleStore.getAll.mockReturnValue([
+      { name: 'V1', currentPosition: 'WD1', procState: 'IDLE' },
+    ]);
+
+    await expect(service.reserve('c1', ZONE, 'V1')).resolves.toBe('D3');
   });
 
   it('never hands the same slot to two cargos', async () => {
