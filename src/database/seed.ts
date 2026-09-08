@@ -5,8 +5,24 @@ import { Repository } from 'typeorm';
 import { AppModule } from '../app.module';
 import { UsersService } from '../users/users.service';
 import { AgvEntity } from '../agvs/entities/agv.entity';
+import { RoleEntity } from '../users/entities/role.entity';
 
 const AGV_COUNT = 20;
+
+async function seedRoles(
+  roles: Repository<RoleEntity>,
+  log: Logger,
+): Promise<void> {
+  const defaults: Array<Pick<RoleEntity, 'name' | 'description'>> = [
+    { name: 'ADMIN', description: 'System administrator' },
+    { name: 'OPERATOR', description: 'Warehouse operator' },
+  ];
+
+  for (const role of defaults) {
+    await roles.upsert(role, ['name']);
+  }
+  log.log(`Ensured roles: ${defaults.map((role) => role.name).join(', ')}`);
+}
 
 async function seedAdmin(users: UsersService, log: Logger): Promise<void> {
   const password = 'Wes@1234';
@@ -14,6 +30,7 @@ async function seedAdmin(users: UsersService, log: Logger): Promise<void> {
   const existing = await users.findByUsername('quan.tran');
   if (existing) {
     await users.setPassword(existing.id, password);
+    await users.setRole(existing.id, 'admin');
     log.log('Admin "quan.tran" already exists — password reset to Wes@1234.');
     return;
   }
@@ -58,6 +75,10 @@ async function run() {
     logger: ['error', 'warn'],
   });
 
+  await seedRoles(
+    app.get<Repository<RoleEntity>>(getRepositoryToken(RoleEntity)),
+    log,
+  );
   await seedAdmin(app.get(UsersService), log);
   await seedAgvs(
     app.get<Repository<AgvEntity>>(getRepositoryToken(AgvEntity)),

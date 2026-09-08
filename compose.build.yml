@@ -1,0 +1,15 @@
+services:
+  opentcs:
+    build:
+      context: ../opentcs-integration-FMS
+      dockerfile: Dockerfile
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+  frontend:
+    build:
+      context: ../wes-client
+      dockerfile: Dockerfile
