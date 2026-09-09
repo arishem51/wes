@@ -16,6 +16,7 @@ import { AgvsModule } from './agvs/agvs.module';
 import { CargoModule } from './cargo/cargo.module';
 import { ZoneModule } from './zones/zone.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { OperatingModule } from './operating/operating.module';
 
 const localEnvFile = resolve(__dirname, '../.env');
 const hasLocalEnvFile = existsSync(localEnvFile);
@@ -45,6 +46,7 @@ const hasLocalEnvFile = existsSync(localEnvFile);
     CargoModule,
     ZoneModule,
     DashboardModule,
+    OperatingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -348,6 +348,24 @@ export class KernelApiService {
     }
   }
 
+  /** Raw `GET /v1/transportOrders` — FE passthrough for the operating screen's Order panel. */
+  async getTransportOrdersRaw(): Promise<unknown> {
+    const res = await axios.get(`${this.baseUrl}/v1/transportOrders`, {
+      timeout: 10_000,
+    });
+    return res.data;
+  }
+
+  /** Raw `GET /v1/transportOrders/{name}` — FE passthrough for the order detail dialog and the
+   *  operating map's remaining-route point list. */
+  async getTransportOrderRaw(name: string): Promise<unknown> {
+    const res = await axios.get(
+      `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}`,
+      { timeout: 10_000 },
+    );
+    return res.data;
+  }
+
   async getKernelState(): Promise<'MODELLING' | 'OPERATING' | null> {
     try {
       const res = await axios.get<{ state: string }>(
