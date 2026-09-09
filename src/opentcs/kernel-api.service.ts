@@ -442,6 +442,70 @@ export class KernelApiService {
     );
   }
 
+  async setVehiclePaused(vehicleName: string, paused: boolean): Promise<void> {
+    await this.putVehicleCommand(
+      vehicleName,
+      `paused?newValue=${paused}`,
+      paused ? 'tạm dừng' : 'tiếp tục',
+    );
+  }
+
+  /** POST /v1/vehicles/{name}/withdrawal — withdraw whatever order the vehicle is running. */
+  async withdrawVehicleOrder(
+    vehicleName: string,
+    immediate = false,
+    disableVehicle = false,
+  ): Promise<void> {
+    try {
+      await axios.post(
+        `${this.baseUrl}/v1/vehicles/${encodeURIComponent(vehicleName)}/withdrawal` +
+          `?immediate=${immediate}&disableVehicle=${disableVehicle}`,
+        null,
+        { timeout: 10_000 },
+      );
+    } catch (err) {
+      throw toVehicleCommandException(err, vehicleName, 'rút lệnh');
+    }
+  }
+
+  async setPathLocked(pathName: string, locked: boolean): Promise<void> {
+    await axios.put(
+      `${this.baseUrl}/v1/paths/${encodeURIComponent(pathName)}/locked?newValue=${locked}`,
+      null,
+      { timeout: 5_000 },
+    );
+    this.invalidatePlantModelCache();
+  }
+
+  /**
+   * Manual transport order from the operating screen. When `intendedVehicle` is omitted the
+   * kernel's own dispatcher picks the vehicle — WES only pre-assigns cargo orders, so a plain
+   * manual order is deliberately left for the kernel to route/assign (see report §5.4).
+   */
+  async createManualTransportOrder(
+    destinations: TransportOrderDestination[],
+    opts: { intendedVehicle?: string; type?: string } = {},
+  ): Promise<{ name: string; state: string }> {
+    const name = `OP-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`;
+    const body: Record<string, unknown> = { destinations, dispensable: false };
+    if (opts.intendedVehicle) body.intendedVehicle = opts.intendedVehicle;
+    if (opts.type && opts.type !== '-') body.type = opts.type;
+
+    const res = await axios.post<TransportOrderResponse>(
+      `${this.baseUrl}/v1/transportOrders/${encodeURIComponent(name)}`,
+      body,
+      { timeout: 10_000 },
+    );
+    this.logger.log(
+      `Created manual TO "${name}"` +
+        (opts.intendedVehicle
+          ? ` → ${opts.intendedVehicle}`
+          : ' (kernel picks the vehicle)'),
+    );
+    await this.triggerDispatcher();
+    return { name: res.data.name, state: res.data.state };
+  }
+
   private async putVehicleCommand(
     vehicleName: string,
     pathAndQuery: string,
