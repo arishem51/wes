@@ -17,6 +17,11 @@ import type { AuthUser } from './jwt-payload';
 const REFRESH_COOKIE = 'wes_refresh';
 const REFRESH_MAX_AGE = 7 * 86400_000;
 
+// Access token as a session cookie so EventSource (SSE) — which cannot send an Authorization
+// header — authenticates. JwtStrategy reads it after the bearer header. The JWT's own `exp` is
+// the real expiry; a stale cookie just yields 401 and the client refreshes.
+const ACCESS_COOKIE = 'wes_access';
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -31,6 +36,15 @@ export class AuthController {
     });
   }
 
+  private setAccessCookie(res: Response, token: string): void {
+    res.cookie(ACCESS_COOKIE, token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      path: '/api',
+    });
+  }
+
   // UC-81
   @Post('login')
   async login(
@@ -42,6 +56,7 @@ export class AuthController {
     const ua = req.headers['user-agent'] ?? null;
     const result = await this.auth.login(dto.username, dto.password, ip, ua);
     this.setRefreshCookie(res, result.refreshToken);
+    this.setAccessCookie(res, result.token);
     return { token: result.token, user: result.user };
   }
 
@@ -57,6 +72,7 @@ export class AuthController {
     const cookies = req.cookies as Record<string, string> | undefined;
     await this.auth.logout(user.sub, cookies?.[REFRESH_COOKIE]);
     res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+    res.clearCookie(ACCESS_COOKIE, { path: '/api' });
     return { ok: true };
   }
 
@@ -68,6 +84,7 @@ export class AuthController {
     const cookies = req.cookies as Record<string, string> | undefined;
     const result = await this.auth.refresh(cookies?.[REFRESH_COOKIE]);
     this.setRefreshCookie(res, result.refreshToken);
+    this.setAccessCookie(res, result.token);
     return { token: result.token, user: result.user };
   }
 

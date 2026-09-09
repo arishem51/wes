@@ -83,6 +83,6 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     TransportTaskSaga,
   ],
   controllers: [CargoController, DispatchPolicyController],
-  exports: [DeliverySlotEngine],
+  exports: [DeliverySlotEngine, CargoService],
 })
 export class CargoModule {}
