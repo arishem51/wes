@@ -481,6 +481,8 @@ export class CargoService {
         itemCode: cargo.itemCode,
         sourcePointName: cargo.sourcePointName,
         sourcePickupLocationName: cargo.sourcePickupLocationName,
+        sourceZoneId: cargo.sourceZoneId,
+        destinationZoneId: cargo.destinationZoneId,
         destinationLocationName: cargo.destinationLocationName,
         status: cargo.status,
         createdBy: cargo.createdBy,

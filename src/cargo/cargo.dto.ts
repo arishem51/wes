@@ -66,6 +66,8 @@ export interface CargoResponseDto {
   itemCode: string;
   sourcePointName: string | null;
   sourcePickupLocationName: string | null;
+  sourceZoneId: string | null;
+  destinationZoneId: string | null;
   destinationLocationName: string | null;
   status: CargoStatus;
   createdBy: string | null;
