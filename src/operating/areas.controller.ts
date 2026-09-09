@@ -29,6 +29,11 @@ export class OperatingAreasController {
     return this.areas.list();
   }
 
+  @Post('sync')
+  sync() {
+    return this.areas.sync();
+  }
+
   @Post()
   create(@Body() body: CreateAreaBody): Promise<AreaDto> {
     return this.areas.create(body);

@@ -89,6 +89,14 @@ export class OperatingAreasService {
     await this.zones.remove(id);
   }
 
+  /**
+   * Reconcile every Zone/Store of the loaded map with the kernel: rebuild missing member
+   * Locations and PUT the updated plant model. Delegates to ZoneService.sync().
+   */
+  sync() {
+    return this.zones.sync();
+  }
+
   private toZoneMembers(
     members: { pointName: string; priority?: number }[],
   ): { locationName: string; positionIndex: number }[] {
