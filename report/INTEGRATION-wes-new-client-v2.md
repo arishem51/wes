@@ -30,7 +30,7 @@ wes-new-client-v2  (Vite/React/shadcn/Tailwind — folder & repo riêng, sibling
   • CHỈ có màn Điều hành + auth/account. Các màn của wes-client (dashboard, users, fleet, cargo MUI) KHÔNG convert.
         │  HTTP /api/*  +  SSE  (qua Vite dev proxy → same-origin)
         ▼
-wes  (NestJS :3000, prefix /api, JWT) — GIỮ NGUYÊN DOMAIN
+wes  (NestJS :3001 (env PORT), prefix /api, JWT) — GIỮ NGUYÊN DOMAIN
   ├─ auth/ account/ cargo/ zones/ maps/ agvs/ opentcs/ dashboard/  → logic không đổi
   ├─ auth: + set cookie `wes_access`, + cookie extractor trong JwtStrategy   (§5)
   ├─ main.ts: CORS nhận danh sách origin (thêm origin v2)                    (§5)
@@ -77,16 +77,16 @@ opentcs kernel :55200   (không đổi; parkIdleVehicles vẫn OFF)
 
 | Key | Giá trị hiện tại | Hành động |
 |---|---|---|
-| `PORT` | 3000 | giữ |
+| `PORT` | **3001** (máy dev; `.env.example` ghi 3000) | giữ — proxy & CORS của v2 nhắm `:3001` |
 | `WEB_ORIGIN` | `http://localhost:5173` (CORS 1 origin, `credentials:true`) | **đổi `main.ts` → nhận danh sách** `WEB_ORIGIN` phẩy-phân-tách; thêm origin v2 (`http://localhost:5174` dev; domain thật khi deploy) |
-| `DATABASE_URL` / `PG*` (`wes`) | postgres 5432 db `wes` | giữ — v2 & module `operating` dùng chung DB `wes`, **không tạo `wes_new`** |
+| `PG*` | máy dev `.env` ghi SAI `PGPORT=5433` → **đã sửa về `5432`** (container `wes-postgres`) | giữ — dùng chung DB `wes` — v2 & module `operating` dùng chung DB `wes`, **không tạo `wes_new`** |
 | `JWT_SECRET` | `change-me-in-production` | giữ; v2 xác thực qua đây |
 | `JWT_ACCESS_TTL` | `1d` | giữ; = maxAge cookie `wes_access` mới |
 | `REFRESH_TTL_DAYS` | `7` | giữ (cookie `wes_refresh` path `/api/auth` đã có) |
 | `RESET_TTL_MINUTES` | `30` | giữ (màn reset password của v2) |
 | `APP_URL` | `http://localhost:5173` | link trong email reset — **cân nhắc** trỏ về v2 nếu v2 là console chính |
 | `SMTP_*`, `MAIL_FROM` | Gmail | giữ (forgot-password của v2 gửi mail qua đây) |
-| `OPENTCS_KERNEL_URL` | `http://localhost:55200` | giữ — **trùng `wes-new`**, không xung đột |
+| `OPENTCS_KERNEL_URL` | máy dev `.env` ghi SAI `:55300` → **đã sửa về `:55200`** (kernel thật) | giữ |
 | `OPENTCS_MAP_AUTO_LOAD` / `OPENTCS_MAP_PATH` | `false` / `maps/v7-vda5050.xml` | giữ |
 | `DISPATCH_MATCHER` | `hungarian` | giữ (logic dispatch `wes`) |
 | `DISPATCH_SWAP` / `_BASE_MM` / `_STEP_MM` / `_MAX` | `on` / 2000 / 2000 / 2 | giữ |
@@ -113,9 +113,9 @@ opentcs kernel :55200   (không đổi; parkIdleVehicles vẫn OFF)
 
 | | `wes-client` | `wes-new-client` (gốc) | `wes-new-client-v2` (đích) |
 |---|---|---|---|
-| Base API | `VITE_API_BASE_URL=/api` (proxy→:3000) | `VITE_WES_NEW_URL=http://127.0.0.1:3101` | **`VITE_API_BASE_URL=/api`** — đổi toàn bộ `src/api.ts` sang axios + JWT |
+| Base API | `VITE_API_BASE_URL=/api` (proxy→:3001) | `VITE_WES_NEW_URL=http://127.0.0.1:3101` | **`VITE_API_BASE_URL=/api`** — đổi toàn bộ `src/api.ts` sang axios + JWT |
 | Dev port | 5173 | 5174 | **5174** (giữ) |
-| Vite proxy | `/api`→:3000, `/opentcs-v1`→:55200/v1 | (không) | **thêm** `/api`→:3000 (`changeOrigin:true`; SSE: tắt buffering) |
+| Vite proxy | `/api`→:3000, `/opentcs-v1`→:55200/v1 | (không) | **thêm** `/api`→:3001 (`changeOrigin:true`; SSE: tắt buffering) |
 | Auth | interceptor gắn `Bearer localStorage['wes.accessToken']` | không gửi gì | **dùng lại cơ chế + key `wes.accessToken` / `wes-auth`** của `wes-client` |
 | Style | MUI 6 + Emotion | Tailwind v4 + shadcn | **giữ Tailwind/shadcn** (app độc lập → hết xung đột MUI) |
 | Theme | hệ riêng (`--app-bg`…) | `.dark` trên `<html>` (`src/lib/theme.ts`) | giữ nguyên |
@@ -139,7 +139,7 @@ opentcs kernel :55200   (không đổi; parkIdleVehicles vẫn OFF)
 - `AuthController.logout`: `res.clearCookie('wes_access', { path:'/api' })`.
 - `JwtStrategy.jwtFromRequest`: thêm vào `ExtractJwt.fromExtractors([...])` một extractor đọc `req.cookies['wes_access']`
   (đứng sau bearer header, trước `?token=`).
-- v2 gọi API qua **Vite proxy** (`/api` trên :5174 → :3000) ⇒ cookie same-origin với v2 ⇒ `EventSource('/api/operating/.../stream', { withCredentials:true })` tự gửi cookie. `?token=` giữ làm fallback.
+- v2 gọi API qua **Vite proxy** (`/api` trên :5174 → :3001) ⇒ cookie same-origin với v2 ⇒ `EventSource('/api/operating/.../stream', { withCredentials:true })` tự gửi cookie. `?token=` giữ làm fallback.
 
 ### 5.2 CORS
 `main.ts` `app.enableCors({ origin: (WEB_ORIGIN ?? 'http://localhost:5173').split(','), credentials:true })`.
@@ -270,7 +270,7 @@ Method mới KHÔNG gọi `triggerDispatcher` của WES (để kernel tự dispa
    Nút "Sửa" → xác nhận "xoá & tạo lại" (§5.9) hoặc ẩn, chỉ giữ tạo/xoá.
 8. **CargoModal**: giữ nguyên (map 1:1 sang `sourcePointName` + `destinationZoneId`).
 9. **Trạng thái cargo**: thêm badge `BLOCKED` (+ `READY` nếu muốn) vào `status.ts` / `StatusBadges`.
-10. **`.env`**: `VITE_API_BASE_URL=/api`. **`vite.config.ts`**: `server.port=5174`, proxy `/api`→`http://localhost:3000`
+10. **`.env`**: `VITE_API_BASE_URL=/api`. **`vite.config.ts`**: `server.port=5174`, proxy `/api`→`http://localhost:3001`
     (`changeOrigin:true`; cho SSE: `configure` tắt `res` buffering nếu cần).
 11. **i18n**: giữ tiếng Việt (màn đã sẵn); auth screens dùng tiếng Việt.
 
