@@ -54,6 +54,18 @@ Kiểm tra xung đột cổng trước khi chạy:
 ss -ltn | grep -E ':(1499|18080|59000|59200)\b' || true
 ```
 
+## Cập nhật `opentcs-kernel.properties` lên server
+
+File này được bind-mount read-only vào kernel (`./deploy/opentcs-kernel.properties` → `/opt/opentcs/config/opentcs-kernel.properties`). Kernel chỉ đọc nó lúc khởi động, nên sau khi copy phải recreate service `opentcs` thì cấu hình mới có hiệu lực.
+
+Chạy từ thư mục `wes/` trên máy dev:
+
+```bash
+scp deploy/opentcs-kernel.properties root@171.244.54.218:~/products/wes-fms/deploy/
+```
+
+Trên PowerShell, bước 3 phía máy dev dùng `Get-FileHash deploy\opentcs-kernel.properties -Algorithm MD5` thay cho `md5sum`.
+
 ## Build và push image
 
 Chạy trên máy build hoặc CI có đủ ba repository:

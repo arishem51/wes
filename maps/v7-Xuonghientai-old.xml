@@ -137,6 +137,70 @@
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="20" labelOffsetY="-30" layerId="0"/>
     </point>
+    <point name="0049" positionX="22550" positionY="-400" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0049 --- 0327"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="30" labelOffsetY="-10" layerId="0"/>
+    </point>
+    <point name="0050" positionX="22550" positionY="400" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0050 --- 0049"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="30" labelOffsetY="-10" layerId="0"/>
+    </point>
+    <point name="0051" positionX="22550" positionY="1200" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0051 --- 0050"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="30" labelOffsetY="-10" layerId="0"/>
+    </point>
+    <point name="0052" positionX="22550" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0052 --- 0051"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="30" labelOffsetY="-10" layerId="0"/>
+    </point>
+    <point name="0053" positionX="22550" positionY="2800" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0053 --- 0052"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="30" labelOffsetY="0" layerId="0"/>
+    </point>
+    <point name="0054" positionX="21600" positionY="2800" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0054 --- 0055"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="-20" labelOffsetY="-40" layerId="0"/>
+    </point>
+    <point name="0055" positionX="21600" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0055 --- 0052"/>
+        <outgoingPath name="0055 --- 0056"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="20" labelOffsetY="-40" layerId="0"/>
+    </point>
+    <point name="0056" positionX="21600" positionY="1200" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0056 --- 0051"/>
+        <outgoingPath name="0056 --- 0057"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="20" labelOffsetY="-40" layerId="0"/>
+    </point>
+    <point name="0057" positionX="21600" positionY="400" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0057 --- 0050"/>
+        <outgoingPath name="0057 --- 0058"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="-80" labelOffsetY="-10" layerId="0"/>
+    </point>
+    <point name="0058" positionX="21600" positionY="-400" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0058 --- 0049"/>
+        <outgoingPath name="0058 --- 0328"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="-80" labelOffsetY="-10" layerId="0"/>
+    </point>
     <point name="0060" positionX="21600" positionY="-2300" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="0060 --- 0061"/>
@@ -1276,6 +1340,31 @@
         <property name="laser" value="on"/>
         <pointLayout labelOffsetX="30" labelOffsetY="-10" layerId="0"/>
     </point>
+    <point name="0943" positionX="20650" positionY="1200" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0943 --- 0056"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="20" labelOffsetY="-30" layerId="0"/>
+    </point>
+    <point name="0944" positionX="20650" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0944 --- 0055"/>
+        <outgoingPath name="0944 --- 0943"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="30" labelOffsetY="-30" layerId="0"/>
+    </point>
+    <point name="0946" positionX="19550" positionY="1200" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0946 --- 0943"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
+    </point>
+    <point name="0947" positionX="19550" positionY="2000" positionZ="0" vehicleOrientationAngle="NaN" type="PARK_POSITION">
+        <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
+        <outgoingPath name="0947 --- 0944"/>
+        <property name="laser" value="on"/>
+        <pointLayout labelOffsetX="-10" labelOffsetY="-30" layerId="0"/>
+    </point>
     <point name="1000" positionX="32300" positionY="400" positionZ="0" vehicleOrientationAngle="NaN" type="HALT_POSITION">
         <maxVehicleBoundingBox length="1000" width="1000" height="1000" referenceOffsetX="0" referenceOffsetY="0"/>
         <outgoingPath name="1000 --- 0936"/>
@@ -1388,6 +1477,48 @@
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0047 --- 0405" sourcePoint="0047" destinationPoint="0405" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0049 --- 0327" sourcePoint="0049" destinationPoint="0327" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0050 --- 0049" sourcePoint="0050" destinationPoint="0049" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0051 --- 0050" sourcePoint="0051" destinationPoint="0050" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0052 --- 0051" sourcePoint="0052" destinationPoint="0051" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0053 --- 0052" sourcePoint="0053" destinationPoint="0052" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0054 --- 0055" sourcePoint="0054" destinationPoint="0055" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0055 --- 0052" sourcePoint="0055" destinationPoint="0052" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0055 --- 0056" sourcePoint="0055" destinationPoint="0056" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0056 --- 0051" sourcePoint="0056" destinationPoint="0051" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0056 --- 0057" sourcePoint="0056" destinationPoint="0057" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0057 --- 0050" sourcePoint="0057" destinationPoint="0050" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0057 --- 0058" sourcePoint="0057" destinationPoint="0058" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0058 --- 0049" sourcePoint="0058" destinationPoint="0049" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0058 --- 0328" sourcePoint="0058" destinationPoint="0328" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
     <path name="0060 --- 0061" sourcePoint="0060" destinationPoint="0061" length="950" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
@@ -2182,6 +2313,21 @@
     <path name="0940 --- 0939" sourcePoint="0940" destinationPoint="0939" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
+    <path name="0943 --- 0056" sourcePoint="0943" destinationPoint="0056" length="1000" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0944 --- 0055" sourcePoint="0944" destinationPoint="0055" length="1000" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0944 --- 0943" sourcePoint="0944" destinationPoint="0943" length="800" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0946 --- 0943" sourcePoint="0946" destinationPoint="0943" length="1050" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
+    <path name="0947 --- 0944" sourcePoint="0947" destinationPoint="0944" length="1050" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
+        <pathLayout connectionType="DIRECT" layerId="0"/>
+    </path>
     <path name="1000 --- 0936" sourcePoint="1000" destinationPoint="0936" length="1100" maxVelocity="1000" maxReverseVelocity="1000" locked="false">
         <pathLayout connectionType="DIRECT" layerId="0"/>
     </path>
@@ -2772,5 +2918,5 @@
         <property name="fms:displayRotation" value="0"/>
     </visualLayout>
     <property name="id" value="160"/>
-    <property name="tcs:modelFileLastModified" value="2026-09-09T07:38:31Z"/>
+    <property name="tcs:modelFileLastModified" value="2026-09-09T07:38:00Z"/>
 </model>
