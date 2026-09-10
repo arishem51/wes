@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
+import { MqttHealthService } from '../opentcs/mqtt-health.service';
 import type { OperatingHealthDto } from './dto/operating.dto';
 
 @UseGuards(JwtAuthGuard)
@@ -13,6 +14,7 @@ export class OperatingHealthController {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly kernelApi: KernelApiService,
     private readonly vehicleStateStore: VehicleStateStore,
+    private readonly mqttHealth: MqttHealthService,
   ) {}
 
   @Get()
@@ -30,7 +32,7 @@ export class OperatingHealthController {
         lastEventAt: null,
       },
       db: dbOk ? 'ok' : 'unreachable',
-      mqtt: 'n/a',
+      mqtt: this.mqttHealth.isConnected() ? 'ok' : 'unreachable',
     };
   }
 
