@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import { Observable, Subject } from 'rxjs';
 import { ZoneService } from '../zones/zone.service';
 import { ZoneType } from '../zones/entities/zone.entity';
 import { LOCATION_PREFIX, pointNameOf } from '../zones/domain/location-naming';
@@ -37,12 +38,20 @@ interface SlotState {
  */
 @Injectable()
 export class OperatingAreasService {
+  private readonly ticks = new Subject<void>();
+
   constructor(
     private readonly zones: ZoneService,
     private readonly kernelApi: KernelApiService,
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
   ) {}
+
+  /** Bare SSE tick whenever an area / its kernel Locations change — so every other open
+   *  client refetches instead of showing a stale zone list until an F5 or a tab refocus. */
+  get changes$(): Observable<void> {
+    return this.ticks.asObservable();
+  }
 
   async list(): Promise<AreaDto[]> {
     const zones = await this.zones.list({ allMaps: false });
@@ -60,14 +69,18 @@ export class OperatingAreasService {
       color: HEX6.test(body.color ?? '') ? body.color : undefined,
       members: this.toZoneMembers(body.members),
     });
-    return this.oneArea(zone.id);
+    const area = await this.oneArea(zone.id);
+    this.ticks.next();
+    return area;
   }
 
   async update(id: string, body: UpdateAreaBody): Promise<AreaDto> {
     if (body.color && HEX6.test(body.color)) {
       await this.zones.update(id, { color: body.color });
     }
-    return this.oneArea(id);
+    const area = await this.oneArea(id);
+    this.ticks.next();
+    return area;
   }
 
   async replaceMembers(id: string, body: ReplaceAreaMembersBody): Promise<AreaDto> {
@@ -81,20 +94,25 @@ export class OperatingAreasService {
       color: existing.color && HEX6.test(existing.color) ? existing.color : undefined,
       members: this.toZoneMembers(body.members),
     });
-    return this.oneArea(zone.id);
+    const area = await this.oneArea(zone.id);
+    this.ticks.next();
+    return area;
   }
 
   async remove(id: string): Promise<void> {
     await this.assertNoActiveCargo(id, 'xoá');
     await this.zones.remove(id);
+    this.ticks.next();
   }
 
   /**
    * Reconcile every Zone/Store of the loaded map with the kernel: rebuild missing member
    * Locations and PUT the updated plant model. Delegates to ZoneService.sync().
    */
-  sync() {
-    return this.zones.sync();
+  async sync() {
+    const result = await this.zones.sync();
+    this.ticks.next();
+    return result;
   }
 
   private toZoneMembers(
