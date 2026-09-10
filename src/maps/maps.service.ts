@@ -15,6 +15,7 @@ import type {
   KernelVehicleState,
 } from '../opentcs/domain/kernel-model';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
+import { plantModelToXml } from '../opentcs/plant-model-to-xml';
 import { savePlantModel } from '../opentcs/save-plant-model';
 import { MapRecordEntity } from './entities/map-record.entity';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
@@ -84,6 +85,13 @@ export class MapsService {
   async getPlantModel(): Promise<unknown> {
     const plantModel = await this.kernelApi.getRawPlantModel();
     return this.toPlantModelSummary(plantModel) ? plantModel : null;
+  }
+
+  /** Current plant model as flat openTCS XML — the same format `upload()` accepts. */
+  async getPlantModelXml(): Promise<string | null> {
+    const plantModel = await this.kernelApi.getRawPlantModel();
+    if (!this.toPlantModelSummary(plantModel)) return null;
+    return plantModelToXml(plantModel);
   }
 
   async getKernelVehicles(): Promise<KernelVehicleState[]> {
