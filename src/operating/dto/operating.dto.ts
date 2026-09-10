@@ -9,6 +9,8 @@ export interface PlantModelPointDto {
   x: number;
   y: number;
   linked: boolean;
+  /** true when the point is linked to a Location whose LocationType allows the charge operation. */
+  charge: boolean;
   /** openTCS Point.Type — HALT_POSITION / PARK_POSITION / REPORT_POSITION. */
   type: string;
   labelOffsetX: number;

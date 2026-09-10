@@ -17,6 +17,8 @@ interface RawPoint {
 
 interface RawLocation {
   name?: string;
+  typeName?: string;
+  type?: string;
   links?: { pointName?: string }[];
 }
 
@@ -51,11 +53,24 @@ export class OperatingPlantModelService {
       (point): point is RawPoint & { name: string } => typeof point.name === 'string',
     );
     const locations = (model?.locations as RawLocation[] | undefined) ?? [];
+    const locationTypes = (model?.locationTypes as RawLocationType[] | undefined) ?? [];
+
+    const chargeTypeNames = new Set(
+      locationTypes
+        .filter((lt) => (lt.allowedOperations ?? []).includes(this.kernelApi.chargeOperation))
+        .map((lt) => lt.name)
+        .filter((n): n is string => typeof n === 'string'),
+    );
 
     const linkedPointNames = new Set<string>();
+    const chargePointNames = new Set<string>();
     for (const location of locations) {
+      const typeName = location.typeName ?? location.type;
+      const isChargeLocation = typeof typeName === 'string' && chargeTypeNames.has(typeName);
       for (const link of location.links ?? []) {
-        if (link.pointName) linkedPointNames.add(link.pointName);
+        if (!link.pointName) continue;
+        linkedPointNames.add(link.pointName);
+        if (isChargeLocation) chargePointNames.add(link.pointName);
       }
     }
 
@@ -68,6 +83,7 @@ export class OperatingPlantModelService {
           x: point.position?.x ?? 0,
           y: point.position?.y ?? 0,
           linked: linkedPointNames.has(point.name),
+          charge: chargePointNames.has(point.name),
           type: typeof point.type === 'string' ? point.type : 'HALT_POSITION',
           labelOffsetX: point.layout?.labelOffset?.x ?? 0,
           labelOffsetY: point.layout?.labelOffset?.y ?? 0,

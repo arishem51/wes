@@ -2,7 +2,9 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   MessageEvent,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -71,6 +73,15 @@ export class MapsController {
   @Get('health')
   getHealth() {
     return this.maps.getHealth();
+  }
+
+  @Get('plant-model/xml')
+  @Header('Content-Type', 'application/xml; charset=utf-8')
+  async getPlantModelXml(): Promise<string> {
+    const xml = await this.maps.getPlantModelXml();
+    if (xml == null)
+      throw new NotFoundException('Kernel has no plant model loaded.');
+    return xml;
   }
 
   @Get('cargo-options')

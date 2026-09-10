@@ -75,6 +75,9 @@ describe('ZoneService.sync', () => {
     getPlantModelName: jest.Mock;
     invalidatePlantModelCache: jest.Mock;
     putRawPlantModel: jest.Mock;
+    getVehicleStates: jest.Mock;
+    setVehicleAdapterEnabled: jest.Mock;
+    setVehicleIntegrationLevel: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -87,6 +90,10 @@ describe('ZoneService.sync', () => {
       // Default: kernel accepts the write (MODELLING). OPERATING cases override
       // this with a rejection.
       putRawPlantModel: jest.fn().mockResolvedValue(undefined),
+      // A plant-model write re-inits vehicles; the writer snapshots + restores them.
+      getVehicleStates: jest.fn().mockResolvedValue([]),
+      setVehicleAdapterEnabled: jest.fn().mockResolvedValue(undefined),
+      setVehicleIntegrationLevel: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({

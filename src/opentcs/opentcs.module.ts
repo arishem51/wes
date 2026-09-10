@@ -7,6 +7,7 @@ import { KernelEventListenerService } from './kernel-event-listener.service';
 import { MapLoaderService } from './map-loader/map-loader.service';
 import { VehicleStateStore } from './vehicle-state.store';
 import { FleetTelemetryService } from './fleet-telemetry.service';
+import { MqttHealthService } from './mqtt-health.service';
 import { SseSessionEntity } from './entities/sse-session.entity';
 import { VehicleStateTransitionEntity } from './entities/vehicle-state-transition.entity';
 
@@ -22,7 +23,13 @@ import { VehicleStateTransitionEntity } from './entities/vehicle-state-transitio
     KernelSyncService,
     KernelEventListenerService,
     MapLoaderService,
+    MqttHealthService,
   ],
-  exports: [KernelApiService, TransportOrderService, VehicleStateStore],
+  exports: [
+    KernelApiService,
+    TransportOrderService,
+    VehicleStateStore,
+    MqttHealthService,
+  ],
 })
 export class OpenTcsModule {}

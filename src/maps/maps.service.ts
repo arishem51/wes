@@ -17,6 +17,7 @@ import type {
 } from '../opentcs/domain/kernel-model';
 import { toKernelPlantModel } from '../opentcs/domain/kernel-mappers';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
+import { plantModelToXml } from '../opentcs/plant-model-to-xml';
 import { savePlantModel } from '../opentcs/save-plant-model';
 import {
   buildMapHealthReport,
@@ -145,6 +146,12 @@ export class MapsService {
         .sort((a, b) => a.positionIndex - b.positionIndex)
         .map((member) => member.locationName),
     }));
+  }
+
+  async getPlantModelXml(): Promise<string | null> {
+    const plantModel = await this.kernelApi.getRawPlantModel();
+    if (!this.toPlantModelSummary(plantModel)) return null;
+    return plantModelToXml(plantModel);
   }
 
   async getKernelVehicles(): Promise<KernelVehicleState[]> {
