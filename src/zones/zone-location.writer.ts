@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import {
   removeLocations,
   upsertMemberLocations,
@@ -39,8 +40,10 @@ export class ZoneLocationWriter {
 
   async write(specs: readonly MemberLocationSpec[]): Promise<void> {
     if (specs.length === 0) return;
+    const priorVehicles = await this.snapshotVehicles();
     await upsertMemberLocations(this.kernelApi, [...specs]);
     this.logger.log(`Wrote ${specs.length} zone location(s) to the kernel`);
+    await this.restoreVehicles(priorVehicles);
   }
 
   async removeUnshared(zone: ZoneEntity): Promise<void> {
@@ -56,10 +59,45 @@ export class ZoneLocationWriter {
     const removable = memberLocationNames.filter((name) => !shared.has(name));
     if (removable.length === 0) return;
 
+    const priorVehicles = await this.snapshotVehicles();
     await removeLocations(this.kernelApi, removable);
     this.logger.log(
       `Zone "${zone.name}" (${zone.id}): removed ${removable.length} location(s) from the kernel`,
     );
+    await this.restoreVehicles(priorVehicles);
+  }
+
+  /**
+   * A `PUT /v1/plantModel` (how location writes land in openTCS) re-initialises every vehicle:
+   * comm adapter disabled, integration level reset to the model default. Left alone, a single
+   * zone edit darkens the whole running fleet until someone re-enables each vehicle by hand —
+   * this is the "cứ phải F5 / xe đứng im sau khi sửa zone" report. Snapshot the fleet before
+   * the write and put each vehicle back exactly as it was afterwards.
+   */
+  private async snapshotVehicles(): Promise<KernelVehicleState[]> {
+    try {
+      return await this.kernelApi.getVehicleStates();
+    } catch {
+      return [];
+    }
+  }
+
+  private async restoreVehicles(prior: KernelVehicleState[]): Promise<void> {
+    for (const v of prior) {
+      // `state === 'UNKNOWN'` == the comm adapter was already detached; don't wake it.
+      if (v.state === 'UNKNOWN') continue;
+      try {
+        await this.kernelApi.setVehicleAdapterEnabled(v.name, true);
+        await this.kernelApi.setVehicleIntegrationLevel(
+          v.name,
+          v.integrationLevel,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Could not restore vehicle "${v.name}" after location write: ${(err as Error).message}`,
+        );
+      }
+    }
   }
 
   private async sharedWithOtherZones(
