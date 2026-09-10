@@ -19,6 +19,9 @@ interface VehicleSnapshot {
   procState: string;
   state: string;
   order: string | null;
+  goalOrder: string | null;
+  orderCreatedAt: string | null;
+  goalReceivedAt: string | null;
 }
 
 type PendingRow = Omit<
@@ -117,6 +120,9 @@ export class FleetTelemetryService
       procState: state.procState,
       state: state.state,
       order: state.transportOrder ?? null,
+      goalOrder: state.goal?.orderName ?? null,
+      orderCreatedAt: state.goal?.creationTime ?? null,
+      goalReceivedAt: state.goal?.receivedAt ?? null,
     };
     const previous = this.last.get(state.name);
     if (
@@ -124,7 +130,10 @@ export class FleetTelemetryService
       previous.point === snapshot.point &&
       previous.procState === snapshot.procState &&
       previous.state === snapshot.state &&
-      previous.order === snapshot.order
+      previous.order === snapshot.order &&
+      previous.goalOrder === snapshot.goalOrder &&
+      previous.orderCreatedAt === snapshot.orderCreatedAt &&
+      previous.goalReceivedAt === snapshot.goalReceivedAt
     ) {
       return; // SSE re-sent an unchanged state — not a transition.
     }
@@ -135,6 +144,13 @@ export class FleetTelemetryService
       procState: snapshot.procState,
       vehicleState: snapshot.state,
       orderName: snapshot.order,
+      goalOrderName: snapshot.goalOrder,
+      orderCreatedAt: snapshot.orderCreatedAt
+        ? new Date(snapshot.orderCreatedAt)
+        : null,
+      goalReceivedAt: snapshot.goalReceivedAt
+        ? new Date(snapshot.goalReceivedAt)
+        : null,
       observedAt: state.observedAt ? new Date(state.observedAt) : null,
     });
   }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { KernelApiService } from './kernel-api.service';
+import { TransportOrderService } from './transport-order.service';
 import { KernelSyncService } from './kernel-sync.service';
 import { KernelEventListenerService } from './kernel-event-listener.service';
 import { MapLoaderService } from './map-loader/map-loader.service';
@@ -14,17 +15,21 @@ import { VehicleStateTransitionEntity } from './entities/vehicle-state-transitio
   imports: [
     TypeOrmModule.forFeature([SseSessionEntity, VehicleStateTransitionEntity]),
   ],
-  // Order matters when OPENTCS_MAP_AUTO_LOAD=true: KernelSyncService
-  // bootstraps before MapLoaderService attempts to PUT the plant model.
   providers: [
     VehicleStateStore,
     KernelApiService,
+    TransportOrderService,
     FleetTelemetryService,
     KernelSyncService,
     KernelEventListenerService,
     MapLoaderService,
     MqttHealthService,
   ],
-  exports: [KernelApiService, VehicleStateStore, MqttHealthService],
+  exports: [
+    KernelApiService,
+    TransportOrderService,
+    VehicleStateStore,
+    MqttHealthService,
+  ],
 })
 export class OpenTcsModule {}

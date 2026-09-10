@@ -1,3 +1,4 @@
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { DropoffOrderService } from './dropoff-order.service';
 
 const SLOT = 'location_3003';
@@ -17,6 +18,7 @@ function makeService(plan: unknown = PLAN) {
   const service = new DropoffOrderService(
     taskRepo as never,
     kernelApi as never,
+    new TransportOrderService(kernelApi as never),
     retreatPoint as never,
   );
   return { service, taskRepo, kernelApi, retreatPoint };
@@ -27,7 +29,7 @@ function task(metadata: Record<string, unknown> = {}) {
 }
 
 describe('DropoffOrderService.issue', () => {
-  it('puts the drop-off first, then one MOVE per retreat cell', async () => {
+  it('puts the drop-off first, then one MOVE to the last retreat cell', async () => {
     const { service, kernelApi } = makeService();
 
     await service.issue(task(), 'V1', SLOT, ZONE);
@@ -35,7 +37,6 @@ describe('DropoffOrderService.issue', () => {
     const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
     expect(destinations).toEqual([
       { locationName: SLOT, operation: 'liftDown' },
-      { locationName: '3002', operation: 'MOVE' },
       { locationName: '3001', operation: 'MOVE' },
     ]);
   });
@@ -51,7 +52,7 @@ describe('DropoffOrderService.issue', () => {
     const [, destinations] = kernelApi.createTransportOrder.mock.calls[0];
     expect(
       (destinations as { locationName: string }[]).map((d) => d.locationName),
-    ).toEqual([SLOT, '3002', '3001']);
+    ).toEqual([SLOT, '3001']);
   });
 
   it('keeps the order on the DROPOFF leg and pins the assigned vehicle', async () => {
@@ -77,7 +78,7 @@ describe('DropoffOrderService.issue', () => {
     const saved = taskRepo.save.mock.calls[0][0] as {
       metadata: Record<string, string>;
     };
-    expect(saved.metadata.to3Name).toMatch(/^DROPOFF-V1-/);
+    expect(saved.metadata.dropoffOrderName).toMatch(/^DROPOFF-V1-/);
     expect(saved.metadata.retreatPointName).toBe('3001');
   });
 
@@ -102,7 +103,7 @@ describe('DropoffOrderService.reissue', () => {
     const { service, kernelApi } = makeService();
 
     await service.reissue(
-      task({ to3Name: 'DROPOFF-V1-old' }),
+      task({ dropoffOrderName: 'DROPOFF-V1-old' }),
       'V1',
       SLOT,
       ZONE,
@@ -110,6 +111,7 @@ describe('DropoffOrderService.reissue', () => {
 
     expect(kernelApi.withdrawTransportOrder).toHaveBeenCalledWith(
       'DROPOFF-V1-old',
+      false,
     );
     expect(kernelApi.createTransportOrder).toHaveBeenCalled();
   });
@@ -119,7 +121,7 @@ describe('DropoffOrderService.reissue', () => {
     kernelApi.withdrawTransportOrder.mockRejectedValueOnce(new Error('boom'));
 
     const result = await service.reissue(
-      task({ to3Name: 'DROPOFF-V1-old' }),
+      task({ dropoffOrderName: 'DROPOFF-V1-old' }),
       'V1',
       SLOT,
       ZONE,

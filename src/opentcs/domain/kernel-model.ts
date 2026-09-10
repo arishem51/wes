@@ -10,6 +10,8 @@ export interface KernelVehicleGoal {
   orderName: string;
   destinationName: string;
   operation: string;
+  creationTime?: string;
+  receivedAt?: string;
 }
 
 export interface KernelVehicleState {
@@ -78,11 +80,21 @@ export interface KernelPath {
   locked: boolean;
 }
 
+export interface KernelLayoutProperty {
+  name: string;
+  value: string;
+}
+
+export interface KernelVisualLayout {
+  properties: KernelLayoutProperty[];
+}
+
 export interface KernelPlantModel {
   points: KernelPoint[];
   paths: KernelPath[];
   locationTypes: KernelLocationType[];
   locations: KernelLocation[];
+  visualLayout: KernelVisualLayout | null;
 }
 
 export interface KernelParkingPoint {

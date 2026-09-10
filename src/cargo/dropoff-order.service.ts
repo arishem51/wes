@@ -1,15 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
+import { ORDER_KIND } from '../opentcs/domain/transport-order';
 import type { TransportOrderDestination } from '../opentcs/domain/kernel-model';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import { RetreatPointService } from './retreat-point.service';
 import type { RetreatPlan } from './domain/retreat-point';
-import { ORDER_PROP } from './domain/events';
-import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 
 @Injectable()
 export class DropoffOrderService {
@@ -19,6 +18,7 @@ export class DropoffOrderService {
     @InjectRepository(TransportTaskEntity)
     private readonly taskRepo: Repository<TransportTaskEntity>,
     private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
     private readonly retreatPoint: RetreatPointService,
   ) {}
 
@@ -35,31 +35,52 @@ export class DropoffOrderService {
       );
     }
 
-    const orderName = buildOrderName(
-      ORDER_TYPE.DROPOFF,
-      vehicle,
-      slot,
-      randomUUID(),
-    );
+    let orderName: string;
     try {
-      await this.kernelApi.createTransportOrder(
-        orderName,
-        destinationsFor(slot, plan, this.kernelApi.unloadOperation),
-        vehicle,
-        { [ORDER_PROP.TASK_ID]: task.id, [ORDER_PROP.LEG]: 'DROPOFF' },
-      );
+      orderName = await this.transportOrders.issue({
+        kind: ORDER_KIND.DROPOFF,
+        vehicleName: vehicle,
+        aimedAt: slot,
+        destinations: destinationsFor(
+          slot,
+          plan,
+          this.kernelApi.unloadOperation,
+        ),
+        taskId: task.id,
+      });
     } catch (err) {
       this.logger.error(
-        `Failed to create ${orderName}: ${(err as Error).message}`,
+        `Task ${task.id}: could not create the drop-off order at ${slot}: ${(err as Error).message}`,
       );
       return null;
     }
 
-    task.metadata = { ...task.metadata, to3Name: orderName };
+    task.metadata = { ...task.metadata, dropoffOrderName: orderName };
     const retreatPoint = plan?.cells.at(-1);
     if (retreatPoint) task.metadata.retreatPointName = retreatPoint;
     await this.taskRepo.save(task);
     return orderName;
+  }
+
+  async cancel(task: TransportTaskEntity): Promise<void> {
+    const current = task.metadata?.dropoffOrderName;
+    if (!current) return;
+
+    try {
+      await this.transportOrders.cancel(current);
+    } catch (err) {
+      this.logger.error(
+        `Task ${task.id}: could not withdraw ${current} — leaving the reference so it can be retried: ${(err as Error).message}`,
+      );
+      return;
+    }
+
+    task.metadata = {
+      ...task.metadata,
+      dropoffOrderName: undefined,
+      retreatPointName: undefined,
+    };
+    await this.taskRepo.save(task);
   }
 
   async reissue(
@@ -68,10 +89,10 @@ export class DropoffOrderService {
     slot: string,
     zone: ZoneEntity,
   ): Promise<string | null> {
-    const current = task.metadata?.to3Name;
+    const current = task.metadata?.dropoffOrderName;
     if (current) {
       try {
-        await this.kernelApi.withdrawTransportOrder(current);
+        await this.transportOrders.cancel(current);
       } catch (err) {
         this.logger.error(
           `Task ${task.id}: could not withdraw ${current} before aiming at ${slot}: ${(err as Error).message}`,
@@ -86,8 +107,8 @@ export class DropoffOrderService {
 export function retreatDestinations(
   plan: RetreatPlan | null,
 ): TransportOrderDestination[] {
-  const cells = plan ? [...plan.cells] : [];
-  return cells.map((cell) => ({ locationName: cell, operation: 'MOVE' }));
+  const retreatCell = plan?.cells.at(-1);
+  return retreatCell ? [{ locationName: retreatCell, operation: 'MOVE' }] : [];
 }
 
 function destinationsFor(

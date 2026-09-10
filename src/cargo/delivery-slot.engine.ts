@@ -2,13 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelPlantModel } from '../opentcs/domain/kernel-model';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
+import { laneAxisOf, type LaneAxis } from '../zones/domain/mainline';
 import {
   buildZoneSlotLayout,
+  laneIndexOfTarget,
   rankSlots,
   usableSlotCount,
   type ZoneSlot,
   type ZoneSlotLayout,
 } from './domain/zone-slot-layout';
+import { columnUpToMainline } from './domain/column-occupancy';
+import { behindChain } from './domain/retreat-point';
 
 const PLANT_MODEL_TTL_MS = 30_000;
 
@@ -24,6 +28,7 @@ export class DeliverySlotEngine {
   private plantModel: KernelPlantModel | null = null;
   private plantModelFetchedAt = 0;
   private plantModelInFlight: Promise<KernelPlantModel | null> | null = null;
+  private reportedLaneAxis: LaneAxis | null = null;
 
   constructor(private readonly kernelApi: KernelApiService) {}
 
@@ -58,6 +63,7 @@ export class DeliverySlotEngine {
       plantModel.paths,
       plantModel.locations,
       memberLocationNames,
+      this.laneAxisFor(plantModel),
     );
     if (layout.strandedLocationNames.length > 0) {
       this.logger.warn(
@@ -76,6 +82,33 @@ export class DeliverySlotEngine {
     return rankSlots(layout, unavailableLocationNames, activeCountByLane);
   }
 
+  async columnPointsFor(
+    zone: ZoneEntity,
+    target: string,
+  ): Promise<ReadonlySet<string>> {
+    const layout = await this.layoutFor(zone);
+    if (!layout) return new Set();
+
+    const laneIndex = laneIndexOfTarget(layout, target);
+    if (laneIndex === null) return new Set();
+
+    const shallowest = layout.lanes[laneIndex].slots.at(-1);
+    const plantModel = await this.currentPlantModel();
+    if (!shallowest || !plantModel) return new Set();
+
+    return new Set(
+      columnUpToMainline(
+        layout.lanes[laneIndex].slots.map((slot) => slot.pointName),
+        behindChain(
+          plantModel,
+          shallowest.pointName,
+          this.laneAxisFor(plantModel),
+        ),
+        layout.mainlinePoints,
+      ),
+    );
+  }
+
   capacityOf(layout: ZoneSlotLayout): number {
     return usableSlotCount(layout);
   }
@@ -83,6 +116,21 @@ export class DeliverySlotEngine {
   async usableCapacityOf(zone: ZoneEntity): Promise<number> {
     const layout = await this.layoutFor(zone);
     return layout ? usableSlotCount(layout) : 0;
+  }
+
+  private laneAxisFor(plantModel: KernelPlantModel): LaneAxis {
+    const { axis, source } = laneAxisOf(
+      plantModel.points,
+      plantModel.paths,
+      plantModel.visualLayout?.properties ?? [],
+    );
+    if (this.reportedLaneAxis !== axis) {
+      this.reportedLaneAxis = axis;
+      this.logger.log(
+        `Lanes run along ${axis} (${source}); slot depth is measured on ${axis}, lane identity on ${axis === 'x' ? 'y' : 'x'}`,
+      );
+    }
+    return axis;
   }
 
   private plantModelIsStale(): boolean {

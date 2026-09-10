@@ -24,6 +24,7 @@ function loadEnv(filePath: string): Record<string, string> {
 
 const env = loadEnv(resolve(__dirname, '../../.env'));
 const get = (k: string, fallback = '') => env[k] ?? process.env[k] ?? fallback;
+const compiledExtension = __filename.endsWith('.ts') ? 'ts' : 'js';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -33,7 +34,7 @@ export const AppDataSource = new DataSource({
   username: get('PGUSER', 'postgres'),
   password: get('PGPASSWORD', 'postgres'),
   database: get('PGDATABASE', 'wes'),
-  entities: [resolve(__dirname, '../**/*.entity.ts')],
-  migrations: [resolve(__dirname, './migrations/*.ts')],
+  entities: [resolve(__dirname, `../**/*.entity.${compiledExtension}`)],
+  migrations: [resolve(__dirname, `./migrations/*.${compiledExtension}`)],
   synchronize: false,
 });

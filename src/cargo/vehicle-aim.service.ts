@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { ZoneEntity } from '../zones/entities/zone.entity';
 import type { TransportTaskEntity } from './entities/transport-task.entity';
 import type { ZoneSlotLayout } from './domain/zone-slot-layout';
-import { canKeepDrivingTo } from './domain/dropoff-lane';
 import {
   ApproachOrderService,
   approachTargetFor,
@@ -32,26 +31,48 @@ export class VehicleAimService {
     layout: ZoneSlotLayout,
     cell: string,
   ): Promise<boolean> {
+    const claimed = await this.slotReservation.claimCell(
+      aimed.cargoId,
+      cell,
+      zone,
+    );
+    if (!claimed) {
+      this.logger.warn(
+        `Task ${aimed.task.id}: ${aimed.vehicle} cannot wait at ${cell} — another cargo holds it`,
+      );
+      return false;
+    }
+
     const orderName = await this.approachOrder.aim(
       aimed.task,
       aimed.vehicle,
       approachTargetFor(layout, cell),
     );
     if (!orderName) {
+      await this.slotReservation.restoreClaim(
+        aimed.cargoId,
+        claimed.previous,
+        zone,
+      );
       this.logger.error(
-        `Task ${aimed.task.id}: ${aimed.vehicle} has no order for ${cell} — leaving it where it was aimed`,
+        `Task ${aimed.task.id}: ${aimed.vehicle} has no order for ${cell} — gave the cell back`,
       );
       return false;
     }
 
-    await this.slotReservation.aimAt(aimed.cargoId, cell, zone);
     return true;
   }
 
+  async stopApproaching(aimed: AimedVehicle): Promise<void> {
+    await this.approachOrder.cancel(aimed.task);
+  }
+
+  async stopDropping(aimed: AimedVehicle): Promise<void> {
+    await this.dropoffOrder.cancel(aimed.task);
+  }
   async dropAt(
     aimed: AimedVehicle,
     zone: ZoneEntity,
-    layout: ZoneSlotLayout,
     slot: string,
     keptOwnReservation: boolean,
   ): Promise<boolean> {
@@ -71,7 +92,7 @@ export class VehicleAimService {
       return false;
     }
 
-    if (this.shouldCancelApproach(task, layout, slot)) {
+    if (this.shouldCancelApproach(task, slot)) {
       await this.approachOrder.cancel(task);
     }
     return true;
@@ -79,7 +100,6 @@ export class VehicleAimService {
 
   private shouldCancelApproach(
     task: TransportTaskEntity,
-    layout: ZoneSlotLayout,
     slot: string,
   ): boolean {
     const heading = task.metadata?.approachPointName;
@@ -88,11 +108,7 @@ export class VehicleAimService {
     if (noApproachOrderToCancel) return false;
 
     const alreadyHeadingToThatCell = heading === slot;
-    if (alreadyHeadingToThatCell) return false;
-
-    if (canKeepDrivingTo(layout, heading, slot)) return false;
-
-    return true;
+    return !alreadyHeadingToThatCell;
   }
 
   private async dropOffOrderFor(
@@ -102,7 +118,7 @@ export class VehicleAimService {
     slot: string,
     keptOwnReservation: boolean,
   ): Promise<string | null> {
-    const current = task.metadata?.to3Name;
+    const current = task.metadata?.dropoffOrderName;
     if (!current) return this.dropoffOrder.issue(task, vehicle, slot, zone);
     if (keptOwnReservation) return current;
     return this.dropoffOrder.reissue(task, vehicle, slot, zone);

@@ -5,10 +5,11 @@ import { MapsService } from './maps.service';
 import { MapsController } from './maps.controller';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
 import { CargoEntity } from '../cargo/entities/cargo.entity';
+import { ZoneEntity } from '../zones/entities/zone.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([MapRecordEntity, CargoEntity]),
+    TypeOrmModule.forFeature([MapRecordEntity, CargoEntity, ZoneEntity]),
     OpenTcsModule,
   ],
   providers: [MapsService],

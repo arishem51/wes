@@ -23,7 +23,23 @@ describe('toKernelPlantModel', () => {
       paths: [],
       locationTypes: [],
       locations: [],
+      visualLayout: null,
     });
+  });
+
+  it('keeps the layout properties, which say which way the map was drawn', () => {
+    const model = toKernelPlantModel({
+      visualLayout: {
+        properties: [
+          { name: 'direction', value: 'X+' },
+          { name: 'scale', value: 5 },
+        ],
+      },
+    });
+
+    expect(model?.visualLayout?.properties).toEqual([
+      { name: 'direction', value: 'X+' },
+    ]);
   });
 
   it('reads parking priority from the REST array shape and the SSE map shape', () => {
@@ -323,6 +339,28 @@ describe('toVehicleGoal', () => {
         orderName: 'PARK-1',
         destinationName: '0270',
         operation: 'MOVE',
+      },
+    });
+  });
+
+  it('keeps the transport order creation time for goal latency telemetry', () => {
+    expect(
+      toVehicleGoal({
+        name: 'PICKUP-1',
+        state: 'BEING_PROCESSED',
+        processingVehicle: 'Vehicle-0001',
+        creationTime: '2026-09-05T10:00:00.123Z',
+        destinations: [
+          { locationName: 'LOC-1', operation: 'liftUp', state: 'TRAVELLING' },
+        ],
+      }),
+    ).toEqual({
+      vehicleName: 'Vehicle-0001',
+      goal: {
+        orderName: 'PICKUP-1',
+        destinationName: 'LOC-1',
+        operation: 'liftUp',
+        creationTime: '2026-09-05T10:00:00.123Z',
       },
     });
   });

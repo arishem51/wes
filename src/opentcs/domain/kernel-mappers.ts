@@ -3,6 +3,7 @@ import type {
   KernelLocationLink,
   KernelLocationType,
   KernelPath,
+  KernelLayoutProperty,
   KernelPlantModel,
   KernelPoint,
   KernelTransportOrder,
@@ -10,6 +11,7 @@ import type {
   KernelVehicleGoal,
   KernelVehiclePrecisePosition,
   KernelVehicleState,
+  KernelVisualLayout,
 } from './kernel-model';
 import { toVehicleErrors } from './vehicle-errors';
 
@@ -21,9 +23,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function mapArray<T>(value: unknown, map: (item: unknown) => T | null): T[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => map(item))
-    .filter((item): item is T => item !== null);
+  return value.reduce<T[]>((items, item) => {
+    const mapped = map(item);
+    if (mapped !== null) items.push(mapped);
+    return items;
+  }, []);
 }
 
 function toStringArray(value: unknown): string[] {
@@ -188,12 +192,27 @@ function toKernelLocation(value: unknown): KernelLocation | null {
 
 export function locationPointNames(links: KernelLocation['links']): string[] {
   if (Array.isArray(links)) {
-    return links
-      .map((link) => link.pointName ?? link.point)
-      .filter((point): point is string => typeof point === 'string');
+    return links.reduce<string[]>((points, link) => {
+      const point = link.pointName ?? link.point;
+      if (typeof point === 'string') points.push(point);
+      return points;
+    }, []);
   }
   if (isRecord(links)) return Object.keys(links);
   return [];
+}
+
+function toKernelLayoutProperty(value: unknown): KernelLayoutProperty | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.name !== 'string' || typeof value.value !== 'string') {
+    return null;
+  }
+  return { name: value.name, value: value.value };
+}
+
+function toKernelVisualLayout(value: unknown): KernelVisualLayout | null {
+  if (!isRecord(value)) return null;
+  return { properties: mapArray(value.properties, toKernelLayoutProperty) };
 }
 
 export function toKernelPlantModel(value: unknown): KernelPlantModel | null {
@@ -206,6 +225,7 @@ export function toKernelPlantModel(value: unknown): KernelPlantModel | null {
     paths: mapArray(value.paths, toKernelPath),
     locationTypes: mapArray(value.locationTypes, toKernelLocationType),
     locations: mapArray(value.locations, toKernelLocation),
+    visualLayout: toKernelVisualLayout(value.visualLayout),
   };
 }
 
@@ -367,6 +387,17 @@ export interface VehicleGoalUpdate {
 
 type PendingDestination = Omit<KernelVehicleGoal, 'orderName'>;
 
+function creationTimeOf(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const raw = isRecord(value.creationTime)
+    ? value.creationTime.creationTime
+    : value.creationTime;
+  if (typeof raw !== 'string' || Number.isNaN(Date.parse(raw))) {
+    return undefined;
+  }
+  return raw;
+}
+
 function unfinished(value: unknown, from: number): unknown[] {
   if (!Array.isArray(value)) return [];
   return from > 0 ? value.slice(from) : value;
@@ -432,6 +463,14 @@ export function toVehicleGoal(value: unknown): VehicleGoalUpdate | null {
 
   return {
     vehicleName,
-    goal: destination ? { orderName: value.name, ...destination } : null,
+    goal: destination
+      ? {
+          orderName: value.name,
+          ...destination,
+          ...(creationTimeOf(value) && {
+            creationTime: creationTimeOf(value),
+          }),
+        }
+      : null,
   };
 }

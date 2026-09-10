@@ -36,6 +36,20 @@ export class VehicleStateTransitionEntity {
   @Column({ name: 'order_name', type: 'varchar', length: 80, nullable: true })
   orderName!: string | null;
 
+  @Column({
+    name: 'goal_order_name',
+    type: 'varchar',
+    length: 80,
+    nullable: true,
+  })
+  goalOrderName!: string | null;
+
+  @Column({ name: 'order_created_at', type: 'timestamptz', nullable: true })
+  orderCreatedAt!: Date | null;
+
+  @Column({ name: 'goal_received_at', type: 'timestamptz', nullable: true })
+  goalReceivedAt!: Date | null;
+
   /**
    * Host ingest time (WES/Postgres clock). Authoritative for cutting a run's
    * time window — the same clock as runs / task_status_transitions.

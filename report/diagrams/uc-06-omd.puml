@@ -3,7 +3,6 @@
 ' Use cases taken verbatim from the UC table in Section II.1.3.2 (OMD group).
 ' UC 68 and UC 69 moved into this group on 02/08/2026: both are views of state
 ' produced by the FMS layer rather than dispatch logic.
-!pragma layout smetana
 !include uc-style.iuml
 left to right direction
 

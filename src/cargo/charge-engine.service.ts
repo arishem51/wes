@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
-import { ORDER_PROP } from './domain/events';
 import { AgvEntity } from '../agvs/entities/agv.entity';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
+import { ORDER_KIND } from '../opentcs/domain/transport-order';
 import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { ParkClaimStore } from './park-claim.store';
@@ -26,13 +26,10 @@ import {
   pickChargeLocation,
 } from './domain/charge.policy';
 import {
-  CHARGE_LEG,
-  PARK_LEG,
   STOP_CHARGING_ACTION,
   DEFAULT_FULL_CHARGE_PCT,
   TERMINAL_ORDER_STATES,
 } from './charge-engine.constants';
-import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 
 function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
   if (!state) return false;
@@ -57,6 +54,7 @@ export class ChargeEngineService {
     @InjectRepository(AgvEntity)
     private readonly agvRepo: Repository<AgvEntity>,
     private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
     private readonly vehicleStore: VehicleStateStore,
     private readonly routing: RoutingService,
     private readonly parkClaims: ParkClaimStore,
@@ -207,20 +205,14 @@ export class ChargeEngineService {
     vehicleName: string,
     pointName: string,
   ): Promise<void> {
-    const orderName = buildOrderName(
-      ORDER_TYPE.PARK,
-      vehicleName,
-      pointName,
-      randomUUID(),
-    );
     try {
-      await this.kernelApi.createTransportOrder(
-        orderName,
-        [{ locationName: pointName, operation: 'MOVE' }],
+      const orderName = await this.transportOrders.issue({
+        kind: ORDER_KIND.PARK,
         vehicleName,
-        { [ORDER_PROP.LEG]: PARK_LEG },
-        { dispensable: true },
-      );
+        aimedAt: pointName,
+        destinations: [{ locationName: pointName, operation: 'MOVE' }],
+        dispensable: true,
+      });
       this.parkClaims.claim(vehicleName, pointName, orderName);
       this.logger.log(
         `Charge fallback park: ${vehicleName} → ${pointName} (${orderName})`,
@@ -301,19 +293,15 @@ export class ChargeEngineService {
     vehicleName: string,
     locationName: string,
   ): Promise<void> {
-    const orderName = buildOrderName(
-      ORDER_TYPE.CHARGE,
-      vehicleName,
-      locationName,
-      randomUUID(),
-    );
     try {
-      await this.kernelApi.createTransportOrder(
-        orderName,
-        [{ locationName, operation: this.kernelApi.chargeOperation }],
+      const orderName = await this.transportOrders.issue({
+        kind: ORDER_KIND.CHARGE,
         vehicleName,
-        { [ORDER_PROP.LEG]: CHARGE_LEG },
-      );
+        aimedAt: locationName,
+        destinations: [
+          { locationName, operation: this.kernelApi.chargeOperation },
+        ],
+      });
       this.chargeTargets.set(vehicleName, {
         location: locationName,
         order: orderName,

@@ -1,11 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
-import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
+import { ORDER_KIND } from '../opentcs/domain/transport-order';
 import { TransportTaskEntity } from './entities/transport-task.entity';
-import { ORDER_PROP } from './domain/events';
-import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 import { isSlotLocation, type ZoneSlotLayout } from './domain/zone-slot-layout';
 
 export type ApproachTarget =
@@ -28,7 +26,7 @@ export class ApproachOrderService {
   constructor(
     @InjectRepository(TransportTaskEntity)
     private readonly taskRepo: Repository<TransportTaskEntity>,
-    private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
   ) {}
 
   async aim(
@@ -47,7 +45,7 @@ export class ApproachOrderService {
     const current = task.metadata?.approachOrderName;
     if (current) {
       try {
-        await this.kernelApi.withdrawTransportOrder(current);
+        await this.transportOrders.cancel(current);
       } catch (err) {
         this.logger.error(
           `Task ${task.id}: could not withdraw ${current} before aiming at ${destination}: ${(err as Error).message}`,
@@ -56,22 +54,18 @@ export class ApproachOrderService {
       }
     }
 
-    const orderName = buildOrderName(
-      ORDER_TYPE.APPROACH,
-      vehicle,
-      destination,
-      randomUUID(),
-    );
+    let orderName: string;
     try {
-      await this.kernelApi.createTransportOrder(
-        orderName,
-        [{ locationName: destination, operation }],
-        vehicle,
-        { [ORDER_PROP.TASK_ID]: task.id, [ORDER_PROP.LEG]: 'APPROACH' },
-      );
+      orderName = await this.transportOrders.issue({
+        kind: ORDER_KIND.APPROACH,
+        vehicleName: vehicle,
+        aimedAt: destination,
+        destinations: [{ locationName: destination, operation }],
+        taskId: task.id,
+      });
     } catch (err) {
       this.logger.error(
-        `Failed to create ${orderName}: ${(err as Error).message}`,
+        `Failed to create the approach order for task ${task.id}: ${(err as Error).message}`,
       );
       await this.forgetApproachOrder(task);
       return null;
@@ -95,7 +89,7 @@ export class ApproachOrderService {
     if (!current) return;
 
     try {
-      await this.kernelApi.withdrawTransportOrder(current);
+      await this.transportOrders.cancel(current);
     } catch (err) {
       this.logger.error(
         `Task ${task.id}: could not withdraw ${current} — leaving the reference so it can be retried: ${(err as Error).message}`,

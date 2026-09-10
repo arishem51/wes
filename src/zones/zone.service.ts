@@ -171,9 +171,10 @@ export class ZoneService {
     });
     return pickLeastUsedColor(
       ZONE_COLOR_PALETTE,
-      zones
-        .map((zone) => zone.color)
-        .filter((color): color is string => Boolean(color)),
+      zones.reduce<string[]>((colors, zone) => {
+        if (zone.color) colors.push(zone.color);
+        return colors;
+      }, []),
     );
   }
 
@@ -195,6 +196,7 @@ export class ZoneService {
       topology.points,
       topology.paths,
       memberLocationNames,
+      topology.laneAxis,
     );
 
     if (review.noFeeder) {

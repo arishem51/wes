@@ -6,7 +6,11 @@ import { AssignmentEngineService } from './assignment-engine.service';
 import { ChargeEngineService } from './charge-engine.service';
 import { ParkingEngineService } from './parking-engine.service';
 import { ParkClaimStore } from './park-claim.store';
-import { FMS_EVENTS, TRANSPORT_TASK_EVENTS } from './domain/events';
+import {
+  FMS_EVENTS,
+  TRANSPORT_TASK_EVENTS,
+  ZONE_EVENTS,
+} from './domain/events';
 
 const DEBOUNCE_MS = 1_500;
 const MAX_WAIT_MS = 3_500;
@@ -35,6 +39,7 @@ export class DispatchSchedulerService implements OnApplicationBootstrap {
   @OnEvent(TRANSPORT_TASK_EVENTS.CREATED)
   @OnEvent(TRANSPORT_TASK_EVENTS.STATUS_CHANGED)
   @OnEvent(FMS_EVENTS.VEHICLE_AVAILABLE)
+  @OnEvent(ZONE_EVENTS.SLOT_RELEASED)
   onDispatchTrigger(event: unknown): void {
     this.logger.debug(
       `Dispatch trigger: ${(event as { constructor?: { name?: string } })?.constructor?.name ?? typeof event}`,

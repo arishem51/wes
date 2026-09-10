@@ -22,10 +22,11 @@ export function emptyVehicleErrors(): KernelVehicleErrors {
 
 export function parseVehicleErrorTypes(value: string | undefined): string[] {
   if (!value) return [];
-  return value
-    .split(',')
-    .map((errorType) => errorType.trim())
-    .filter((errorType) => errorType.length > 0);
+  return value.split(',').reduce<string[]>((errorTypes, raw) => {
+    const errorType = raw.trim();
+    if (errorType.length > 0) errorTypes.push(errorType);
+    return errorTypes;
+  }, []);
 }
 
 export function toVehicleErrors(

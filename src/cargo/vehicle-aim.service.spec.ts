@@ -15,9 +15,11 @@ const LANE = {
     { locationName: SLOT, pointName: 'P1' },
   ],
   axisPoints: ['P0', 'P1', CORRIDOR],
+  axisAlong: [0, 1000],
 };
 
 const LAYOUT: ZoneSlotLayout = {
+  mainlinePoints: new Set<string>(),
   columns: [LANE.slots, [{ locationName: OTHER_LANE, pointName: 'Q1' }]],
   lanes: [
     LANE,
@@ -25,6 +27,7 @@ const LAYOUT: ZoneSlotLayout = {
       axis: 1000,
       slots: [{ locationName: OTHER_LANE, pointName: 'Q1' }],
       axisPoints: ['Q1', 'corrQ'],
+      axisAlong: [0, 1000],
     },
   ],
   entryPoints: ['P1', 'Q1'],
@@ -34,7 +37,8 @@ const LAYOUT: ZoneSlotLayout = {
 
 function setup(metadata: Record<string, unknown> = {}) {
   const slotReservation = {
-    aimAt: jest.fn().mockResolvedValue(undefined),
+    claimCell: jest.fn().mockResolvedValue({ previous: null }),
+    restoreClaim: jest.fn().mockResolvedValue(undefined),
     releaseCommit: jest.fn().mockResolvedValue(undefined),
   };
   const approachOrder = {
@@ -59,27 +63,40 @@ function setup(metadata: Record<string, unknown> = {}) {
 }
 
 describe('queueAt', () => {
-  it('writes the reservation only after the kernel has the order', async () => {
+  it('claims the cell before asking the kernel for the order', async () => {
     const { service, slotReservation, approachOrder, aimed } = setup();
 
     await service.queueAt(aimed, ZONE, LAYOUT, CORRIDOR);
 
-    expect(approachOrder.aim.mock.invocationCallOrder[0]).toBeLessThan(
-      slotReservation.aimAt.mock.invocationCallOrder[0],
+    expect(slotReservation.claimCell.mock.invocationCallOrder[0]).toBeLessThan(
+      approachOrder.aim.mock.invocationCallOrder[0],
     );
-    expect(slotReservation.aimAt).toHaveBeenCalledWith(
+    expect(slotReservation.claimCell).toHaveBeenCalledWith(
       'cargo-1',
       CORRIDOR,
       ZONE,
     );
   });
 
-  it('leaves the reservation alone when the order cannot be created', async () => {
+  it('never orders a vehicle to a cell another cargo holds', async () => {
     const { service, slotReservation, approachOrder, aimed } = setup();
+    slotReservation.claimCell.mockResolvedValueOnce(null);
+
+    expect(await service.queueAt(aimed, ZONE, LAYOUT, CORRIDOR)).toBe(false);
+    expect(approachOrder.aim).not.toHaveBeenCalled();
+  });
+
+  it('gives the cell back when the order cannot be created', async () => {
+    const { service, slotReservation, approachOrder, aimed } = setup();
+    slotReservation.claimCell.mockResolvedValueOnce({ previous: SLOT });
     approachOrder.aim.mockResolvedValueOnce(null);
 
     expect(await service.queueAt(aimed, ZONE, LAYOUT, CORRIDOR)).toBe(false);
-    expect(slotReservation.aimAt).not.toHaveBeenCalled();
+    expect(slotReservation.restoreClaim).toHaveBeenCalledWith(
+      'cargo-1',
+      SLOT,
+      ZONE,
+    );
   });
 
   it('sends a drop-off cell as a location and a corridor point as a point', async () => {
@@ -96,13 +113,13 @@ describe('queueAt', () => {
 });
 
 describe('dropAt', () => {
-  it('keeps the approach order when the cell is further along the same lane', async () => {
+  it('cancels the approach order even when the cell is further along the same lane', async () => {
     const { service, approachOrder, aimed } = setup({
       approachPointName: SLOT,
     });
 
-    expect(await service.dropAt(aimed, ZONE, LAYOUT, DEEPER, false)).toBe(true);
-    expect(approachOrder.cancel).not.toHaveBeenCalled();
+    expect(await service.dropAt(aimed, ZONE, DEEPER, false)).toBe(true);
+    expect(approachOrder.cancel).toHaveBeenCalledWith(aimed.task);
   });
 
   it('keeps it when the commit landed exactly where it was already heading', async () => {
@@ -110,7 +127,7 @@ describe('dropAt', () => {
       approachPointName: SLOT,
     });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, SLOT, true);
+    await service.dropAt(aimed, ZONE, SLOT, true);
 
     expect(approachOrder.cancel).not.toHaveBeenCalled();
   });
@@ -120,7 +137,7 @@ describe('dropAt', () => {
       approachPointName: SLOT,
     });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, OTHER_LANE, false);
+    await service.dropAt(aimed, ZONE, OTHER_LANE, false);
 
     expect(approachOrder.cancel).toHaveBeenCalled();
   });
@@ -130,7 +147,7 @@ describe('dropAt', () => {
       approachPointName: DEEPER,
     });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, SLOT, false);
+    await service.dropAt(aimed, ZONE, SLOT, false);
 
     expect(approachOrder.cancel).toHaveBeenCalled();
   });
@@ -140,7 +157,7 @@ describe('dropAt', () => {
       approachPointName: SLOT,
     });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, OTHER_LANE, false);
+    await service.dropAt(aimed, ZONE, OTHER_LANE, false);
 
     expect(dropoffOrder.issue.mock.invocationCallOrder[0]).toBeLessThan(
       approachOrder.cancel.mock.invocationCallOrder[0],
@@ -149,19 +166,21 @@ describe('dropAt', () => {
 
   it('reuses the order in flight when the commit kept its own reservation', async () => {
     const { service, dropoffOrder, aimed } = setup({
-      to3Name: 'DROPOFF-old',
+      dropoffOrderName: 'DROPOFF-old',
       approachPointName: SLOT,
     });
 
-    expect(await service.dropAt(aimed, ZONE, LAYOUT, SLOT, true)).toBe(true);
+    expect(await service.dropAt(aimed, ZONE, SLOT, true)).toBe(true);
     expect(dropoffOrder.issue).not.toHaveBeenCalled();
     expect(dropoffOrder.reissue).not.toHaveBeenCalled();
   });
 
   it('re-issues the order when the commit landed somewhere else', async () => {
-    const { service, dropoffOrder, aimed } = setup({ to3Name: 'DROPOFF-old' });
+    const { service, dropoffOrder, aimed } = setup({
+      dropoffOrderName: 'DROPOFF-old',
+    });
 
-    await service.dropAt(aimed, ZONE, LAYOUT, SLOT, false);
+    await service.dropAt(aimed, ZONE, SLOT, false);
 
     expect(dropoffOrder.reissue).toHaveBeenCalledWith(
       aimed.task,
@@ -175,7 +194,7 @@ describe('dropAt', () => {
     const { service, dropoffOrder, slotReservation, aimed } = setup();
     dropoffOrder.issue.mockResolvedValueOnce(null);
 
-    expect(await service.dropAt(aimed, ZONE, LAYOUT, SLOT, false)).toBe(false);
+    expect(await service.dropAt(aimed, ZONE, SLOT, false)).toBe(false);
     expect(slotReservation.releaseCommit).toHaveBeenCalledWith('cargo-1', ZONE);
   });
 
@@ -185,8 +204,20 @@ describe('dropAt', () => {
     });
     dropoffOrder.issue.mockResolvedValueOnce(null);
 
-    await service.dropAt(aimed, ZONE, LAYOUT, SLOT, false);
+    await service.dropAt(aimed, ZONE, SLOT, false);
 
     expect(approachOrder.cancel).not.toHaveBeenCalled();
+  });
+});
+
+describe('stopApproaching', () => {
+  it('withdraws the approach order so the cell stops being claimed', async () => {
+    const { service, approachOrder, aimed } = setup({
+      approachPointName: SLOT,
+    });
+
+    await service.stopApproaching(aimed);
+
+    expect(approachOrder.cancel).toHaveBeenCalledWith(aimed.task);
   });
 });

@@ -21,22 +21,10 @@ export function summariseDistance(
 
 export function comparableCounterfactual(
   alternative: VehicleTaskAssignment | undefined,
-  chosenVehicleName: string,
-  isHeldTask: boolean,
-  freeVehicleNames: ReadonlySet<string>,
-  swapEnabled: boolean,
 ): CounterfactualRecord {
   if (!alternative) return NOT_COMPARABLE;
-
-  const record = {
+  return {
     altVehicleName: alternative.vehicle.name,
     altDistanceToSource: alternative.distance,
   };
-  if (!swapEnabled) return record;
-
-  const pricedTheSameWay =
-    !isHeldTask &&
-    freeVehicleNames.has(chosenVehicleName) &&
-    freeVehicleNames.has(alternative.vehicle.name);
-  return pricedTheSameWay ? record : NOT_COMPARABLE;
 }

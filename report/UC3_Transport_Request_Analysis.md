@@ -59,7 +59,7 @@ Scanner / Operator
 
 **Cancel TR:**
 - Cho phép khi status ∈ {`CREATED`, `READY_TO_ASSIGN`, `PICKING_UP`}
-- Nếu đang `PICKING_UP`: gọi `kernelApi.withdrawTransportOrder(to1Name)` để abort FMS
+- Nếu đang `PICKING_UP`: gọi `transportOrders.cancel(pickupOrderName)` để abort FMS
 - Nếu đang `DELIVERING`: block (AGV đang mang hàng vật lý — BR-08)
 - Chuyển task → `CANCELLED`
 
@@ -120,8 +120,9 @@ TransportTaskEntity {
   status: TaskStatus
   metadata: JSONB {
     assignedVehicleName?: string      // AGV đang execute
-    to1Name?: string                  // tên TO pickup trong FMS
-    to2Name?: string                  // tên TO dropoff trong FMS
+    pickupOrderName?: string          // tên TO pickup trong FMS
+    approachOrderName?: string        // tên TO approach trong FMS
+    dropoffOrderName?: string         // tên TO dropoff trong FMS
   }
   assignedAt: Date | null
   startedAt: Date | null

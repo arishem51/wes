@@ -8,7 +8,6 @@ import type { VehicleCandidate } from './domain/dispatch.policy';
 import {
   isEnRouteToPark,
   isFmsDispatchable,
-  isIntegrated,
 } from './domain/vehicle-availability';
 
 @Injectable()
@@ -23,13 +22,11 @@ export class VehicleCandidateService {
 
   async build(
     busyTasks: ReadonlyMap<string, TransportTaskEntity>,
-    heldByVehicle: ReadonlyMap<string, TransportTaskEntity>,
   ): Promise<VehicleCandidate[]> {
     const busy = new Set(busyTasks.keys());
 
     return (await this.unambiguousAgvs()).map((agv) => {
       const fms = this.vehicleStore.get(agv.name);
-      const held = heldByVehicle.get(agv.name);
       return {
         name: agv.name,
         dispatchEnabled: agv.isDispatchEnabled,
@@ -39,7 +36,6 @@ export class VehicleCandidateService {
         energyLevel: fms?.energyLevel ?? 0,
         criticalThreshold: agv.criticalBatteryThreshold,
         currentPosition: fms?.currentPosition ?? null,
-        inFlightPickupTaskId: held && isIntegrated(fms) ? held.id : null,
         hasActiveTask: busy.has(agv.name),
       };
     });

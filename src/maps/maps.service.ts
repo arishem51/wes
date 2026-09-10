@@ -8,17 +8,29 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AxiosError } from 'axios';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type {
   KernelLocation,
   KernelLocationType,
   KernelVehicleState,
 } from '../opentcs/domain/kernel-model';
+import { toKernelPlantModel } from '../opentcs/domain/kernel-mappers';
 import { parseOpenTcsXml } from '../opentcs/map-loader/opentcs-xml.parser';
 import { plantModelToXml } from '../opentcs/plant-model-to-xml';
 import { savePlantModel } from '../opentcs/save-plant-model';
+import {
+  buildMapHealthReport,
+  type MapHealthReport,
+  type MapHealthZone,
+} from './domain/map-health';
 import { MapRecordEntity } from './entities/map-record.entity';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
+import {
+  ZoneEntity,
+  ZoneStatus,
+  ZoneType,
+} from '../zones/entities/zone.entity';
 
 export type KernelMode = 'MODELLING' | 'OPERATING';
 
@@ -44,17 +56,31 @@ interface KernelPlantModelSummary {
   vehicleCount: number;
 }
 
+function vehicleNamesOf(raw: unknown): string[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const vehicles = (raw as { vehicles?: unknown }).vehicles;
+  if (!Array.isArray(vehicles)) return [];
+  return vehicles.flatMap((vehicle: unknown) => {
+    if (!vehicle || typeof vehicle !== 'object') return [];
+    const name = (vehicle as { name?: unknown }).name;
+    return typeof name === 'string' ? [name] : [];
+  });
+}
+
 @Injectable()
 export class MapsService {
   private readonly logger = new Logger(MapsService.name);
 
   constructor(
     private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
     private readonly vehicleStateStore: VehicleStateStore,
     @InjectRepository(MapRecordEntity)
     private readonly repo: Repository<MapRecordEntity>,
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
+    @InjectRepository(ZoneEntity)
+    private readonly zoneRepo: Repository<ZoneEntity>,
   ) {}
 
   async getKernelStatus(): Promise<KernelStatusDto> {
@@ -87,7 +113,41 @@ export class MapsService {
     return this.toPlantModelSummary(plantModel) ? plantModel : null;
   }
 
-  /** Current plant model as flat openTCS XML — the same format `upload()` accepts. */
+  async getHealth(): Promise<MapHealthReport | null> {
+    const raw = await this.kernelApi.getRawPlantModel();
+    const summary = this.toPlantModelSummary(raw);
+    if (!summary) return null;
+
+    const model = toKernelPlantModel(raw);
+    if (!model) return null;
+
+    return buildMapHealthReport({
+      mapName: summary.name,
+      points: model.points,
+      paths: model.paths,
+      locations: model.locations,
+      locationTypes: model.locationTypes,
+      chargeOperation: this.kernelApi.chargeOperation,
+      loadOperation: this.kernelApi.loadOperation,
+      unloadOperation: this.kernelApi.unloadOperation,
+      vehicleNames: vehicleNamesOf(raw),
+      zones: await this.zonesDrawnOn(summary.name),
+    });
+  }
+
+  private async zonesDrawnOn(mapName: string): Promise<MapHealthZone[]> {
+    const zones = await this.zoneRepo.find({
+      where: { plantModelName: mapName, status: ZoneStatus.ACTIVE },
+    });
+    return zones.map((zone) => ({
+      name: zone.name,
+      type: zone.type === ZoneType.PICKUP ? 'PICKUP' : 'DROPOFF',
+      locationNames: [...zone.members]
+        .sort((a, b) => a.positionIndex - b.positionIndex)
+        .map((member) => member.locationName),
+    }));
+  }
+
   async getPlantModelXml(): Promise<string | null> {
     const plantModel = await this.kernelApi.getRawPlantModel();
     if (!this.toPlantModelSummary(plantModel)) return null;
@@ -107,7 +167,7 @@ export class MapsService {
   }
 
   async withdrawTransportOrder(name: string): Promise<void> {
-    await this.kernelApi.withdrawTransportOrder(name);
+    await this.transportOrders.cancel(name);
   }
 
   async getCargoOptions(): Promise<{
@@ -125,13 +185,11 @@ export class MapsService {
 
     const locationTypes: KernelLocationType[] = model.locationTypes ?? [];
     const locations: KernelLocation[] = model.locations ?? [];
-    const occupiedDropoffLocations = new Set(
-      deliveredCargos
-        .map((cargo) => cargo.destinationLocationName)
-        .filter((locationName): locationName is string =>
-          Boolean(locationName),
-        ),
-    );
+    const occupiedDropoffLocations = deliveredCargos.reduce((names, cargo) => {
+      if (cargo.destinationLocationName)
+        names.add(cargo.destinationLocationName);
+      return names;
+    }, new Set<string>());
 
     const pickupTypeNames = new Set<string>(
       locationTypes

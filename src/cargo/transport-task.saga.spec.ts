@@ -1,4 +1,5 @@
 import { TransportTaskSaga } from './transport-task.saga';
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import {
   FmsTransportOrderFinishedEvent,
   FmsTransportOrderLostNavigationEvent,
@@ -18,6 +19,7 @@ function makeSaga(findOne: jest.Mock): TransportTaskSaga {
   const taskRepo = { findOne };
   return new TransportTaskSaga(
     taskRepo as never,
+    {} as never,
     {} as never,
     {} as never,
     {} as never,
@@ -96,7 +98,7 @@ function makeDeliverySaga(
     id: 'task-1',
     status: TaskStatus.PICKING_UP,
     cargoId: 'cargo-1',
-    metadata: { assignedVehicleName: 'V1', to1Name: 'PICKUP-V1-x' },
+    metadata: { assignedVehicleName: 'V1', pickupOrderName: 'PICKUP-V1-x' },
     ...options.task,
   };
   const cargo =
@@ -137,7 +139,9 @@ function makeDeliverySaga(
     issue: jest.fn().mockResolvedValue('DROPOFF-V1-location_3003-y'),
   };
   const retreatPoint = {
-    planFor: jest.fn().mockResolvedValue({ cells: ['3002'], egress: null }),
+    planFor: jest
+      .fn()
+      .mockResolvedValue({ cells: ['3002', '3001'], egress: null }),
   };
   const approachOrder = { aim: jest.fn().mockResolvedValue('APPROACH-V1-x') };
   const deliverySlotEngine = {
@@ -157,6 +161,7 @@ function makeDeliverySaga(
     cargoRepo as never,
     zoneRepo as never,
     kernelApi as never,
+    new TransportOrderService(kernelApi as never),
     transportTask as never,
     slotReservation as never,
     dropoffOrder as never,
@@ -188,10 +193,11 @@ describe('TransportTaskSaga pick-up finished', () => {
 
     await saga.onTransportOrderFinished(pickupFinished());
 
-    expect(slotReservation.reserve).toHaveBeenCalledWith('cargo-1', {
-      id: 'zone-1',
-      name: 'zone_1',
-    });
+    expect(slotReservation.reserve).toHaveBeenCalledWith(
+      'cargo-1',
+      { id: 'zone-1', name: 'zone_1' },
+      'V1',
+    );
     expect(approachOrder.aim).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'task-1' }),
       'V1',
@@ -259,7 +265,7 @@ describe('TransportTaskSaga pick-up finished', () => {
       task: {
         metadata: {
           assignedVehicleName: 'V1',
-          to3Name: 'DROPOFF-V1-location_3003-y',
+          dropoffOrderName: 'DROPOFF-V1-location_3003-y',
         },
       },
     });
@@ -316,13 +322,16 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       findOne: jest.fn().mockResolvedValue({ id: 'zone-1', name: 'zone_1' }),
     };
     const retreatPoint = {
-      planFor: jest.fn().mockResolvedValue({ cells: ['3002'], egress: null }),
+      planFor: jest
+        .fn()
+        .mockResolvedValue({ cells: ['3002', '3001'], egress: null }),
     };
     const saga = new TransportTaskSaga(
       taskRepo as never,
       cargoRepo as never,
       zoneRepo as never,
       kernelApi as never,
+      new TransportOrderService(kernelApi as never),
       transportTask as never,
       {} as never,
       {} as never,
@@ -347,7 +356,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
     const task = {
       id: 'task-1',
       status: TaskStatus.PICKING_UP,
-      metadata: { assignedVehicleName: 'V1', to1Name: 'PICKUP-1' },
+      metadata: { assignedVehicleName: 'V1', pickupOrderName: 'PICKUP-1' },
       assignedAt: new Date(),
       startedAt: new Date(),
     };
@@ -356,7 +365,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
     await saga.onLegLostNavigation(lost('PICKUP', 'PICKUP-1'));
 
     expect(task.metadata).toMatchObject({
-      to1Name: undefined,
+      pickupOrderName: undefined,
       assignedVehicleName: undefined,
       lostNavigationRetries: 1,
     });
@@ -372,7 +381,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
     const task = {
       id: 'task-1',
       status: TaskStatus.DELIVERING,
-      metadata: { assignedVehicleName: 'V1', to3Name: 'DROPOFF-1' },
+      metadata: { assignedVehicleName: 'V1', dropoffOrderName: 'DROPOFF-1' },
       cargoId: 'cargo-1',
     };
     const cargo = {
@@ -388,10 +397,11 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       expect.stringContaining('DROPOFF-V1-location_3003'),
       [
         { locationName: 'location_3003', operation: 'UNLOAD' },
-        { locationName: '3002', operation: 'MOVE' },
+        { locationName: '3001', operation: 'MOVE' },
       ],
       'V1',
       expect.objectContaining({ 'wes:leg': 'DROPOFF' }),
+      { dispensable: false },
     );
   });
 
@@ -399,7 +409,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
     const task = {
       id: 'task-1',
       status: TaskStatus.DELIVERING,
-      metadata: { assignedVehicleName: 'V1', to3Name: 'DROPOFF-1' },
+      metadata: { assignedVehicleName: 'V1', dropoffOrderName: 'DROPOFF-1' },
       cargoId: 'cargo-1',
     };
     const cargo = {
@@ -419,6 +429,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       ]),
       'V1',
       expect.anything(),
+      { dispensable: false },
     );
   });
 
@@ -428,7 +439,7 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
       status: TaskStatus.DELIVERING,
       metadata: {
         assignedVehicleName: 'V1',
-        to3Name: 'DROPOFF-1',
+        dropoffOrderName: 'DROPOFF-1',
         unloadedAt: '2026-08-11T00:00:00.000Z',
       },
       cargoId: 'cargo-1',
@@ -444,9 +455,10 @@ describe('TransportTaskSaga lost-navigation recovery', () => {
 
     expect(kernelApi.createTransportOrder).toHaveBeenCalledWith(
       expect.any(String),
-      [{ locationName: '3002', operation: 'MOVE' }],
+      [{ locationName: '3001', operation: 'MOVE' }],
       'V1',
       expect.anything(),
+      { dispensable: false },
     );
   });
 

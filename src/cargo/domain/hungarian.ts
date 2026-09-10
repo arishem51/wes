@@ -1,13 +1,3 @@
-/**
- * Minimum-cost bipartite matching via the Hungarian algorithm.
- *
- * The solver accepts a rectangular, finite cost matrix and returns one column
- * per row. When there are more rows than columns, the surplus rows are marked
- * as unmatched (`-1`). The input is never mutated.
- *
- * Complexity: O(min(rows, cols)^2 * max(rows, cols)) time and
- * O(rows * columns) auxiliary space in the transposed case.
- */
 export interface HungarianResult {
   readonly assignment: number[];
   readonly totalCost: number;

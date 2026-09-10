@@ -6,5 +6,4 @@ export interface JwtPayload {
   roles: FeRole[];
 }
 
-/** Shape attached to `request.user` after JWT validation. */
 export type AuthUser = JwtPayload;

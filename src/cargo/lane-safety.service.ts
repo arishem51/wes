@@ -8,6 +8,7 @@ import {
 } from './entities/transport-task.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import { TransportTaskService } from './transport-task.service';
 import { ZoneGeometryService, MemberAxes } from './zone-geometry.service';
@@ -22,16 +23,6 @@ interface DeeperPickup {
   cargo: CargoEntity;
 }
 
-/**
- * Keeps a pickup lane safe to add cargo to (ARCHITECTURE §6.3).
- *
- * An AGV cannot drive through a row, so putting a box in a shallow slot while a
- * vehicle is already ordered to a deeper slot of the same lane would trap that
- * vehicle. Called from the create-cargo use case: it either clears the lane by
- * preempting the deeper pickups, or refuses the placement when a vehicle has
- * already been granted resources inside the lane and can no longer be halted
- * outside it.
- */
 @Injectable()
 export class LaneSafetyService {
   private readonly logger = new Logger(LaneSafetyService.name);
@@ -45,6 +36,7 @@ export class LaneSafetyService {
     private readonly zoneRepo: Repository<ZoneEntity>,
     private readonly zoneGeometry: ZoneGeometryService,
     private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
     private readonly vehicleStore: VehicleStateStore,
     private readonly transportTask: TransportTaskService,
   ) {}
@@ -131,9 +123,10 @@ export class LaneSafetyService {
   private async cargoesOf(
     tasks: readonly TransportTaskEntity[],
   ): Promise<Map<string, CargoEntity>> {
-    const cargoIds = tasks
-      .map((task) => task.cargoId)
-      .filter((id): id is string => id !== null);
+    const cargoIds = tasks.reduce<string[]>((ids, task) => {
+      if (task.cargoId !== null) ids.push(task.cargoId);
+      return ids;
+    }, []);
     if (cargoIds.length === 0) return new Map();
     const cargos = await this.cargoRepo.find({ where: { id: In(cargoIds) } });
     return new Map(cargos.map((cargo) => [cargo.id, cargo]));
@@ -143,18 +136,18 @@ export class LaneSafetyService {
     task: TransportTaskEntity,
     newCargoLocationName: string,
   ): Promise<void> {
-    const to1Name = task.metadata?.to1Name;
+    const pickupOrderName = task.metadata?.pickupOrderName;
     const vehicleName = task.metadata?.assignedVehicleName ?? null;
     const reason = `Preempted by new cargo at ${newCargoLocationName} (closer to the aisle in the same lane)`;
 
-    if (to1Name) {
-      await this.kernelApi.withdrawTransportOrder(to1Name, false);
+    if (pickupOrderName) {
+      await this.transportOrders.cancel(pickupOrderName);
     }
 
     task.metadata = {
       ...task.metadata,
       blockedReason: reason,
-      to1Name: undefined,
+      pickupOrderName: undefined,
       assignedVehicleName: undefined,
     };
     task.assignedAt = null;
@@ -163,7 +156,7 @@ export class LaneSafetyService {
       trigger: 'CARGO_CREATE',
       reason,
       vehicleName,
-      context: { preempted: true, withdrawnOrder: to1Name ?? null },
+      context: { preempted: true, withdrawnOrder: pickupOrderName ?? null },
     });
     this.logger.log(`Task ${task.id} PREEMPTED → BLOCKED (${reason})`);
   }
@@ -222,7 +215,9 @@ export class LaneSafetyService {
 }
 
 function vehicleNamesOf(tasks: readonly TransportTaskEntity[]): string[] {
-  return tasks
-    .map((task) => task.metadata?.assignedVehicleName)
-    .filter((name): name is string => typeof name === 'string');
+  return tasks.reduce<string[]>((names, task) => {
+    const name = task.metadata?.assignedVehicleName;
+    if (typeof name === 'string') names.push(name);
+    return names;
+  }, []);
 }

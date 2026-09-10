@@ -11,15 +11,18 @@ const laneA: ZoneLane = {
   axis: 0,
   slots: [slot('A3'), slot('A2'), slot('A1')],
   axisPoints: ['A3', 'A2', 'A1', 'corrA'],
+  axisAlong: [0, 1000, 2000, 3000],
 };
 
 const laneB: ZoneLane = {
   axis: 1000,
   slots: [slot('B2'), slot('B1')],
   axisPoints: ['B2', 'B1', 'corrB'],
+  axisAlong: [0, 1000, 2000],
 };
 
 const layout: ZoneSlotLayout = {
+  mainlinePoints: new Set<string>(),
   columns: [laneA.slots, laneB.slots],
   lanes: [laneA, laneB],
   entryPoints: ['A1', 'B1'],

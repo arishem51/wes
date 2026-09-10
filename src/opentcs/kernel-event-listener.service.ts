@@ -13,10 +13,10 @@ import {
   FmsTransportOrderFinishedEvent,
   FmsVehicleAvailableEvent,
   FmsVehicleErrorChangedEvent,
-  ORDER_PROP,
   TaskLeg,
   VehicleErrorChangeKind,
 } from '../cargo/domain/events';
+import { ORDER_PROP } from './domain/transport-order';
 import { KernelApiService } from './kernel-api.service';
 import {
   orientationAngleFromSsePose,
@@ -380,7 +380,9 @@ export class KernelEventListenerService
 
     this.vehicleStateStore.set(update.vehicleName, {
       ...existing,
-      goal: update.goal,
+      goal: update.goal
+        ? { ...update.goal, receivedAt: new Date().toISOString() }
+        : null,
     });
   }
 

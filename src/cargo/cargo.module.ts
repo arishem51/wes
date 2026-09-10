@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CargoEntity } from './entities/cargo.entity';
 import { TransportTaskEntity } from './entities/transport-task.entity';
 import { TaskStatusTransitionEntity } from './entities/task-status-transition.entity';
+import { EgressOccupancyEventEntity } from './entities/egress-occupancy-event.entity';
 import { DispatchPolicyEntity } from './entities/dispatch-policy.entity';
 import { ZoneEntity } from '../zones/entities/zone.entity';
 import { AgvEntity } from '../agvs/entities/agv.entity';
@@ -22,9 +23,11 @@ import { TransportTaskSaga } from './transport-task.saga';
 import { DispatchSchedulerService } from './dispatch-scheduler.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
 import { SlotReservationService } from './slot-reservation.service';
+import { SlotReclaimService } from './slot-reclaim.service';
 import { DropoffOrderService } from './dropoff-order.service';
 import { VehicleAimService } from './vehicle-aim.service';
 import { DropoffCommitLoop } from './dropoff-commit.loop';
+import { EgressOccupancyDetector } from './egress-occupancy.detector';
 import { ZoneGeometryService } from './zone-geometry.service';
 import { PickupDependencyService } from './pickup-dependency.service';
 import { LaneSafetyService } from './lane-safety.service';
@@ -42,6 +45,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
       CargoEntity,
       TransportTaskEntity,
       TaskStatusTransitionEntity,
+      EgressOccupancyEventEntity,
       DispatchPolicyEntity,
       ZoneEntity,
       AgvEntity,
@@ -54,9 +58,11 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
     TaskTerminationService,
     DeliverySlotEngine,
     SlotReservationService,
+    SlotReclaimService,
     DropoffOrderService,
     VehicleAimService,
     DropoffCommitLoop,
+    EgressOccupancyDetector,
     ZoneGeometryService,
     PickupDependencyService,
     LaneSafetyService,

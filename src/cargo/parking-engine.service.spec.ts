@@ -1,3 +1,4 @@
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { In, type Repository } from 'typeorm';
 import { ParkingEngineService } from './parking-engine.service';
 import { ParkClaimStore } from './park-claim.store';
@@ -95,6 +96,7 @@ async function setup(
     taskRepo as unknown as Repository<TransportTaskEntity>,
     agvRepo as unknown as Repository<AgvEntity>,
     kernelApi as unknown as KernelApiService,
+    new TransportOrderService(kernelApi as unknown as KernelApiService),
     vehicleStore,
     routing as unknown as RoutingService,
     parkClaims,

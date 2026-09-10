@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import {
   TaskStatus,
@@ -21,7 +21,7 @@ export class TaskTerminationService {
   private readonly logger = new Logger(TaskTerminationService.name);
 
   constructor(
-    private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
     private readonly vehicleStore: VehicleStateStore,
     private readonly transportTask: TransportTaskService,
   ) {}
@@ -47,7 +47,7 @@ export class TaskTerminationService {
   ): Promise<void> {
     for (const orderName of this.unfinishedOrderNames(task)) {
       try {
-        await this.kernelApi.withdrawTransportOrder(orderName);
+        await this.transportOrders.cancel(orderName);
         this.logger.log(`Task ${task.id}: withdrew ${orderName}`);
       } catch (err) {
         this.logger.error(
@@ -61,12 +61,14 @@ export class TaskTerminationService {
     const metadata = task.metadata;
     const orderTheVehicleIsOn = this.orderTheVehicleIsOn(task);
     const latestOrderRecordedOnTheTask =
-      metadata?.to3Name ?? metadata?.to2Name ?? metadata?.to1Name;
+      metadata?.dropoffOrderName ??
+      metadata?.approachOrderName ??
+      metadata?.pickupOrderName;
 
     return [
       ...new Set(
         [orderTheVehicleIsOn, latestOrderRecordedOnTheTask].filter(
-          (name): name is string => Boolean(name),
+          (name): name is string => !!name,
         ),
       ),
     ];

@@ -2,7 +2,7 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelTransportOrder } from '../opentcs/domain/kernel-model';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
-import { parkPointFromOrderName } from './domain/transport-order-name';
+import { parkPointFromOrderName } from '../opentcs/domain/transport-order';
 
 export interface ParkClaim {
   readonly point: string;

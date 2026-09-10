@@ -1,21 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
 import { In, Repository } from 'typeorm';
-import { ORDER_PROP } from './domain/events';
 import {
   TransportTaskEntity,
   TaskStatus,
 } from './entities/transport-task.entity';
 import { AgvEntity } from '../agvs/entities/agv.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { TransportOrderService } from '../opentcs/transport-order.service';
+import { ORDER_KIND } from '../opentcs/domain/transport-order';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { ParkClaimStore } from './park-claim.store';
 import { RoutingService } from './routing.service';
 import { shortestDistancesFrom } from './domain/routing';
 import { activeCargoVehicleNames } from './task-queries';
-import { ORDER_TYPE, buildOrderName } from './domain/transport-order-name';
 import {
   ParkingPoint,
   ParkVehicleCandidate,
@@ -24,7 +23,6 @@ import {
   unavailableParkPoints,
 } from './domain/parking.policy';
 
-const PARK_LEG = 'PARK';
 const PENDING_WORK_STATUSES = [TaskStatus.READY_TO_ASSIGN];
 
 function isIdleAvailable(state: KernelVehicleState | undefined): boolean {
@@ -45,6 +43,7 @@ export class ParkingEngineService {
     @InjectRepository(AgvEntity)
     private readonly agvRepo: Repository<AgvEntity>,
     private readonly kernelApi: KernelApiService,
+    private readonly transportOrders: TransportOrderService,
     private readonly vehicleStore: VehicleStateStore,
     private readonly routing: RoutingService,
     private readonly parkClaims: ParkClaimStore,
@@ -167,20 +166,14 @@ export class ParkingEngineService {
     vehicleName: string,
     pointName: string,
   ): Promise<void> {
-    const orderName = buildOrderName(
-      ORDER_TYPE.PARK,
-      vehicleName,
-      pointName,
-      randomUUID(),
-    );
     try {
-      await this.kernelApi.createTransportOrder(
-        orderName,
-        [{ locationName: pointName, operation: 'MOVE' }],
+      const orderName = await this.transportOrders.issue({
+        kind: ORDER_KIND.PARK,
         vehicleName,
-        { [ORDER_PROP.LEG]: PARK_LEG },
-        { dispensable: true },
-      );
+        aimedAt: pointName,
+        destinations: [{ locationName: pointName, operation: 'MOVE' }],
+        dispensable: true,
+      });
       this.parkClaims.claim(vehicleName, pointName, orderName);
       this.logger.log(`Parking ${vehicleName} → ${pointName} (${orderName})`);
     } catch (err) {

@@ -22,17 +22,6 @@ import {
 
 const LIVE_STATUSES = [TaskStatus.PICKING_UP, TaskStatus.DELIVERING];
 
-/**
- * Level-triggered backstop for the transport-order SSE stream, mirroring the
- * vehicle-state heartbeat (see KernelEventListenerService). If a "TO FINISHED"
- * frame is lost, the saga never advances TO1→TO2→TO3 and the task stalls in
- * PICKING_UP/DELIVERING forever. Each dispatch cycle we recompute the expected
- * leg from the task's own state and confirm it against the kernel.
- *
- * Cheap by construction: the vehicle snapshot already carries the order each
- * vehicle is on, so we only fetch an order (by name) when the vehicle has moved
- * off the leg we expected — never the unbounded /transportOrders list.
- */
 @Injectable()
 export class LegReconcileService {
   private readonly logger = new Logger(LegReconcileService.name);
@@ -122,11 +111,12 @@ export class LegReconcileService {
     task: TransportTaskEntity,
   ): { leg: TaskLeg; orderName: string } | null {
     const m = task.metadata;
-    if (task.status === TaskStatus.PICKING_UP && m?.to1Name) {
-      return { leg: 'PICKUP', orderName: m.to1Name };
+    if (task.status === TaskStatus.PICKING_UP && m?.pickupOrderName) {
+      return { leg: 'PICKUP', orderName: m.pickupOrderName };
     }
     if (task.status === TaskStatus.DELIVERING) {
-      if (m?.to3Name) return { leg: 'DROPOFF', orderName: m.to3Name };
+      if (m?.dropoffOrderName)
+        return { leg: 'DROPOFF', orderName: m.dropoffOrderName };
       if (m?.approachOrderName && !m.approachedAt) {
         return { leg: 'APPROACH', orderName: m.approachOrderName };
       }

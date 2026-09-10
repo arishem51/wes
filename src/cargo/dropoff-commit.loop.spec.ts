@@ -15,6 +15,7 @@ function slot(name: string) {
 }
 
 const LAYOUT = {
+  mainlinePoints: new Set<string>(),
   columns: [
     [slot('D3'), slot('S3')],
     [slot('D2'), slot('S2')],
@@ -25,11 +26,13 @@ const LAYOUT = {
       axis: 1000,
       slots: [slot('S3'), slot('S2'), slot('S1')],
       axisPoints: ['S3', 'S2', 'S1', WAIT, 'W-S2'],
+      axisAlong: [0, 1000, 2000, 3000, 4000],
     },
     {
       axis: 2000,
       slots: [slot('D3'), slot('D2'), slot('D1')],
       axisPoints: ['D3', 'D2', 'D1', 'W-D', 'W-D2'],
+      axisAlong: [0, 1000, 2000, 3000, 4000],
     },
   ],
   entryPoints: ['S1', 'D1'],
@@ -79,6 +82,7 @@ function makeLoop(
     fleet?: FleetMember[];
     commits?: Record<string, SlotCommitResult | null>;
     victimTask?: Record<string, unknown> | null;
+    cargoWithoutATask?: { id: string; reserved: string }[];
   } = {},
 ) {
   const fleet = options.fleet ?? solo(OUTSIDE);
@@ -88,19 +92,28 @@ function makeLoop(
     cargoId: member.cargoId,
     metadata: {
       assignedVehicleName: member.vehicle,
-      to3Name: `DROPOFF-${member.vehicle}-old`,
+      dropoffOrderName: `DROPOFF-${member.vehicle}-old`,
       ...(member.approach ? { approachPointName: member.approach } : {}),
       ...(member.unloaded ? { unloadedAt: '2026-08-18T00:00:00.000Z' } : {}),
     },
   }));
-  const cargos = fleet.map((member) => ({
-    id: member.cargoId,
-    destinationZoneId: 'zone-1',
-    destinationLocationName: null,
-    reservedLocationName: 'D3',
-    status: CargoStatus.ACTIVE,
-    ...member.cargo,
-  }));
+  const cargos = [
+    ...fleet.map((member) => ({
+      id: member.cargoId,
+      destinationZoneId: 'zone-1',
+      destinationLocationName: null,
+      reservedLocationName: 'D3',
+      status: CargoStatus.ACTIVE,
+      ...member.cargo,
+    })),
+    ...(options.cargoWithoutATask ?? []).map((orphan) => ({
+      id: orphan.id,
+      destinationZoneId: 'zone-1',
+      destinationLocationName: null,
+      reservedLocationName: orphan.reserved,
+      status: CargoStatus.ACTIVE,
+    })),
+  ];
   const positionByVehicle = new Map(
     fleet.map((member) => [member.vehicle, member.position]),
   );
@@ -110,7 +123,10 @@ function makeLoop(
           id: 'task-2',
           status: TaskStatus.DELIVERING,
           cargoId: 'cargo-2',
-          metadata: { assignedVehicleName: 'V2', to3Name: 'DROPOFF-V2-old' },
+          metadata: {
+            assignedVehicleName: 'V2',
+            dropoffOrderName: 'DROPOFF-V2-old',
+          },
         }
       : options.victimTask;
 
@@ -135,7 +151,7 @@ function makeLoop(
           cargos.filter((cargo) =>
             wantsUncommitted
               ? !cargo.destinationLocationName
-              : Boolean(cargo.destinationLocationName),
+              : !!cargo.destinationLocationName,
           ),
         );
       },
@@ -151,7 +167,8 @@ function makeLoop(
   };
   const deliverySlotEngine = { layoutFor: jest.fn().mockResolvedValue(LAYOUT) };
   const slotReservation = {
-    aimAt: jest.fn().mockResolvedValue(undefined),
+    claimCell: jest.fn().mockResolvedValue({ previous: null }),
+    restoreClaim: jest.fn().mockResolvedValue(undefined),
     releaseCommit: jest.fn().mockResolvedValue(undefined),
     commit: jest.fn((cargoId: string) =>
       Promise.resolve(
@@ -216,7 +233,11 @@ describe('DropoffCommitLoop trigger', () => {
     expect(slotReservation.commit).toHaveBeenCalledWith(
       'cargo-1',
       expect.objectContaining({ id: 'zone-1' }),
-      { blockedLocationNames: new Set(), lane: LAYOUT.lanes[1] },
+      {
+        blockedLocationNames: new Set(),
+        unstealableLocationNames: new Set(),
+        lane: LAYOUT.lanes[1],
+      },
     );
   });
 
@@ -228,7 +249,11 @@ describe('DropoffCommitLoop trigger', () => {
     expect(slotReservation.commit).toHaveBeenCalledWith(
       'cargo-1',
       expect.anything(),
-      { blockedLocationNames: new Set(), lane: LAYOUT.lanes[1] },
+      {
+        blockedLocationNames: new Set(),
+        unstealableLocationNames: new Set(),
+        lane: LAYOUT.lanes[1],
+      },
     );
   });
 
@@ -568,8 +593,8 @@ describe('DropoffCommitLoop order handover', () => {
     );
   });
 
-  it('leaves the approach order alone when the commit is further down the same lane', async () => {
-    const { loop, approachOrder } = makeLoop({
+  it('drops the approach claim even when the commit is further down the same lane', async () => {
+    const { loop, approachOrder, tasks } = makeLoop({
       fleet: [
         {
           vehicle: 'V1',
@@ -586,7 +611,7 @@ describe('DropoffCommitLoop order handover', () => {
 
     await loop.tick();
 
-    expect(approachOrder.cancel).not.toHaveBeenCalled();
+    expect(approachOrder.cancel).toHaveBeenCalledWith(tasks[0]);
   });
 
   it('releases the slot and keeps the old order when the kernel refuses', async () => {
@@ -683,5 +708,269 @@ describe('DropoffCommitLoop single runner', () => {
     await loop.tick();
 
     expect(dataSource.createQueryRunner).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('DropoffCommitLoop cell handover', () => {
+  const swap = (victimApproach?: string): FleetMember[] => [
+    { vehicle: 'V1', taskId: 'task-1', cargoId: 'cargo-1', position: GATE },
+    {
+      vehicle: 'V2',
+      taskId: 'task-2',
+      cargoId: 'cargo-2',
+      position: WAIT,
+      approach: victimApproach,
+    },
+  ];
+
+  const stealing = {
+    'cargo-1': STOLE_FROM_CARGO_2,
+    'cargo-2': null,
+  };
+
+  it('withdraws the loser claim on the cell before the winner asks for it', async () => {
+    const { loop, approachOrder, dropoffOrder, tasks } = makeLoop({
+      fleet: swap('D3'),
+      commits: stealing,
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.cancel).toHaveBeenCalledWith(tasks[1]);
+    expect(approachOrder.cancel.mock.invocationCallOrder[0]).toBeLessThan(
+      dropoffOrder.reissue.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('leaves the loser order alone when it was never aimed at that cell', async () => {
+    const { loop, approachOrder } = makeLoop({
+      fleet: swap('D1'),
+      commits: stealing,
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.cancel).not.toHaveBeenCalled();
+  });
+
+  it('puts the loser back on an order when the kernel refuses the winner', async () => {
+    const { loop, approachOrder, slotReservation, dropoffOrder, tasks } =
+      makeLoop({
+        fleet: swap('D3'),
+        commits: stealing,
+        victimTask: null,
+      });
+    dropoffOrder.reissue.mockResolvedValueOnce(null);
+
+    await loop.tick();
+
+    expect(slotReservation.releaseCommit).toHaveBeenCalledWith(
+      'cargo-1',
+      expect.anything(),
+    );
+    expect(approachOrder.aim).toHaveBeenCalledWith(tasks[1], 'V2', {
+      locationName: 'D2',
+    });
+  });
+
+  it('leaves the loser without an order when nothing is left to give it', async () => {
+    const { loop, approachOrder, dropoffOrder } = makeLoop({
+      fleet: swap('D3'),
+      commits: {
+        'cargo-1': {
+          slot: 'D3',
+          keptOwnReservation: false,
+          displaced: {
+            cargoId: 'cargo-2',
+            lostSlot: 'D3',
+            replacementSlot: null,
+          },
+        },
+        'cargo-2': null,
+      },
+      victimTask: null,
+    });
+    dropoffOrder.reissue.mockResolvedValueOnce(null);
+
+    await loop.tick();
+
+    expect(approachOrder.aim).not.toHaveBeenCalled();
+  });
+});
+
+describe('DropoffCommitLoop cells held ahead', () => {
+  function unstealableIn(call: unknown): string[] {
+    const [, , options] = call as [
+      string,
+      unknown,
+      { unstealableLocationNames: ReadonlySet<string> },
+    ];
+    return [...options.unstealableLocationNames].sort();
+  }
+
+  const queueBehind = (): FleetMember[] => [
+    {
+      vehicle: 'V1',
+      taskId: 'task-1',
+      cargoId: 'cargo-1',
+      position: WAIT,
+      cargo: { reservedLocationName: 'D2' },
+    },
+    {
+      vehicle: 'V2',
+      taskId: 'task-2',
+      cargoId: 'cargo-2',
+      position: INSIDE,
+      cargo: { reservedLocationName: 'D3' },
+    },
+  ];
+
+  it('fences off the cell a vehicle ahead in the lane still holds', async () => {
+    const { loop, slotReservation } = makeLoop({
+      fleet: queueBehind(),
+      commits: { 'cargo-1': null, 'cargo-2': null },
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    const call = slotReservation.commit.mock.calls.find(
+      (candidate) => candidate[0] === 'cargo-1',
+    );
+    expect(unstealableIn(call)).toEqual(['D3']);
+  });
+
+  it('fences off nothing for the vehicle that is furthest in', async () => {
+    const { loop, slotReservation } = makeLoop({
+      fleet: queueBehind(),
+      commits: { 'cargo-1': null, 'cargo-2': null },
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    const call = slotReservation.commit.mock.calls.find(
+      (candidate) => candidate[0] === 'cargo-2',
+    );
+    expect(unstealableIn(call)).toEqual([]);
+  });
+
+  it('ignores a cell held by a vehicle that has not reached the lane', async () => {
+    const { loop, slotReservation } = makeLoop({
+      fleet: [
+        { vehicle: 'V1', taskId: 'task-1', cargoId: 'cargo-1', position: GATE },
+        {
+          vehicle: 'V2',
+          taskId: 'task-2',
+          cargoId: 'cargo-2',
+          position: OUTSIDE,
+          cargo: { reservedLocationName: 'D3' },
+        },
+      ],
+      commits: { 'cargo-1': null },
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    const call = slotReservation.commit.mock.calls.find(
+      (candidate) => candidate[0] === 'cargo-1',
+    );
+    expect(unstealableIn(call)).toEqual([]);
+  });
+});
+
+describe('DropoffCommitLoop queue seating', () => {
+  const laneQueue = (): FleetMember[] => [
+    { vehicle: 'V1', taskId: 'task-1', cargoId: 'cargo-1', position: 'D3' },
+    {
+      vehicle: 'V2',
+      taskId: 'task-2',
+      cargoId: 'cargo-2',
+      position: 'W-D',
+      cargo: { reservedLocationName: 'D2' },
+    },
+  ];
+
+  it('skips a waiting cell that a cargo outside the queue already holds', async () => {
+    const { loop, approachOrder, tasks } = makeLoop({
+      fleet: laneQueue(),
+      commits: { 'cargo-2': null },
+      victimTask: null,
+      cargoWithoutATask: [{ id: 'cargo-9', reserved: 'W-D' }],
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.aim).toHaveBeenCalledWith(tasks[1], 'V2', {
+      pointName: 'W-D2',
+    });
+  });
+
+  it('takes the nearest waiting cell when nobody else holds it', async () => {
+    const { loop, approachOrder, tasks } = makeLoop({
+      fleet: laneQueue(),
+      commits: { 'cargo-2': null },
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.aim).toHaveBeenCalledWith(tasks[1], 'V2', {
+      pointName: 'W-D',
+    });
+  });
+
+  it('leaves a vehicle alone when it already waits where it belongs', async () => {
+    const { loop, approachOrder } = makeLoop({
+      fleet: [
+        { vehicle: 'V1', taskId: 'task-1', cargoId: 'cargo-1', position: 'D3' },
+        {
+          vehicle: 'V2',
+          taskId: 'task-2',
+          cargoId: 'cargo-2',
+          position: 'W-D',
+          cargo: { reservedLocationName: 'W-D' },
+        },
+      ],
+      commits: { 'cargo-2': null },
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.aim).not.toHaveBeenCalled();
+  });
+});
+
+describe('DropoffCommitLoop queue seating stays put', () => {
+  it('does not shuffle the queue when two vehicles pass each other', async () => {
+    const { loop, approachOrder } = makeLoop({
+      fleet: [
+        { vehicle: 'V1', taskId: 'task-1', cargoId: 'cargo-1', position: 'D3' },
+        {
+          vehicle: 'V2',
+          taskId: 'task-2',
+          cargoId: 'cargo-2',
+          position: 'W-D2',
+          cargo: { reservedLocationName: 'W-D' },
+        },
+        {
+          vehicle: 'V3',
+          taskId: 'task-3',
+          cargoId: 'cargo-3',
+          position: 'W-D',
+          cargo: { reservedLocationName: 'W-D2' },
+        },
+      ],
+      commits: { 'cargo-2': null, 'cargo-3': null },
+      victimTask: null,
+    });
+
+    await loop.tick();
+
+    expect(approachOrder.aim).not.toHaveBeenCalled();
   });
 });

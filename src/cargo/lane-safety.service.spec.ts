@@ -1,3 +1,4 @@
+import { TransportOrderService } from '../opentcs/transport-order.service';
 import { BadRequestException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 import { LaneSafetyService } from './lane-safety.service';
@@ -68,7 +69,10 @@ const pickingUp = (
     id,
     cargoId,
     status: TaskStatus.PICKING_UP,
-    metadata: { assignedVehicleName: vehicleName, to1Name: `TO1-${id}` },
+    metadata: {
+      assignedVehicleName: vehicleName,
+      pickupOrderName: `PICKUP-${id}`,
+    },
     assignedAt: new Date(),
     startedAt: new Date(),
   }) as TransportTaskEntity;
@@ -143,6 +147,7 @@ function setup(options: SetupOptions = {}) {
     zoneRepo as unknown as Repository<ZoneEntity>,
     zoneGeometry as unknown as ZoneGeometryService,
     kernelApi as unknown as KernelApiService,
+    new TransportOrderService(kernelApi as unknown as KernelApiService),
     vehicleStore,
     transportTask as unknown as TransportTaskService,
   );
@@ -219,7 +224,7 @@ describe('LaneSafetyService.clearLaneForNewCargo', () => {
 
     expect(kernelApi.withdrawTransportOrder).toHaveBeenCalledTimes(1);
     expect(kernelApi.withdrawTransportOrder).toHaveBeenCalledWith(
-      'TO1-t-C',
+      'PICKUP-t-C',
       false,
     );
     expect(transportTask.changeStatus).toHaveBeenCalledTimes(1);
@@ -229,14 +234,17 @@ describe('LaneSafetyService.clearLaneForNewCargo', () => {
       { trigger: string; vehicleName: string | null; context: unknown },
     ];
     expect(status).toBe(TaskStatus.BLOCKED);
-    expect(changed.metadata.to1Name).toBeUndefined();
+    expect(changed.metadata.pickupOrderName).toBeUndefined();
     expect(changed.metadata.assignedVehicleName).toBeUndefined();
     expect(changed.metadata.blockedReason).toBeDefined();
     expect(changed.assignedAt).toBeNull();
     expect(changed.startedAt).toBeNull();
     expect(log.trigger).toBe('CARGO_CREATE');
     expect(log.vehicleName).toBe('V1');
-    expect(log.context).toEqual({ preempted: true, withdrawnOrder: 'TO1-t-C' });
+    expect(log.context).toEqual({
+      preempted: true,
+      withdrawnOrder: 'PICKUP-t-C',
+    });
   });
 
   it('does not treat a path whose name embeds a lane point as reaching the lane', async () => {
@@ -249,7 +257,7 @@ describe('LaneSafetyService.clearLaneForNewCargo', () => {
     await svc.clearLaneForNewCargo(ZONE_ID, NEW_CARGO_LOCATION);
 
     expect(kernelApi.withdrawTransportOrder).toHaveBeenCalledWith(
-      'TO1-t-C',
+      'PICKUP-t-C',
       false,
     );
   });
@@ -288,7 +296,7 @@ describe('LaneSafetyService.clearLaneForNewCargo', () => {
 
     expect(transportTask.changeStatus).not.toHaveBeenCalled();
     expect(task.status).toBe(TaskStatus.PICKING_UP);
-    expect(task.metadata.to1Name).toBe('TO1-t-C');
+    expect(task.metadata.pickupOrderName).toBe('PICKUP-t-C');
     expect(task.metadata.assignedVehicleName).toBe('V1');
   });
 

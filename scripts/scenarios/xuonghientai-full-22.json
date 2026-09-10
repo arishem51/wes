@@ -1,0 +1,138 @@
+{
+  "label": "xuonghientai_full_capacity_22cargo",
+  "notes": "22 cargo at distinct pickup slots on v7-Xuonghientai; targets the four active Khu shipping mới dropoff zones: 4 + 6 + 6 + 6.",
+  "cargos": [
+    {
+      "atMs": 0,
+      "sourcePointName": "0020",
+      "destinationZoneId": "5adca73b-c69d-4a10-ac75-e0e51b10790e",
+      "itemCode": "XHT-Z1-001"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0021",
+      "destinationZoneId": "5adca73b-c69d-4a10-ac75-e0e51b10790e",
+      "itemCode": "XHT-Z1-002"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0022",
+      "destinationZoneId": "5adca73b-c69d-4a10-ac75-e0e51b10790e",
+      "itemCode": "XHT-Z1-003"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0023",
+      "destinationZoneId": "5adca73b-c69d-4a10-ac75-e0e51b10790e",
+      "itemCode": "XHT-Z1-004"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0024",
+      "destinationZoneId": "b666a971-a68f-42b2-87c9-7cbd93254dcc",
+      "itemCode": "XHT-Z3-001"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0040",
+      "destinationZoneId": "b666a971-a68f-42b2-87c9-7cbd93254dcc",
+      "itemCode": "XHT-Z3-002"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0041",
+      "destinationZoneId": "b666a971-a68f-42b2-87c9-7cbd93254dcc",
+      "itemCode": "XHT-Z3-003"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0042",
+      "destinationZoneId": "b666a971-a68f-42b2-87c9-7cbd93254dcc",
+      "itemCode": "XHT-Z3-004"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0043",
+      "destinationZoneId": "b666a971-a68f-42b2-87c9-7cbd93254dcc",
+      "itemCode": "XHT-Z3-005"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0044",
+      "destinationZoneId": "b666a971-a68f-42b2-87c9-7cbd93254dcc",
+      "itemCode": "XHT-Z3-006"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0301",
+      "destinationZoneId": "a52656ce-12df-44b1-9d3f-bad7000aece0",
+      "itemCode": "XHT-Z4-001"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0302",
+      "destinationZoneId": "a52656ce-12df-44b1-9d3f-bad7000aece0",
+      "itemCode": "XHT-Z4-002"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0303",
+      "destinationZoneId": "a52656ce-12df-44b1-9d3f-bad7000aece0",
+      "itemCode": "XHT-Z4-003"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0304",
+      "destinationZoneId": "a52656ce-12df-44b1-9d3f-bad7000aece0",
+      "itemCode": "XHT-Z4-004"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0305",
+      "destinationZoneId": "a52656ce-12df-44b1-9d3f-bad7000aece0",
+      "itemCode": "XHT-Z4-005"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0306",
+      "destinationZoneId": "a52656ce-12df-44b1-9d3f-bad7000aece0",
+      "itemCode": "XHT-Z4-006"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0307",
+      "destinationZoneId": "fc2f1626-2ec5-46b7-9f23-f1339c508ecc",
+      "itemCode": "XHT-Z5-001"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0308",
+      "destinationZoneId": "fc2f1626-2ec5-46b7-9f23-f1339c508ecc",
+      "itemCode": "XHT-Z5-002"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0309",
+      "destinationZoneId": "fc2f1626-2ec5-46b7-9f23-f1339c508ecc",
+      "itemCode": "XHT-Z5-003"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0310",
+      "destinationZoneId": "fc2f1626-2ec5-46b7-9f23-f1339c508ecc",
+      "itemCode": "XHT-Z5-004"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0311",
+      "destinationZoneId": "fc2f1626-2ec5-46b7-9f23-f1339c508ecc",
+      "itemCode": "XHT-Z5-005"
+    },
+    {
+      "atMs": 0,
+      "sourcePointName": "0312",
+      "destinationZoneId": "fc2f1626-2ec5-46b7-9f23-f1339c508ecc",
+      "itemCode": "XHT-Z5-006"
+    }
+  ]
+}

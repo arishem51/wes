@@ -7,7 +7,6 @@ export class RoleEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  // DB column is `user_role_enum`; read/written as text (values: ADMIN | OPERATOR).
   @Column({ type: 'varchar' })
   name!: RoleName;
 

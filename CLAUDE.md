@@ -1,10 +1,8 @@
 # WES Backend — Agent Rules
 
-> Read `ARCHITECTURE.md` (same folder) first. This file adds NestJS-specific conventions on top.
-
 ## Docs are reference, not authority — but keep them in sync
 
-Correctness decides. The official SEP490_G4 reports and `ARCHITECTURE.md` describe
+Correctness decides. The official SEP490_G4 reports describe
 what the system was meant to do; when they are wrong, fix the document — never bend
 working code to match a bad spec. A text mirror of those reports lives in
 `report/specs/` — grep it, it is cheap. Never read the `.docx` files for this.
@@ -102,11 +100,32 @@ for the last sync time. Do not overwrite files in that folder.
 
 ## Architecture
 
-Any backend change that touches architecture — module boundaries, the transport
-task lifecycle, events, dispatch/assignment, the openTCS ACL, or where business
-logic lives — MUST be checked against and follow **`ARCHITECTURE.md`** (same folder). That
-file is the source of truth for architecture and design patterns; this file only
-covers NestJS/TypeORM coding conventions.
+There is no separate architecture document. For a backend change that touches
+module boundaries, the transport task lifecycle, events, dispatch/assignment, the
+openTCS ACL, or where business logic lives, the specified design is
+`report/specs/report4-sds.md` (high-level §1, class specs §3) — read under the
+"Docs are reference, not authority" rule above. Where the SDS is silent or wrong,
+the code decides; say so and write the delta back.
+
+The shape the code actually follows, and which a change must not quietly break:
+
+- `src/cargo/` owns the domain; `src/opentcs/` is the only place that talks to
+  the kernel; other modules never reach across into either.
+- `TransportTaskService.changeStatus` is the single write choke point for task
+  status, and `domain/transport-task.state-machine.ts` is the legal-transition
+  table. Never write `task.status` directly.
+- In-process events are declared in `cargo/domain/events.ts` and emitted through
+  `EventEmitter2`. Prefer an existing domain event over a new poller.
+- `TransportOrderService.issue` / `.cancel` (`src/opentcs/`) is the single choke
+  point for ordering the fleet around — the only caller of the kernel's
+  create/withdraw endpoints. Never call `KernelApiService.createTransportOrder`
+  or `withdrawTransportOrder` from outside it.
+- The transport-order vocabulary is `opentcs/domain/transport-order.ts`: order
+  names carry their destination (`<KIND>-<vehicle>-<destination>-<uuid>`) and the
+  `wes:leg` property is derived from the same `kind`, so an order can never be
+  named one leg and stamped another.
+- A task records one order name per leg in `metadata`: `pickupOrderName`,
+  `approachOrderName`, `dropoffOrderName`. There is no TO1/TO2/TO3 numbering.
 
 ## Running locally
 

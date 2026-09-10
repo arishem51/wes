@@ -1,5 +1,6 @@
 import { CargoStatus } from '../entities/cargo.entity';
 import { laneIndexOfTarget, type ZoneSlotLayout } from './zone-slot-layout';
+import type { ColumnClaims } from './column-queue';
 
 export interface ZoneClaim {
   readonly id: string;
@@ -29,6 +30,38 @@ export class ZoneOccupancy<T extends ZoneClaim = ZoneClaim> {
       }
     }
     return slots;
+  }
+
+  slotsHoldingAPallet(): Set<string> {
+    const slots = new Set<string>();
+    for (const claim of this.claims) {
+      if (
+        claim.status === CargoStatus.DELIVERED &&
+        claim.destinationLocationName
+      ) {
+        slots.add(claim.destinationLocationName);
+      }
+    }
+    return slots;
+  }
+
+  columnClaims(): ColumnClaims {
+    const committed = new Set<string>();
+    const reserved = new Set<string>();
+    for (const claim of this.claims) {
+      if (claim.reservedLocationName) reserved.add(claim.reservedLocationName);
+      if (
+        claim.status === CargoStatus.ACTIVE &&
+        claim.destinationLocationName
+      ) {
+        committed.add(claim.destinationLocationName);
+      }
+    }
+    return {
+      finished: this.slotsHoldingAPallet(),
+      committed,
+      reserved,
+    };
   }
 
   claimedTargets(): Set<string> {

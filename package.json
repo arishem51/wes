@@ -17,6 +17,8 @@
     "scenario": "node scripts/run-scenario.js",
     "analyze": "node scripts/analyze.js",
     "set-pin": "node scripts/set-pin.js",
+    "prep-fleet": "node scripts/prep-fleet.js",
+    "clear-load": "node scripts/clear-load.js",
     "migration:run": "node src/database/migration-cli.js migration:run -d src/database/data-source.ts",
     "migration:revert": "node src/database/migration-cli.js migration:revert -d src/database/data-source.ts",
     "migration:show": "node src/database/migration-cli.js migration:show -d src/database/data-source.ts",

@@ -2,7 +2,8 @@ import { AssignmentEngineService } from './assignment-engine.service';
 import { DispatchDistanceService } from './dispatch-distance.service';
 import { VehicleCandidateService } from './vehicle-candidate.service';
 import { PickupOrderService } from './pickup-order.service';
-import { ORDER_PROP } from './domain/events';
+import { TransportOrderService } from '../opentcs/transport-order.service';
+import { ORDER_PROP } from '../opentcs/domain/transport-order';
 import { buildRoadGraph } from './domain/routing';
 import { TaskStatus } from './entities/transport-task.entity';
 
@@ -169,15 +170,10 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
           Promise.resolve(feedersByZone.get(zone.id) ?? []),
         ),
     };
-    const laneSafety = {
-      committedInsideLane: jest.fn().mockResolvedValue(new Set<string>()),
-    };
-
     const service = new AssignmentEngineService(
       stub(taskRepo),
       stub(cargoRepo),
       stub(pickupDependency),
-      stub(laneSafety),
       stub(dispatchPolicy),
       new DispatchDistanceService(
         stub(zoneRepo),
@@ -185,7 +181,11 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
         stub(approachPoint),
       ),
       new VehicleCandidateService(stub(agvRepo), stub(vehicleStore)),
-      new PickupOrderService(stub(kernelApi), stub(transportTask)),
+      new PickupOrderService(
+        stub(kernelApi),
+        new TransportOrderService(stub(kernelApi)),
+        stub(transportTask),
+      ),
     );
     return {
       service,
@@ -211,6 +211,7 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
       [{ locationName: 'LOC-1', operation: 'PICK_UP' }],
       'V2',
       { [ORDER_PROP.TASK_ID]: 't1', [ORDER_PROP.LEG]: 'PICKUP' },
+      { dispensable: false },
     );
     expect(kernelApi.createTransportOrder).toHaveBeenNthCalledWith(
       2,
@@ -218,6 +219,7 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
       [{ locationName: 'LOC-2', operation: 'PICK_UP' }],
       'V1',
       { [ORDER_PROP.TASK_ID]: 't2', [ORDER_PROP.LEG]: 'PICKUP' },
+      { dispensable: false },
     );
     expect(transportTask.changeStatus).toHaveBeenNthCalledWith(
       1,
@@ -264,6 +266,25 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
       (call: unknown[]) =>
         (call[3] as Record<string, string>)[ORDER_PROP.TASK_ID],
     );
+    expect(dispatchedTaskIds).toEqual(['t2', 't3']);
+  });
+
+  it('dispatches the rest of the batch when one task blocks just before its order goes out', async () => {
+    const { service, kernelApi, pickupDependency } = build();
+    const checks = new Map<string, number>();
+    pickupDependency.isBlocked.mockImplementation((task: { id: string }) => {
+      const count = (checks.get(task.id) ?? 0) + 1;
+      checks.set(task.id, count);
+      return Promise.resolve(task.id === 't1' && count === 2);
+    });
+
+    await service.run();
+
+    const dispatchedTaskIds = kernelApi.createTransportOrder.mock.calls.map(
+      (call: unknown[]) =>
+        (call[3] as Record<string, string>)[ORDER_PROP.TASK_ID],
+    );
+    expect(dispatchedTaskIds).not.toContain('t1');
     expect(dispatchedTaskIds).toEqual(['t2', 't3']);
   });
 

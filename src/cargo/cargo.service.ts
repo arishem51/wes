@@ -363,7 +363,7 @@ export class CargoService {
     }
     const droppingOff =
       task.status === TaskStatus.DELIVERING &&
-      Boolean(task.metadata?.to3Name) &&
+      !!task.metadata?.dropoffOrderName &&
       !task.metadata?.unloadedAt;
     if (droppingOff && cargo.destinationLocationName) {
       return this.kernelApi.findPointForLocation(cargo.destinationLocationName);
@@ -506,7 +506,7 @@ export class CargoService {
     task: TransportTaskEntity | null,
     destinationPointName: string | null,
   ): CargoVisualDto {
-    const unloaded = Boolean(task?.metadata?.unloadedAt);
+    const unloaded = !!task?.metadata?.unloadedAt;
 
     if (task?.status === TaskStatus.DELIVERING && !unloaded) {
       return {

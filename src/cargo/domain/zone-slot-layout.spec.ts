@@ -6,7 +6,6 @@ import {
   laneOfPoint,
   rankSlots,
   usableSlotCount,
-  waitingTargetsFor,
   type PlantPoint,
   type ZoneSlotLayout,
 } from './zone-slot-layout';
@@ -45,7 +44,7 @@ function oneWay(src: string, dest: string): PlantPath {
   };
 }
 
-function rack(rows: number): Rack {
+function rack(rows: number, rowPitch: number = ROW_PITCH): Rack {
   const points: PlantPoint[] = [
     { name: 'entry-shallow', position: { x: SHALLOW_X, y: 0 } },
     { name: 'entry-deep', position: { x: DEEP_X, y: 0 } },
@@ -55,7 +54,7 @@ function rack(rows: number): Rack {
   const deep: string[] = [];
 
   for (let row = 1; row <= rows; row++) {
-    const y = row * ROW_PITCH;
+    const y = row * rowPitch;
     const shallowPoint = `S${row}`;
     const deepPoint = `D${row}`;
     const aislePoint = `A${row}`;
@@ -166,6 +165,12 @@ describe('buildZoneSlotLayout', () => {
     expect(layout.strandedLocationNames).toEqual(['location_orphan']);
     expect(usableSlotCount(layout)).toBe(6);
     expect(layout.lanes.map((lane) => lane.axis)).toEqual([DEEP_X, SHALLOW_X]);
+  });
+});
+
+describe('usableSlotCount', () => {
+  it('counts every slot, because a dropped pallet keeps its cell whatever the pitch', () => {
+    expect(usableSlotCount(layoutOf(rack(4, -750)))).toBe(8);
   });
 });
 
@@ -282,39 +287,5 @@ describe('rankSlots', () => {
     );
 
     expect(rankSlots(layout, deepHeadStart)[0].pointName).toBe('S8');
-  });
-});
-
-describe('waitingTargetsFor', () => {
-  const lane = {
-    axis: 0,
-    slots: ['P5', 'P4', 'P3', 'P2', 'P1'].map((pointName) => ({
-      locationName: `location_${pointName}`,
-      pointName,
-    })),
-    axisPoints: ['P5', 'P4', 'P3', 'P2', 'P1', 'corr', 'mainline'],
-  };
-
-  it('starts the queue clear of the cells the retreat needs', () => {
-    expect(waitingTargetsFor(lane, 'P5')).toEqual([
-      'location_P2',
-      'location_P1',
-      'corr',
-      'mainline',
-    ]);
-  });
-
-  it('names a waiting slot by its location, so a reservation on it collides', () => {
-    const [first] = waitingTargetsFor(lane, 'P5');
-
-    expect(lane.slots.some((slot) => slot.locationName === first)).toBe(true);
-  });
-
-  it('leaves a corridor point under its own name, it has no location', () => {
-    expect(waitingTargetsFor(lane, 'P3')).toEqual(['corr', 'mainline']);
-  });
-
-  it('offers nowhere to queue behind a point off the lane', () => {
-    expect(waitingTargetsFor(lane, 'elsewhere')).toEqual([]);
   });
 });

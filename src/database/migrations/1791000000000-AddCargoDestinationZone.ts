@@ -4,7 +4,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Drop-off slot is no longer chosen when the request is created. Instead a cargo
  * reserves a *seat* in its destination zone (`destination_zone_id`) and the
  * concrete slot (`destination_location_name`, already nullable) is committed at
- * the TO2 barrier — see TransportTaskSaga.commitDropoffSlot. The index supports
+ * the approach barrier — see DropoffCommitLoop. The index supports
  * the per-zone capacity/occupancy counts.
  */
 export class AddCargoDestinationZone1791000000000 implements MigrationInterface {

@@ -145,7 +145,7 @@ Table transport_requests {
   request_code varchar(50) [not null, unique]
   cargo_id uuid
   status transport_request_status_enum [not null, default: 'CREATED', note: 'CREATED | READY_TO_ASSIGN | BLOCKED | PICKING_UP | DELIVERING | DELIVERY_COMPLETED | CANCELLED | FAILED']
-  metadata jsonb [not null, default: '{}', note: 'assignedVehicleName, to1Name/to2Name/to3Name, approachPointName, blockedReason']
+  metadata jsonb [not null, default: '{}', note: 'assignedVehicleName, pickupOrderName/approachOrderName/dropoffOrderName, approachPointName, blockedReason']
   assigned_at timestamptz
   started_at timestamptz
   completed_at timestamptz

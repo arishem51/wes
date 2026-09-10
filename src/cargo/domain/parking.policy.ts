@@ -1,4 +1,4 @@
-import { parkPointFromOrderName } from './transport-order-name';
+import { parkPointFromOrderName } from '../../opentcs/domain/transport-order';
 
 export interface ParkingPoint {
   readonly name: string;

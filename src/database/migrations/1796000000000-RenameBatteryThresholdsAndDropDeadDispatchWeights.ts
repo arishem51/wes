@@ -1,8 +1,6 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class RenameBatteryThresholdsAndDropDeadDispatchWeights1796000000000
-  implements MigrationInterface
-{
+export class RenameBatteryThresholdsAndDropDeadDispatchWeights1796000000000 implements MigrationInterface {
   name = 'RenameBatteryThresholdsAndDropDeadDispatchWeights1796000000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
@@ -21,7 +19,9 @@ export class RenameBatteryThresholdsAndDropDeadDispatchWeights1796000000000
     await queryRunner.query(
       `ALTER TABLE agvs ALTER COLUMN sufficient_battery_threshold SET DEFAULT 60`,
     );
-    await queryRunner.query(`UPDATE agvs SET sufficient_battery_threshold = 60`);
+    await queryRunner.query(
+      `UPDATE agvs SET sufficient_battery_threshold = 60`,
+    );
     await queryRunner.query(
       `ALTER TABLE dispatch_policies DROP COLUMN IF EXISTS weight_proximity`,
     );
