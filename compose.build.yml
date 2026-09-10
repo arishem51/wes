@@ -11,5 +11,5 @@ services:
 
   frontend:
     build:
-      context: ../wes-client
+      context: ../wes-client-v2
       dockerfile: Dockerfile
