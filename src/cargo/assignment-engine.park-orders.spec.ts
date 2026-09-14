@@ -26,6 +26,7 @@ describe('AssignmentEngineService park orders', () => {
       sourcePointName: null,
     };
     const parkingVehicle = {
+      state: 'EXECUTING',
       procState: 'PROCESSING_ORDER',
       integrationLevel: 'TO_BE_UTILIZED',
       transportOrder: ATTACHED_PARK_ORDER,
@@ -95,6 +96,7 @@ describe('AssignmentEngineService park orders', () => {
 
   function makeIdle(vehicleStore: { get: jest.Mock }): void {
     vehicleStore.get.mockReturnValue({
+      state: 'IDLE',
       procState: 'IDLE',
       integrationLevel: 'TO_BE_UTILIZED',
       transportOrder: null,

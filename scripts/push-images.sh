@@ -35,7 +35,7 @@ for entry in "${SERVICES[@]}"; do
     exit 1
   fi
 
-  if ! git -C "$repo" diff --quiet HEAD -- 2>/dev/null; then
+  if ! git -C "$repo" -c core.autocrlf=true diff --quiet HEAD -- 2>/dev/null; then
     echo "!! $image: $repo has uncommitted changes; $sha will not describe the image" >&2
     [[ "${ALLOW_DIRTY:-0}" == "1" ]] || exit 1
   fi

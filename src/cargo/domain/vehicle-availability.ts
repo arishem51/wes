@@ -6,25 +6,29 @@ import {
 
 const PARK_ORDER_PREFIX = orderNamePrefix(ORDER_KIND.PARK);
 
+function isFmsReady(
+  state: KernelVehicleState | undefined,
+): state is KernelVehicleState {
+  return (
+    state !== undefined &&
+    state.integrationLevel === 'TO_BE_UTILIZED' &&
+    (state.state === 'IDLE' || state.state === 'EXECUTING') &&
+    state.currentPosition != null
+  );
+}
+
 export function isFmsDispatchable(
   state: KernelVehicleState | undefined,
 ): boolean {
-  if (!state) return false;
-  return (
-    (state.procState === 'IDLE' || state.procState === 'AWAITING_ORDER') &&
-    state.integrationLevel === 'TO_BE_UTILIZED' &&
-    state.state !== 'CHARGING' &&
-    state.currentPosition != null
-  );
+  return isFmsReady(state) && state.procState === 'IDLE';
 }
 
 export function isEnRouteToPark(
   state: KernelVehicleState | undefined,
 ): boolean {
-  if (!state) return false;
   return (
+    isFmsReady(state) &&
     state.procState === 'PROCESSING_ORDER' &&
-    state.integrationLevel === 'TO_BE_UTILIZED' &&
     (state.transportOrder?.startsWith(PARK_ORDER_PREFIX) ?? false)
   );
 }

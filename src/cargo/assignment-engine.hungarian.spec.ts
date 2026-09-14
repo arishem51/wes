@@ -114,6 +114,7 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
       [
         'V1',
         {
+          state: 'IDLE',
           procState: 'IDLE',
           integrationLevel: 'TO_BE_UTILIZED',
           transportOrder: null,
@@ -124,6 +125,7 @@ describe('AssignmentEngineService Hungarian dispatch', () => {
       [
         'V2',
         {
+          state: 'IDLE',
           procState: 'IDLE',
           integrationLevel: 'TO_BE_UTILIZED',
           transportOrder: null,

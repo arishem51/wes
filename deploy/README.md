@@ -90,6 +90,8 @@ docker tag wes-opentcs:latest aubot/wes-opentcs:e76a435
 docker push aubot/wes-opentcs:latest
 docker push aubot/wes-opentcs:e76a435
 
+bash scripts/push-images.sh wes-be wes-fe
+
 ## Khởi động và cập nhật trên server
 
 ```bash
