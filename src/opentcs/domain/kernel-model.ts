@@ -35,6 +35,7 @@ export interface KernelVehicleState {
   precisePosition?: KernelVehiclePrecisePosition | null;
   orientationAngle?: number | null;
   allocatedResources?: string[][];
+  loaded?: boolean;
   transportOrder?: string | null;
   goal?: KernelVehicleGoal | null;
   properties?: Record<string, string>;

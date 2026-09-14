@@ -52,12 +52,16 @@ function toPrecisePosition(
 }
 
 export function toAllocatedResources(value: unknown): string[][] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((group): group is unknown[] => Array.isArray(group))
-    .map((group) =>
-      group.filter((item): item is string => typeof item === 'string'),
-    );
+  return mapArray(value, (group) =>
+    Array.isArray(group)
+      ? group.filter((item): item is string => typeof item === 'string')
+      : null,
+  );
+}
+
+export function loadedFromHandlingDevices(value: unknown): boolean | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.some((device) => isRecord(device) && device.full === true);
 }
 
 export function unwrapEnumValue(value: unknown): string | undefined {

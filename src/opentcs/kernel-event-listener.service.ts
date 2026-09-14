@@ -19,6 +19,7 @@ import {
 import { ORDER_PROP } from './domain/transport-order';
 import { KernelApiService } from './kernel-api.service';
 import {
+  loadedFromHandlingDevices,
   orientationAngleFromSsePose,
   precisePositionFromSsePose,
   toAllocatedResources,
@@ -475,6 +476,9 @@ export class KernelEventListenerService
       }),
       ...(raw.allocatedResources !== undefined && {
         allocatedResources: toAllocatedResources(raw.allocatedResources),
+      }),
+      ...(loadedFromHandlingDevices(raw.loadHandlingDevices) !== undefined && {
+        loaded: loadedFromHandlingDevices(raw.loadHandlingDevices),
       }),
       transportOrder,
       goal: goalWhileOnOrder(existing?.goal, transportOrder),

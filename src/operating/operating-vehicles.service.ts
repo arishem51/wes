@@ -6,8 +6,6 @@ import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { OperatingOrdersService } from './operating-orders.service';
 import type { VehicleRealtimeDto } from './dto/operating.dto';
 
-const LOADED_ORDER_PREFIX = 'DROPOFF-';
-
 function toDto(vehicle: KernelVehicleState): VehicleRealtimeDto {
   const transportOrder = vehicle.transportOrder ?? null;
   return {
@@ -25,7 +23,7 @@ function toDto(vehicle: KernelVehicleState): VehicleRealtimeDto {
     energyLevel: vehicle.energyLevel,
     transportOrder,
     paused: vehicle.paused,
-    loaded: (transportOrder ?? '').startsWith(LOADED_ORDER_PREFIX),
+    loaded: vehicle.loaded ?? false,
     routePoints: [],
   };
 }
