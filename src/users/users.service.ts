@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { UserEntity } from './entities/user.entity';
-import { RoleEntity, type RoleName } from './entities/role.entity';
+import { RoleEntity } from './entities/role.entity';
 import { UserRoleEntity } from './entities/user-role.entity';
 import { UserSessionEntity } from './entities/user-session.entity';
 import { UserPreferenceEntity } from './entities/user-preference.entity';
@@ -11,8 +11,6 @@ import {
   type AccountUserDto,
   type AdminUserDto,
   type FeRole,
-  roleToDb,
-  roleToFe,
   toAccountUser,
   toAdminUser,
 } from './user.mapper';
@@ -44,9 +42,19 @@ export interface AdminListParams {
   status?: AdminUserDto['status'] | 'all';
 }
 
+export interface AuthState {
+  isLocked: boolean;
+  isActive: boolean;
+  isInvited: boolean;
+  mustChangePassword: boolean;
+  passwordChangedAt: Date;
+  roleKey: FeRole;
+}
+
 @Injectable()
 export class UsersService implements OnModuleInit {
-  private roleIdByName = new Map<RoleName, number>();
+  private roleIdByKey = new Map<string, number>();
+  private roleNameByKey = new Map<string, string>();
 
   constructor(
     @InjectRepository(UserEntity)
@@ -71,20 +79,24 @@ export class UsersService implements OnModuleInit {
 
   private async loadRoles(): Promise<void> {
     const rows = await this.roles.find();
-    this.roleIdByName = new Map(rows.map((r) => [r.name, r.id]));
+    this.roleIdByKey = new Map(rows.map((r) => [r.key, r.id]));
+    this.roleNameByKey = new Map(rows.map((r) => [r.key, r.name]));
   }
 
-  private async roleId(name: RoleName): Promise<number> {
-    if (!this.roleIdByName.has(name)) await this.loadRoles();
-    const id = this.roleIdByName.get(name);
-    if (id == null) throw new NotFoundException(`Role ${name} not found`);
+  private async roleId(key: string): Promise<number> {
+    if (!this.roleIdByKey.has(key)) await this.loadRoles();
+    const id = this.roleIdByKey.get(key);
+    if (id == null) throw new NotFoundException(`Role ${key} not found`);
     return id;
   }
 
-  /** First (and only) role of a user, defaulting to operator. */
   feRoleOf(user: UserEntity): FeRole {
-    const name = user.userRoles?.[0]?.role?.name;
-    return name ? roleToFe(name) : 'operator';
+    return user.userRoles?.[0]?.role?.key ?? 'operator';
+  }
+
+  roleNameOf(user: UserEntity): string {
+    const role = user.userRoles?.[0]?.role;
+    return role?.name ?? this.roleNameByKey.get(this.feRoleOf(user)) ?? 'Operator';
   }
 
   private withRoles() {
@@ -110,7 +122,7 @@ export class UsersService implements OnModuleInit {
 
   async accountOf(id: string): Promise<AccountUserDto> {
     const user = await this.findByIdOrFail(id);
-    return toAccountUser(user, this.feRoleOf(user));
+    return toAccountUser(user, this.feRoleOf(user), this.roleNameOf(user));
   }
 
   // ── Admin listing ─────────────────────────────────────────────────────────
@@ -123,7 +135,9 @@ export class UsersService implements OnModuleInit {
     const q = params.search?.trim().toLowerCase();
 
     return all
-      .map((u) => toAdminUser(u, this.feRoleOf(u), onlineIds.has(u.id)))
+      .map((u) =>
+        toAdminUser(u, this.feRoleOf(u), this.roleNameOf(u), onlineIds.has(u.id)),
+      )
       .filter((u) => {
         if (params.role && params.role !== 'all' && u.role !== params.role)
           return false;
@@ -145,7 +159,12 @@ export class UsersService implements OnModuleInit {
   async adminUserOf(id: string): Promise<AdminUserDto> {
     const user = await this.findByIdOrFail(id);
     const onlineIds = await this.onlineUserIds();
-    return toAdminUser(user, this.feRoleOf(user), onlineIds.has(user.id));
+    return toAdminUser(
+      user,
+      this.feRoleOf(user),
+      this.roleNameOf(user),
+      onlineIds.has(user.id),
+    );
   }
 
   private async onlineUserIds(): Promise<Set<string>> {
@@ -209,7 +228,7 @@ export class UsersService implements OnModuleInit {
     role: FeRole,
     assignedBy?: string,
   ): Promise<void> {
-    const roleId = await this.roleId(roleToDb(role));
+    const roleId = await this.roleId(role);
     await this.userRoles.save(
       this.userRoles.create({ userId, roleId, assignedBy: assignedBy ?? null }),
     );
@@ -256,9 +275,44 @@ export class UsersService implements OnModuleInit {
     await this.users.save(user);
   }
 
-  async setPassword(id: string, plain: string): Promise<void> {
+  async setPassword(
+    id: string,
+    plain: string,
+    mustChangePassword = false,
+  ): Promise<void> {
     const hash = await bcrypt.hash(plain, BCRYPT_ROUNDS);
-    await this.users.update(id, { passwordHash: hash });
+    await this.users.update(id, {
+      passwordHash: hash,
+      mustChangePassword,
+      passwordChangedAt: new Date(),
+    });
+  }
+
+  /** Single lightweight lookup `JwtStrategy` uses to gate every authenticated request.
+   *  Loads the current role from the DB too, so authorization never trusts a JWT's baked-in
+   *  role claim — a role change takes effect on the very next request, not on next login. */
+  async authStateOf(id: string): Promise<AuthState | null> {
+    const user = await this.users.findOne({
+      where: { id },
+      select: {
+        id: true,
+        isLocked: true,
+        isActive: true,
+        isInvited: true,
+        mustChangePassword: true,
+        passwordChangedAt: true,
+      },
+      relations: { userRoles: { role: true } },
+    });
+    if (!user) return null;
+    return {
+      isLocked: user.isLocked,
+      isActive: user.isActive,
+      isInvited: user.isInvited,
+      mustChangePassword: user.mustChangePassword,
+      passwordChangedAt: user.passwordChangedAt,
+      roleKey: this.feRoleOf(user),
+    };
   }
 
   verifyPassword(user: UserEntity, plain: string): Promise<boolean> {

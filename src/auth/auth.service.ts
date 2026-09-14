@@ -33,11 +33,34 @@ export class AuthService {
     this.accessTtl = config.get<string>('JWT_ACCESS_TTL', '1d');
   }
 
-  private signAccess(user: UserEntity): string {
+  private signAccess(user: UserEntity, sessionId: string | null): string {
     const role = this.users.feRoleOf(user);
-    const payload = { sub: user.id, username: user.username, roles: [role] };
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      role,
+      roles: [role],
+      sid: sessionId,
+    };
     const options = { expiresIn: this.accessTtl } as JwtSignOptions;
     return this.jwt.sign(payload, options);
+  }
+
+  /**
+   * A permanent (no-`exp`) token for a customer / kiosk client, mirroring
+   * `Authenticator.signJwt(user, ttl<=0)` in FMS-SRC. The `jti` is checked against
+   * `api_tokens` on every request, so revoking the row kills the token instantly.
+   */
+  signPermanent(user: UserEntity, jti: string): string {
+    const role = this.users.feRoleOf(user);
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      role,
+      roles: [role],
+      jti,
+    };
+    return this.jwt.sign(payload);
   }
 
   private assertCanAuthenticate(user: UserEntity): void {
@@ -69,19 +92,20 @@ export class AuthService {
       );
 
     await this.users.touchLastLogin(user.id);
-    await this.tokens.startSession(user.id, ip, ua);
+    const sessionId = await this.tokens.startSession(user.id, ip, ua);
 
     return {
-      token: this.signAccess(user),
-      refreshToken: await this.tokens.issueRefreshToken(user.id),
-      user: toAccountUser(user, this.users.feRoleOf(user)),
+      token: this.signAccess(user, sessionId),
+      refreshToken: await this.tokens.issueRefreshToken(user.id, sessionId),
+      user: toAccountUser(user, this.users.feRoleOf(user), this.users.roleNameOf(user)),
     };
   }
 
-  // UC-82
-  async logout(userId: string, refreshToken?: string): Promise<void> {
+  // UC-82 — ends only the calling device's session; other devices keep working. Admin-forced
+  // lock/remove/reset still goes through `tokens.endAllSessions`.
+  async logout(userId: string, sessionId: string | null, refreshToken?: string): Promise<void> {
     if (refreshToken) await this.tokens.revokeRefreshToken(refreshToken);
-    await this.tokens.endAllSessions(userId);
+    if (sessionId) await this.tokens.endSession(sessionId);
   }
 
   async refresh(refreshToken?: string): Promise<LoginResult> {
@@ -97,9 +121,9 @@ export class AuthService {
       throw error;
     }
     return {
-      token: this.signAccess(user),
+      token: this.signAccess(user, rotated.sessionId),
       refreshToken: rotated.token,
-      user: toAccountUser(user, this.users.feRoleOf(user)),
+      user: toAccountUser(user, this.users.feRoleOf(user), this.users.roleNameOf(user)),
     };
   }
 

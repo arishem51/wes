@@ -6,10 +6,8 @@ import {
   IsOptional,
   IsString,
   Matches,
+  MinLength,
 } from 'class-validator';
-
-const ROLES = ['admin', 'operator'] as const;
-type FeRole = (typeof ROLES)[number];
 
 export class CreateAdminUserDto {
   @IsString()
@@ -33,8 +31,9 @@ export class CreateAdminUserDto {
   @IsString()
   shift?: string;
 
-  @IsIn(ROLES)
-  role!: FeRole;
+  @IsString()
+  @IsNotEmpty()
+  role!: string;
 
   @IsOptional()
   @IsBoolean()
@@ -59,17 +58,29 @@ export class UpdateAdminUserDto {
   shift?: string;
 
   @IsOptional()
-  @IsIn(ROLES)
-  role?: FeRole;
+  @IsString()
+  @IsNotEmpty()
+  role?: string;
 }
 
 export class SetRoleDto {
-  @IsIn(ROLES)
-  role!: FeRole;
+  @IsString()
+  @IsNotEmpty()
+  role!: string;
 }
 
 export class LockDto {
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+export class ResetPasswordDto {
+  @IsIn(['link', 'temp'])
+  method!: 'link' | 'temp';
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  password?: string;
 }

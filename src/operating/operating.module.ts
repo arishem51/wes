@@ -3,7 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
 import { CargoModule } from '../cargo/cargo.module';
 import { ZoneModule } from '../zones/zone.module';
+import { UsersModule } from '../users/users.module';
 import { CargoEntity } from '../cargo/entities/cargo.entity';
+import { TransportTaskEntity } from '../cargo/entities/transport-task.entity';
 import { OperatingPlantModelService } from './operating-plant-model.service';
 import { OperatingOrdersService } from './operating-orders.service';
 import { OperatingVehiclesService } from './operating-vehicles.service';
@@ -30,7 +32,8 @@ import { OperatingHealthController } from './health.controller';
     OpenTcsModule,
     CargoModule,
     ZoneModule,
-    TypeOrmModule.forFeature([CargoEntity]),
+    UsersModule,
+    TypeOrmModule.forFeature([CargoEntity, TransportTaskEntity]),
   ],
   controllers: [
     OperatingPlantModelController,
