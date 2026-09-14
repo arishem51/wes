@@ -78,6 +78,8 @@ docker compose --env-file deploy/.env.dev \
 docker compose --env-file deploy/.env.dev \
   -f compose.dev.yml -f compose.build.yml \
   push frontend backend opentcs
+
+docker compose -f compose.build.yml build
 ```
 
 Ba image được push là `${DOCKERHUB_NAMESPACE}/wes-fe:${IMAGE_TAG}`, `${DOCKERHUB_NAMESPACE}/wes-be:${IMAGE_TAG}` và `${DOCKERHUB_NAMESPACE}/wes-opentcs:${IMAGE_TAG}`. Frontend image build Vite thành static artifact rồi dùng Nginx để serve; image runtime không chạy Vite dev server.
