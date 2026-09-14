@@ -8,7 +8,7 @@ if [[ -f "$ENV_FILE" ]]; then
   set -a; . "$ENV_FILE"; set +a
 fi
 
-NAMESPACE="${DOCKERHUB_NAMESPACE:?Set DOCKERHUB_NAMESPACE (env or $ENV_FILE)}"
+NAMESPACE="${DOCKERHUB_NAMESPACE:-aubot}"
 
 SERVICES=(
   "wes-opentcs:../opentcs-integration-FMS"
