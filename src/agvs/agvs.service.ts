@@ -1,10 +1,11 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, Repository } from 'typeorm';
+import { ILike, IsNull, Repository } from 'typeorm';
 import { AgvEntity } from './entities/agv.entity';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
@@ -66,6 +67,11 @@ export class AgvsService {
     private readonly vehicleStateStore: VehicleStateStore,
   ) {}
 
+  /**
+   * Lists every registered AGV across every map — this is the admin registry view, deliberately
+   * unscoped. The Operating screen narrows to the currently loaded map itself, client-side (see
+   * `useVehicleRegistry` in wes-new-client-v2), from this same unfiltered list.
+   */
   async list(query: ListAgvsQueryDto = {}): Promise<AgvListResponse> {
     const page = query.page ?? DEFAULT_PAGE;
     const limit = query.limit ?? DEFAULT_LIMIT;
@@ -113,11 +119,42 @@ export class AgvsService {
     return this.toDto(agv);
   }
 
+  private findCodeConflict(
+    code: string,
+    plantModelName: string | null,
+  ): Promise<AgvEntity | null> {
+    return this.repo.findOne({
+      where: { code, plantModelName: plantModelName ?? IsNull() },
+    });
+  }
+
+  private findNameConflict(
+    name: string,
+    plantModelName: string | null,
+  ): Promise<AgvEntity | null> {
+    return this.repo.findOne({
+      where: { name, plantModelName: plantModelName ?? IsNull() },
+    });
+  }
+
   async create(dto: CreateAgvDto, userId: string): Promise<AgvDto> {
-    if (await this.repo.findOne({ where: { code: dto.code } })) {
+    const currentMapName = await this.kernelApi.getPlantModelName();
+
+    if (await this.findCodeConflict(dto.code, currentMapName)) {
       throw new ConflictException(`Code "${dto.code}" đã tồn tại.`);
     }
-    if (await this.repo.findOne({ where: { name: dto.name } })) {
+
+    if (currentMapName) {
+      const kernelVehicles = await this.kernelApi.getVehicleStates();
+      const existsInKernel = kernelVehicles.some((v) => v.name === dto.name);
+      if (!existsInKernel) {
+        throw new BadRequestException(
+          `Xe "${dto.name}" không tồn tại trong bản đồ "${currentMapName}" đang tải trên hệ thống điều khiển.`,
+        );
+      }
+    }
+
+    if (await this.findNameConflict(dto.name, currentMapName)) {
       throw new ConflictException(`AGV tên "${dto.name}" đã tồn tại.`);
     }
 
@@ -132,6 +169,7 @@ export class AgvsService {
       sufficientBatteryThreshold: dto.sufficientBatteryThreshold ?? 60,
       initialPosition: dto.initialPosition ?? null,
       config: dto.config ?? {},
+      plantModelName: currentMapName,
       createdById: userId,
     });
     const saved = await this.repo.save(agv);
@@ -143,7 +181,10 @@ export class AgvsService {
     if (!agv) throw new NotFoundException('AGV không tồn tại.');
 
     if (dto.name && dto.name !== agv.name) {
-      const existing = await this.repo.findOne({ where: { name: dto.name } });
+      const existing = await this.findNameConflict(
+        dto.name,
+        agv.plantModelName,
+      );
       if (existing && existing.id !== id) {
         throw new ConflictException(`AGV tên "${dto.name}" đã tồn tại.`);
       }

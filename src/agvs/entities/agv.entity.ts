@@ -11,7 +11,7 @@ export class AgvEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ unique: true, length: 100 })
+  @Column({ length: 100 })
   code!: string;
 
   @Column({ length: 100 })
@@ -56,6 +56,14 @@ export class AgvEntity {
 
   @Column({ type: 'jsonb', default: {} })
   config!: Record<string, unknown>;
+
+  @Column({
+    name: 'plant_model_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  plantModelName!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
