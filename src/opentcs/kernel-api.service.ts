@@ -378,7 +378,7 @@ export class KernelApiService {
     try {
       const res = await axios.get<{ state: string }>(
         `${this.baseUrl}/v1/kernel`,
-        { timeout: 3_000 },
+        { timeout: 10_000 },
       );
       const s = res.data?.state;
       if (s === 'MODELLING' || s === 'OPERATING') return s;

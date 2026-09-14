@@ -132,11 +132,32 @@ describe('TaskTerminationService', () => {
     expect(kernelApi.withdrawTransportOrder).not.toHaveBeenCalled();
   });
 
-  it('still fails the task when the withdrawal blows up', async () => {
+  it('fails closed instead of failing the task when the withdrawal blows up', async () => {
     const { svc, kernelApi, transportTask } = setup('PICKUP-1');
     kernelApi.withdrawTransportOrder.mockRejectedValue(
       new Error('kernel down'),
     );
+
+    await expect(
+      svc.terminate(
+        task(TaskStatus.PICKING_UP, {
+          assignedVehicleName: 'V1',
+          pickupOrderName: 'PICKUP-1',
+        }),
+        TaskStatus.FAILED,
+        { trigger: 'API' },
+      ),
+    ).rejects.toThrow();
+
+    expect(transportTask.changeStatus).not.toHaveBeenCalled();
+  });
+
+  it('still fails the task when the withdrawal target is already gone (404)', async () => {
+    const { svc, kernelApi, transportTask } = setup('PICKUP-1');
+    const notFound = Object.assign(new Error('gone'), {
+      response: { status: 404 },
+    });
+    kernelApi.withdrawTransportOrder.mockRejectedValue(notFound);
 
     await svc.terminate(
       task(TaskStatus.PICKING_UP, {

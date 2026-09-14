@@ -1823,3 +1823,69 @@ SELECT pg_catalog.setval('public.migrations_id_seq', 12, true);
 
 --
 -- PostgreSQL database dump complete
+
+
+--
+-- RBAC: dynamic roles + permission catalogue + permanent API tokens
+-- (mirrors migration 1804000000000-AddRbacPermissions; idempotent).
+--
+
+CREATE TABLE IF NOT EXISTS public.permissions (
+    key          varchar(64) PRIMARY KEY,
+    cluster      varchar(32) NOT NULL,
+    is_dangerous boolean NOT NULL DEFAULT false,
+    sort         integer NOT NULL DEFAULT 0,
+    label_vi     varchar(160),
+    label_en     varchar(160),
+    label_ja     varchar(160)
+);
+
+ALTER TABLE public.roles ADD COLUMN IF NOT EXISTS key varchar(48);
+ALTER TABLE public.roles ADD COLUMN IF NOT EXISTS is_system boolean NOT NULL DEFAULT false;
+ALTER TABLE public.roles ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.roles ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.roles ALTER COLUMN name TYPE varchar(64) USING name::text;
+UPDATE public.roles SET key = lower(name) WHERE key IS NULL;
+UPDATE public.roles SET is_system = true WHERE key IN ('admin', 'operator', 'viewer');
+UPDATE public.roles SET name = 'Quản trị viên' WHERE key = 'admin';
+UPDATE public.roles SET name = 'Điều hành viên' WHERE key = 'operator';
+CREATE UNIQUE INDEX IF NOT EXISTS roles_key_uq ON public.roles (key);
+
+INSERT INTO public.roles (name, key, description, is_system)
+VALUES ('Người xem', 'viewer', 'Chỉ xem, không thao tác vận hành', true)
+ON CONFLICT (key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS public.role_permissions (
+    role_id        smallint NOT NULL REFERENCES public.roles (id) ON DELETE CASCADE,
+    permission_key varchar(64) NOT NULL REFERENCES public.permissions (key) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, permission_key)
+);
+
+CREATE TABLE IF NOT EXISTS public.api_tokens (
+    id           uuid PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    user_id      uuid NOT NULL REFERENCES public.users (id) ON DELETE CASCADE,
+    jti          uuid NOT NULL UNIQUE,
+    label        varchar(120),
+    created_by   uuid,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    last_used_at timestamptz,
+    revoked_at   timestamptz
+);
+CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON public.api_tokens (user_id);
+
+--
+-- Forced password change (mirrors migration 1805000000000-AddMustChangePassword; idempotent).
+--
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false;
+
+--
+-- Force re-login after a password change (mirrors migration 1806000000000-AddPasswordChangedAt).
+--
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz NOT NULL DEFAULT now();
+
+--
+-- Pasted (opaque, non-JWT) permanent tokens (mirrors migration 1807000000000-AddApiTokenHash).
+--
+ALTER TABLE public.api_tokens ALTER COLUMN jti DROP NOT NULL;
+ALTER TABLE public.api_tokens ADD COLUMN IF NOT EXISTS token_hash varchar(64);
+CREATE UNIQUE INDEX IF NOT EXISTS api_tokens_token_hash_uq ON public.api_tokens (token_hash) WHERE token_hash IS NOT NULL;

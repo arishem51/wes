@@ -16,6 +16,9 @@ export class RefreshTokenEntity {
   @Column({ name: 'token_hash' })
   tokenHash!: string;
 
+  @Column({ name: 'session_id', type: 'uuid', nullable: true })
+  sessionId!: string | null;
+
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt!: Date;
 

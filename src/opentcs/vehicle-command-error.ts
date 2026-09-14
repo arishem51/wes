@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { AxiosError } from 'axios';
 
-function kernelReason(data: unknown): string | null {
+export function kernelReason(data: unknown): string | null {
   const messages = Array.isArray(data)
     ? data.filter((entry): entry is string => typeof entry === 'string')
     : typeof data === 'string'

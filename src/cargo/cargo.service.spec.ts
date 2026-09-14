@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { DataSource, EntityManager, Repository } from 'typeorm';
 import { CargoService } from './cargo.service';
 import { DeliverySlotEngine } from './delivery-slot.engine';
@@ -75,6 +79,7 @@ function setup(options: SetupOptions = {}) {
   const insertedCargos: CargoEntity[] = [];
   const transactionCargoRepo = {
     count: jest.fn().mockResolvedValue(occupied),
+    findOne: jest.fn().mockResolvedValue(null),
     create: jest.fn().mockImplementation((data: Partial<CargoEntity>) => data),
     save: jest.fn().mockImplementation((data: CargoEntity) => {
       const saved = { ...data, id: `cargo-${insertedCargos.length + 1}` };
@@ -113,7 +118,7 @@ function setup(options: SetupOptions = {}) {
     findPickupLocationForPoint: jest.fn().mockResolvedValue('loc-B'),
     getPlantModelName: jest.fn().mockResolvedValue('runtime-map'),
   };
-  const transportTask = { publishCreated: jest.fn() };
+  const transportTask = { publishCreated: jest.fn(), publishUpdated: jest.fn() };
   const laneSafety = {
     clearLaneForNewCargo: jest.fn().mockResolvedValue(undefined),
   };
@@ -215,6 +220,26 @@ describe('CargoService.create', () => {
     expect(laneSafety.clearLaneForNewCargo).toHaveBeenCalledTimes(1);
     expect(insertedCargos).toHaveLength(0);
   });
+
+  it('re-checks the source point under its own advisory lock, closing the create/create race', async () => {
+    const { svc, transactionCargoRepo, insertedCargos } = setup();
+    // Simulates a second concurrent create() that reached the lock first and committed: the
+    // pre-transaction check (still mocked as "free") already passed, so only this in-transaction
+    // re-check can catch it.
+    transactionCargoRepo.findOne.mockResolvedValue({
+      id: 'cargo-racer',
+      itemCode: 'RACER-1',
+    });
+
+    await expect(svc.create(DTO, 'user-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+
+    expect(transactionCargoRepo.findOne).toHaveBeenCalledWith({
+      where: { sourcePointName: DTO.sourcePointName, status: CargoStatus.ACTIVE },
+    });
+    expect(insertedCargos).toHaveLength(0);
+  });
 });
 
 const storedCargo = (id: string, itemCode: string): CargoEntity =>
@@ -238,18 +263,26 @@ const storedTask = (
 function listSetup(
   cargos: CargoEntity[] = [],
   tasks: TransportTaskEntity[] = [],
+  total: number = cargos.length,
 ) {
   const conditions: string[] = [];
   const parameters: Record<string, unknown> = {};
   const paging = { skip: null as number | null, take: null as number | null };
 
   const builder = {
+    leftJoin: jest.fn(),
     andWhere: jest.fn(),
     orderBy: jest.fn(),
     skip: jest.fn(),
     take: jest.fn(),
-    getManyAndCount: jest.fn().mockResolvedValue([cargos, cargos.length]),
+    getManyAndCount: jest.fn().mockResolvedValue([cargos, total]),
   };
+  builder.leftJoin.mockImplementation(
+    (table: string, alias: string, condition: string) => {
+      conditions.push(`JOIN ${table} ${alias} ON ${condition}`);
+      return builder;
+    },
+  );
   builder.andWhere.mockImplementation(
     (condition: string, params: Record<string, unknown> = {}) => {
       conditions.push(condition);
@@ -269,7 +302,10 @@ function listSetup(
 
   const cargoRepo = { createQueryBuilder: jest.fn().mockReturnValue(builder) };
   const taskRepo = { find: jest.fn().mockResolvedValue(tasks) };
-  const kernelApi = { findPointForLocation: jest.fn().mockResolvedValue(null) };
+  const kernelApi = {
+    findPointForLocation: jest.fn().mockResolvedValue(null),
+    getPlantModelName: jest.fn().mockResolvedValue('runtime-map'),
+  };
 
   const svc = new CargoService(
     cargoRepo as unknown as Repository<CargoEntity>,
@@ -289,7 +325,15 @@ function listSetup(
   const conditionMatching = (needle: string) =>
     conditions.find((condition) => condition.includes(needle));
 
-  return { svc, listWith, conditions, conditionMatching, parameters, paging };
+  return {
+    svc,
+    listWith,
+    conditions,
+    conditionMatching,
+    parameters,
+    paging,
+    kernelApi,
+  };
 }
 
 describe('CargoService.list', () => {
@@ -360,6 +404,45 @@ describe('CargoService.list', () => {
     expect(paging).toEqual({ skip: 100, take: 50 });
     expect(result.page).toBe(3);
     expect(result.limit).toBe(50);
+  });
+
+  it('scopes to the currently loaded map when activeMapOnly is set', async () => {
+    const { listWith, conditionMatching, parameters, kernelApi } = listSetup();
+
+    await listWith({ activeMapOnly: true });
+
+    expect(kernelApi.getPlantModelName).toHaveBeenCalled();
+    const join = conditionMatching('JOIN zones');
+    expect(join).toContain('cargo.destination_zone_id');
+    const condition = conditionMatching('plant_model_name');
+    expect(condition).toBeDefined();
+    expect(parameters.plantModelName).toBe('runtime-map');
+  });
+
+  it('does not join zones at all when activeMapOnly is left off', async () => {
+    const { listWith, conditions, kernelApi } = listSetup();
+
+    await listWith();
+
+    expect(kernelApi.getPlantModelName).not.toHaveBeenCalled();
+    expect(conditions).toHaveLength(0);
+  });
+
+  it('reports truncated when the page did not reach the full total', async () => {
+    const { listWith } = listSetup([storedCargo('c-1', 'BOX-1')], [], 5);
+
+    const result = await listWith({ page: 1, limit: 1 });
+
+    expect(result.total).toBe(5);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('is not truncated once the page covers the full total', async () => {
+    const { listWith } = listSetup([storedCargo('c-1', 'BOX-1')], [], 1);
+
+    const result = await listWith({ page: 1, limit: 200 });
+
+    expect(result.truncated).toBe(false);
   });
 
   it('surfaces the block reason of the linked task', async () => {
@@ -591,6 +674,7 @@ function removeSetup(options: RemoveSetupOptions = {}) {
       ),
   };
   const taskTermination = { terminate: jest.fn().mockResolvedValue(undefined) };
+  const transportTask = { publishUpdated: jest.fn() };
 
   const svc = new CargoService(
     cargoRepo as unknown as Repository<CargoEntity>,
@@ -599,14 +683,14 @@ function removeSetup(options: RemoveSetupOptions = {}) {
     {} as unknown as Repository<ZoneEntity>,
     {} as unknown as DataSource,
     kernelApi as unknown as KernelApiService,
-    {} as unknown as TransportTaskService,
+    transportTask as unknown as TransportTaskService,
     {} as unknown as LaneSafetyService,
     vehicleStore as unknown as VehicleStateStore,
     taskTermination as unknown as TaskTerminationService,
     deliverySlotEngine as unknown as DeliverySlotEngine,
   );
 
-  return { svc, cargoRepo, taskRepo, taskTermination, kernelApi };
+  return { svc, cargoRepo, taskRepo, taskTermination, kernelApi, transportTask };
 }
 
 const droppingOffTask = (metadata: TransportTaskEntity['metadata'] = {}) =>
@@ -753,7 +837,7 @@ describe('CargoService.remove', () => {
     expect(cargoRepo.softDelete).not.toHaveBeenCalled();
   });
 
-  it('deletes when the kernel cannot be reached either', async () => {
+  it('fails closed — refuses to delete when the kernel cannot be reached either', async () => {
     const { svc, cargoRepo, kernelApi } = removeSetup({
       task: storedTask('c-1', TaskStatus.PICKING_UP, {
         assignedVehicleName: 'V1',
@@ -762,8 +846,8 @@ describe('CargoService.remove', () => {
     });
     kernelApi.getVehicleStates.mockRejectedValue(new Error('kernel down'));
 
-    await svc.remove('c-1');
+    await expect(svc.remove('c-1')).rejects.toThrow(ServiceUnavailableException);
 
-    expect(cargoRepo.softDelete).toHaveBeenCalledWith('c-1');
+    expect(cargoRepo.softDelete).not.toHaveBeenCalled();
   });
 });

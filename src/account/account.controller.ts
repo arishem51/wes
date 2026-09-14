@@ -45,7 +45,7 @@ export class AccountController {
   @Post('sessions/revoke-others')
   @HttpCode(200)
   async revokeOthers(@CurrentUser() user: AuthUser) {
-    await this.account.revokeOtherSessions(user.sub);
+    await this.account.revokeOtherSessions(user.sub, user.sid ?? null);
     return { ok: true };
   }
 

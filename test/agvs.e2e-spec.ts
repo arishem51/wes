@@ -28,6 +28,7 @@ const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
   criticalBatteryThreshold: 20,
   sufficientBatteryThreshold: 60,
   config: {},
+  plantModelName: null,
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'),
   createdById: 'user-1',
@@ -69,7 +70,7 @@ describe('AgvsController (e2e)', () => {
     save: jest.Mock;
     remove: jest.Mock;
   };
-  let kernelApi: { getVehicles: jest.Mock };
+  let kernelApi: { getVehicles: jest.Mock; getPlantModelName: jest.Mock };
 
   beforeEach(async () => {
     repo = {
@@ -80,7 +81,10 @@ describe('AgvsController (e2e)', () => {
       save: jest.fn(),
       remove: jest.fn(),
     };
-    kernelApi = { getVehicles: jest.fn().mockResolvedValue([]) };
+    kernelApi = {
+      getVehicles: jest.fn().mockResolvedValue([]),
+      getPlantModelName: jest.fn().mockResolvedValue(null),
+    };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [AgvsController],

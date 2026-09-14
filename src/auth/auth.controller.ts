@@ -8,6 +8,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { ConfigService } from '@nestjs/config';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, ForgotPasswordDto, ResetPasswordDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -24,13 +26,26 @@ const ACCESS_COOKIE = 'wes_access';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  private readonly secureCookies: boolean;
+
+  constructor(
+    private readonly auth: AuthService,
+    config: ConfigService,
+  ) {
+    // Defaults to the deployment's TLS state (production ⇒ secure); COOKIE_SECURE overrides it
+    // explicitly for setups that terminate TLS in front of a proxy that still reports 'production'.
+    const override = config.get<string>('COOKIE_SECURE');
+    this.secureCookies =
+      override !== undefined
+        ? override === 'true'
+        : config.get<string>('NODE_ENV') === 'production';
+  }
 
   private setRefreshCookie(res: Response, token: string): void {
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: false,
+      secure: this.secureCookies,
       path: '/api/auth',
       maxAge: REFRESH_MAX_AGE,
     });
@@ -40,12 +55,15 @@ export class AuthController {
     res.cookie(ACCESS_COOKIE, token, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: false,
+      secure: this.secureCookies,
       path: '/api',
     });
   }
 
-  // UC-81
+  // UC-81 — 5 attempts/min/IP; failed logins re-check the password every time regardless, so
+  // without this a flood of guesses would still cost a bcrypt.compare + DB round trip each.
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   async login(
     @Body() dto: LoginDto,
@@ -70,7 +88,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const cookies = req.cookies as Record<string, string> | undefined;
-    await this.auth.logout(user.sub, cookies?.[REFRESH_COOKIE]);
+    await this.auth.logout(user.sub, user.sid ?? null, cookies?.[REFRESH_COOKIE]);
     res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
     res.clearCookie(ACCESS_COOKIE, { path: '/api' });
     return { ok: true };
@@ -88,7 +106,9 @@ export class AuthController {
     return { token: result.token, user: result.user };
   }
 
-  // UC-86
+  // UC-86 — same rate limit; this endpoint also sends real email, so it's worth throttling too.
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('forgot-password')
   @HttpCode(200)
   async forgot(@Body() dto: ForgotPasswordDto) {

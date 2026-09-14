@@ -12,7 +12,7 @@ Everything here talks to three live services:
 | openTCS kernel | `http://localhost:55200` | (Java kernel, started separately) |
 | Postgres | `postgres://postgres:postgres@127.0.0.1:5432/wes` | — |
 
-Admin login: **`quan.tran` / `Wes@1234`** (note: not the `Admin@123` shown in `seed.ts`).
+Admin login: **`admin` / `Wes@1234`**.
 
 ---
 
@@ -22,7 +22,7 @@ Admin login: **`quan.tran` / `Wes@1234`** (note: not the `Admin@123` shown in `s
 BASE=http://localhost:3000/api
 TOKEN=$(curl -s -m 5 -X POST $BASE/auth/login \
   -H "content-type: application/json" \
-  -d '{"username":"quan.tran","password":"Wes@1234"}' \
+  -d '{"username":"admin","password":"Wes@1234"}' \
   | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 [ -z "$TOKEN" ] && echo "LOGIN FAILED (WES backend down?)"
 ```

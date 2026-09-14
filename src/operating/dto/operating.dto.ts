@@ -56,6 +56,12 @@ export interface VehicleRealtimeDto {
   loaded: boolean;
   /** Point names still ahead of the vehicle on its current order — for the route highlight. */
   routePoints: string[];
+  /** % of the current order's route steps already driven (0 with no active order). */
+  routeProgressPercent: number;
+  /** Every route step in order, each flagged driven/not — for the full-route popover. */
+  routeSteps: { point: string; driven: boolean }[];
+  /** Resource (point/path) names currently claimed by the vehicle in the kernel scheduler. */
+  allocatedResources: string[];
 }
 
 export interface TransportOrderDto {
@@ -67,6 +73,8 @@ export interface TransportOrderDto {
   wrappingSequence: string | null;
   destinations: { locationName: string; operation: string }[];
   creationTime: string | null;
+  /** Only set once the kernel actually reaches a successful FINISHED state — null otherwise. */
+  finishedTime: string | null;
 }
 
 export interface OperatingHealthDto {
@@ -141,6 +149,7 @@ export type OperatingCargoStatus =
 
 export interface CargoDto {
   cargoId: string;
+  itemCode: string;
   status: OperatingCargoStatus;
   processingVehicle: string | null;
   pickupAreaWesId: string | null;
@@ -153,6 +162,12 @@ export interface CargoDto {
   createdAt: string;
   updatedAt: string;
   doneAt: string | null;
+}
+
+export interface CargoListDto {
+  cargos: CargoDto[];
+  total: number;
+  truncated: boolean;
 }
 
 export interface CreateCargoBody {

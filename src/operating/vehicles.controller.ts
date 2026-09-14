@@ -6,7 +6,9 @@ import type { VehicleRealtimeDto } from './dto/operating.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('operating/vehicles')
 export class OperatingVehiclesController {
-  constructor(private readonly vehicles: OperatingVehiclesService) {}
+  constructor(
+    private readonly vehicles: OperatingVehiclesService,
+  ) {}
 
   @Get()
   list(): Promise<VehicleRealtimeDto[]> {

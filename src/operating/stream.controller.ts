@@ -1,5 +1,10 @@
 import { Controller, MessageEvent, Sse, UseGuards } from '@nestjs/common';
-import { EMPTY, Observable, catchError, interval, map, merge } from 'rxjs';
+import { EMPTY, Observable, catchError, map, merge } from 'rxjs';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { sseHeartbeat$ } from '../auth/sse-heartbeat';
+import { TokenService } from '../auth/token.service';
+import { UsersService } from '../users/users.service';
+import type { AuthUser } from '../auth/jwt-payload';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OperatingVehiclesService } from './operating-vehicles.service';
 import { OperatingCargoService } from './operating-cargo.service';
@@ -14,10 +19,12 @@ export class OperatingStreamController {
     private readonly vehicles: OperatingVehiclesService,
     private readonly cargo: OperatingCargoService,
     private readonly areas: OperatingAreasService,
+    private readonly users: UsersService,
+    private readonly tokens: TokenService,
   ) {}
 
   @Sse('stream')
-  stream(): Observable<MessageEvent> {
+  stream(@CurrentUser() user: AuthUser): Observable<MessageEvent> {
     return merge(
       this.vehicles.updates$.pipe(
         map((dto) => ({ data: { kind: 'vehicle', payload: dto } })),
@@ -31,7 +38,7 @@ export class OperatingStreamController {
         map(() => ({ data: { kind: 'area' } })),
         catchError(() => EMPTY),
       ),
-      interval(SSE_HEARTBEAT_MS).pipe(map(() => ({ type: 'ping', data: '' }))),
+      sseHeartbeat$(SSE_HEARTBEAT_MS, this.users, this.tokens, user),
     );
   }
 }

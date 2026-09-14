@@ -2,11 +2,11 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { AxiosError } from 'axios';
+import { IsNull, Not, Repository } from 'typeorm';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { TransportOrderService } from '../opentcs/transport-order.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
@@ -24,13 +24,18 @@ import {
   type MapHealthReport,
   type MapHealthZone,
 } from './domain/map-health';
-import { MapRecordEntity } from './entities/map-record.entity';
+import {
+  MapRecordEntity,
+  type StoredMapPreview,
+} from './entities/map-record.entity';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
 import {
   ZoneEntity,
   ZoneStatus,
   ZoneType,
 } from '../zones/entities/zone.entity';
+import { pointNameOf } from '../zones/domain/location-naming';
+import { ZoneService } from '../zones/zone.service';
 
 export type KernelMode = 'MODELLING' | 'OPERATING';
 
@@ -47,6 +52,56 @@ export interface CurrentMapDto {
   originalFilename: string | null;
   uploadedAt: Date | null;
   uploadedById: string | null;
+}
+
+export interface MapLibraryItemDto {
+  id: string;
+  name: string;
+  originalFilename: string;
+  pointCount: number;
+  pathCount: number;
+  vehicleCount: number;
+  locationCount: number;
+  blockCount: number;
+  uploadedAt: Date;
+  uploadedById: string | null;
+  lastLoadedAt: Date | null;
+  active: boolean;
+  preview: StoredMapPreview;
+  areas: MapPreviewAreaDto[];
+}
+
+export interface MapPreviewAreaDto {
+  id: string;
+  name: string;
+  kind: 'ZONE' | 'STORE';
+  status: 'ACTIVE' | 'STALE';
+  color: string;
+  pointNames: string[];
+}
+
+export interface MapLibraryDetailDto extends MapLibraryItemDto {
+  points: Array<{
+    name: string;
+    type: string;
+    x: number;
+    y: number;
+    z: number;
+  }>;
+  paths: Array<{
+    name: string;
+    source: string;
+    target: string;
+    length: number;
+    locked: boolean;
+  }>;
+  locations: Array<{
+    name: string;
+    type: string;
+    pointNames: string[];
+  }>;
+  vehicles: string[];
+  blocks: Array<{ name: string; type: string; memberNames: string[] }>;
 }
 
 interface KernelPlantModelSummary {
@@ -81,6 +136,7 @@ export class MapsService {
     private readonly cargoRepo: Repository<CargoEntity>,
     @InjectRepository(ZoneEntity)
     private readonly zoneRepo: Repository<ZoneEntity>,
+    private readonly zoneService: ZoneService,
   ) {}
 
   async getKernelStatus(): Promise<KernelStatusDto> {
@@ -89,23 +145,6 @@ export class MapsService {
       this.kernelApi.getKernelState(),
     ]);
     return { reachable, state };
-  }
-
-  async setKernelState(state: KernelMode): Promise<KernelStatusDto> {
-    try {
-      await this.kernelApi.setKernelState(state);
-    } catch (err) {
-      const msg = (err as AxiosError).message;
-      throw new ServiceUnavailableException(
-        `Không thể chuyển chế độ hệ thống điều khiển: ${msg}`,
-      );
-    }
-
-    if (state === 'OPERATING') {
-      await this.kernelApi.initializeVehiclesForOperation();
-    }
-
-    return this.getKernelStatus();
   }
 
   async getPlantModel(): Promise<unknown> {
@@ -268,11 +307,88 @@ export class MapsService {
     };
   }
 
-  async upload(
+  async listLibrary(): Promise<MapLibraryItemDto[]> {
+    const records = await this.repo.find({
+      where: { xmlContent: Not(IsNull()) },
+      order: { uploadedAt: 'DESC' },
+    });
+    if (records.length === 0) return [];
+
+    const [currentName, zones] = await Promise.all([
+      this.kernelApi.getPlantModelName(),
+      this.zoneRepo.find({
+        relations: { members: true },
+      }),
+    ]);
+    const activeId = this.activeRecordId(records, currentName);
+    return records.map((record) =>
+      this.toLibraryItem(
+        record,
+        record.id === activeId,
+        this.areasForMap(record.name, record.preview, zones),
+      ),
+    );
+  }
+
+  async getLibraryMap(id: string): Promise<MapLibraryDetailDto> {
+    const record = await this.storedMap(id);
+    const model = this.parseXml(record.xmlContent as string);
+    const [currentName, zones] = await Promise.all([
+      this.kernelApi.getPlantModelName(),
+      this.zoneRepo.find({
+        relations: { members: true },
+      }),
+    ]);
+
+    return {
+      ...this.toLibraryItem(
+        record,
+        record.name === currentName,
+        this.areasForMap(record.name, this.previewOf(model), zones),
+      ),
+      points: model.points.map((point) => ({
+        name: point.name,
+        type: point.type,
+        x: point.position.x,
+        y: point.position.y,
+        z: point.position.z,
+      })),
+      paths: model.paths.map((path) => ({
+        name: path.name,
+        source: path.srcPointName,
+        target: path.destPointName,
+        length: path.length,
+        locked: path.locked,
+      })),
+      locations: model.locations.map((location) => ({
+        name: location.name,
+        type: location.typeName,
+        pointNames: location.links.map((link) => link.pointName),
+      })),
+      vehicles: model.vehicles.map((vehicle) => vehicle.name),
+      blocks: model.blocks.map((block) => ({
+        name: block.name,
+        type: block.type,
+        memberNames: block.memberNames,
+      })),
+    };
+  }
+
+  async getLibraryXml(
+    id: string,
+  ): Promise<{ filename: string; content: string }> {
+    const record = await this.storedMap(id);
+    return {
+      filename: record.originalFilename,
+      content: record.xmlContent as string,
+    };
+  }
+
+  async uploadToLibrary(
     xmlBuffer: Buffer,
     originalFilename: string,
     uploadedById: string,
-  ): Promise<MapRecordEntity> {
+  ): Promise<MapLibraryItemDto> {
     const xmlContent = xmlBuffer.toString('utf-8');
 
     let model: ReturnType<typeof parseOpenTcsXml>;
@@ -284,6 +400,10 @@ export class MapsService {
       );
     }
 
+    if (!model.name?.trim()) {
+      throw new BadRequestException('File XML không có tên plant model.');
+    }
+
     // Auto-generation of single-vehicle lane blocks (SVB-*) DISABLED.
     // Previously WES derived SINGLE_VEHICLE_ONLY blocks from the path graph to
     // serialise single-file / dead-end lanes; only hand-authored blocks in the
@@ -291,17 +411,186 @@ export class MapsService {
     // const blockCount = applySingleVehicleBlocks(model).blocks.length;
     // this.logger.log(`Generated ${blockCount} single-vehicle lane block(s)`);
 
-    await savePlantModel(this.kernelApi, model);
-
     const record = this.repo.create({
-      name: model.name,
-      originalFilename,
+      name: model.name.trim(),
+      originalFilename: originalFilename || `${model.name.trim()}.xml`,
       pointCount: model.points.length,
       pathCount: model.paths.length,
       vehicleCount: model.vehicles.length,
+      locationCount: model.locations.length,
+      blockCount: model.blocks.length,
+      xmlContent,
+      preview: this.previewOf(model),
       uploadedById,
+      lastLoadedAt: null,
     });
-    return this.repo.save(record);
+    return this.toLibraryItem(await this.repo.save(record), false);
+  }
+
+  async loadLibraryMap(id: string): Promise<MapLibraryItemDto> {
+    const record = await this.storedMap(id);
+    const model = this.parseXml(record.xmlContent as string);
+
+    await savePlantModel(this.kernelApi, model);
+    await this.kernelApi.initializeVehiclesForOperation();
+
+    const zoneSync = await this.zoneService.sync().catch((error) => {
+      this.logger.warn(
+        `Zone sync after loading "${record.name}" failed: ${(error as Error).message}`,
+      );
+      return null;
+    });
+    if (zoneSync) {
+      this.logger.log(
+        `Zone sync after loading "${record.name}": ${zoneSync.markedActive} active, ${zoneSync.markedStale} stale`,
+      );
+    }
+
+    record.lastLoadedAt = new Date();
+    const saved = await this.repo.save(record);
+    this.logger.log(
+      `Loaded stored map "${saved.name}" (${saved.id}) into the kernel`,
+    );
+
+    const zones = await this.zoneRepo.find({ relations: { members: true } });
+    return this.toLibraryItem(
+      saved,
+      true,
+      this.areasForMap(saved.name, saved.preview, zones),
+    );
+  }
+
+  private async storedMap(id: string): Promise<MapRecordEntity> {
+    const record = await this.repo.findOne({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        originalFilename: true,
+        pointCount: true,
+        pathCount: true,
+        vehicleCount: true,
+        locationCount: true,
+        blockCount: true,
+        xmlContent: true,
+        preview: true,
+        uploadedAt: true,
+        uploadedById: true,
+        lastLoadedAt: true,
+      },
+    });
+    if (!record?.xmlContent) {
+      throw new NotFoundException('Không tìm thấy bản đồ đã lưu trong WES.');
+    }
+    return record;
+  }
+
+  private parseXml(xmlContent: string): ReturnType<typeof parseOpenTcsXml> {
+    try {
+      return parseOpenTcsXml(xmlContent);
+    } catch (err) {
+      throw new BadRequestException(
+        `File XML không hợp lệ: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private previewOf(
+    model: ReturnType<typeof parseOpenTcsXml>,
+  ): StoredMapPreview {
+    return {
+      points: model.points.map((point) => ({
+        name: point.name,
+        x: point.position.x,
+        y: point.position.y,
+        type: point.type,
+      })),
+      paths: model.paths.map((path) => ({
+        name: path.name,
+        source: path.srcPointName,
+        target: path.destPointName,
+        locked: path.locked,
+      })),
+    };
+  }
+
+  private toLibraryItem(
+    record: MapRecordEntity,
+    active: boolean,
+    areas: MapPreviewAreaDto[] = [],
+  ): MapLibraryItemDto {
+    return {
+      id: record.id,
+      name: record.name,
+      originalFilename: record.originalFilename,
+      pointCount: record.pointCount,
+      pathCount: record.pathCount,
+      vehicleCount: record.vehicleCount,
+      locationCount: record.locationCount,
+      blockCount: record.blockCount,
+      uploadedAt: record.uploadedAt,
+      uploadedById: record.uploadedById,
+      lastLoadedAt: record.lastLoadedAt,
+      active,
+      preview: record.preview ?? { points: [], paths: [] },
+      areas,
+    };
+  }
+
+  private areasForMap(
+    mapName: string,
+    preview: StoredMapPreview | null,
+    zones: ZoneEntity[],
+  ): MapPreviewAreaDto[] {
+    const exact = zones.filter((zone) => zone.plantModelName === mapName);
+    if (exact.length > 0) {
+      return exact.map((zone) => this.toPreviewArea(zone));
+    }
+
+    // XML exports are often renamed while their topology stays unchanged.
+    // If there is no exact map scope, display only complete WES areas whose
+    // member points all exist in this map. Partial matches are deliberately
+    // rejected so an area from a larger, different topology is not shown.
+    const pointNames = new Set(
+      (preview?.points ?? []).map((point) => point.name),
+    );
+    return zones
+      .filter(
+        (zone) =>
+          zone.members.length > 0 &&
+          zone.members.every((member) =>
+            pointNames.has(pointNameOf(member.locationName)),
+          ),
+      )
+      .map((zone) => this.toPreviewArea(zone));
+  }
+
+  private toPreviewArea(zone: ZoneEntity): MapPreviewAreaDto {
+    return {
+      id: zone.id,
+      name: zone.name,
+      kind: zone.type === ZoneType.PICKUP ? 'ZONE' : 'STORE',
+      status: zone.status === ZoneStatus.ACTIVE ? 'ACTIVE' : 'STALE',
+      color:
+        zone.color ?? (zone.type === ZoneType.PICKUP ? '#2563EB' : '#16A34A'),
+      pointNames: [...zone.members]
+        .sort((a, b) => a.positionIndex - b.positionIndex)
+        .map((member) => pointNameOf(member.locationName)),
+    };
+  }
+
+  private activeRecordId(
+    records: MapRecordEntity[],
+    currentName: string | null,
+  ): string | null {
+    if (!currentName) return null;
+    const matching = records.filter((record) => record.name === currentName);
+    matching.sort(
+      (a, b) =>
+        (b.lastLoadedAt ?? b.uploadedAt).getTime() -
+        (a.lastLoadedAt ?? a.uploadedAt).getTime(),
+    );
+    return matching[0]?.id ?? null;
   }
 
   private toPlantModelSummary(value: unknown): KernelPlantModelSummary | null {

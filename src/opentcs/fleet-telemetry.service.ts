@@ -13,6 +13,10 @@ import { VehicleStateTransitionEntity } from './entities/vehicle-state-transitio
 import { VehicleStateStore } from './vehicle-state.store';
 
 const FLUSH_INTERVAL_MS = 1_500;
+/** Cap on requeued + newly recorded rows while flushing keeps failing (DB down) — bounds memory
+ *  instead of buffering every vehicle transition for the entire outage. Beyond this, the oldest
+ *  rows are dropped in favor of newer ones. */
+const BUFFER_MAX_ROWS = 5_000;
 
 interface VehicleSnapshot {
   point: string | null;
@@ -168,8 +172,16 @@ export class FleetTelemetryService
       );
     } catch (err) {
       this.logger.error(
-        `Failed to flush ${rows.length} vehicle transition(s): ${(err as Error).message}`,
+        `Failed to flush ${rows.length} vehicle transition(s), requeueing for next attempt: ${(err as Error).message}`,
       );
+      this.buffer = [...rows, ...this.buffer];
+      if (this.buffer.length > BUFFER_MAX_ROWS) {
+        const dropped = this.buffer.length - BUFFER_MAX_ROWS;
+        this.buffer = this.buffer.slice(dropped);
+        this.logger.warn(
+          `Telemetry buffer exceeded ${BUFFER_MAX_ROWS} rows during a sustained flush failure — dropped the oldest ${dropped}`,
+        );
+      }
     } finally {
       this.flushing = false;
     }

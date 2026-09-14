@@ -5,6 +5,21 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
+export interface StoredMapPreview {
+  points: Array<{
+    name: string;
+    x: number;
+    y: number;
+    type: string;
+  }>;
+  paths: Array<{
+    name: string;
+    source: string;
+    target: string;
+    locked: boolean;
+  }>;
+}
+
 @Entity('map_records')
 export class MapRecordEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -25,9 +40,26 @@ export class MapRecordEntity {
   @Column({ name: 'vehicle_count', type: 'int', default: 0 })
   vehicleCount!: number;
 
+  @Column({ name: 'location_count', type: 'int', default: 0 })
+  locationCount!: number;
+
+  @Column({ name: 'block_count', type: 'int', default: 0 })
+  blockCount!: number;
+
+  /** The original upload is the source used for downloads and later kernel loads. */
+  @Column({ name: 'xml_content', type: 'text', nullable: true, select: false })
+  xmlContent!: string | null;
+
+  /** Small, render-ready geometry so listing cards never has to parse every XML document. */
+  @Column({ name: 'preview', type: 'jsonb', nullable: true })
+  preview!: StoredMapPreview | null;
+
   @CreateDateColumn({ name: 'uploaded_at', type: 'timestamptz' })
   uploadedAt!: Date;
 
   @Column({ name: 'uploaded_by_id', type: 'uuid', nullable: true })
   uploadedById!: string | null;
+
+  @Column({ name: 'last_loaded_at', type: 'timestamptz', nullable: true })
+  lastLoadedAt!: Date | null;
 }

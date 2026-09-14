@@ -6,11 +6,17 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Observable, Subject } from 'rxjs';
+import { OnEvent } from '@nestjs/event-emitter';
 import { ZoneService } from '../zones/zone.service';
 import { ZoneStatus, ZoneType } from '../zones/entities/zone.entity';
 import { LOCATION_PREFIX, pointNameOf } from '../zones/domain/location-naming';
 import type { ZoneListItemResponse } from '../zones/zone.dto';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
+import {
+  TransportTaskEntity,
+  TaskStatus,
+} from '../cargo/entities/transport-task.entity';
+import { TRANSPORT_TASK_EVENTS } from '../cargo/domain/events';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type {
   AreaDto,
@@ -20,6 +26,13 @@ import type {
   ReplaceAreaMembersBody,
   UpdateAreaBody,
 } from './dto/operating.dto';
+
+const PICKUP_NOT_YET_LOADED_STATUSES = [
+  TaskStatus.CREATED,
+  TaskStatus.READY_TO_ASSIGN,
+  TaskStatus.BLOCKED,
+  TaskStatus.PICKING_UP,
+];
 
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
 
@@ -45,12 +58,23 @@ export class OperatingAreasService {
     private readonly kernelApi: KernelApiService,
     @InjectRepository(CargoEntity)
     private readonly cargoRepo: Repository<CargoEntity>,
+    @InjectRepository(TransportTaskEntity)
+    private readonly taskRepo: Repository<TransportTaskEntity>,
   ) {}
 
   /** Bare SSE tick whenever an area / its kernel Locations change — so every other open
    *  client refetches instead of showing a stale zone list until an F5 or a tab refocus. */
   get changes$(): Observable<void> {
     return this.ticks.asObservable();
+  }
+
+  @OnEvent(TRANSPORT_TASK_EVENTS.CREATED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.STATUS_CHANGED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.COMPLETED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.FAILED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.UPDATED)
+  onCargoChanged(): void {
+    this.ticks.next();
   }
 
   async list(): Promise<AreaDto[]> {
@@ -186,6 +210,7 @@ export class OperatingAreasService {
           status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]),
         },
         { reservedLocationName: In(locations), status: CargoStatus.ACTIVE },
+        { sourcePickupLocationName: In(locations), status: CargoStatus.ACTIVE },
       ],
     });
 
@@ -195,6 +220,37 @@ export class OperatingAreasService {
         out.set(committed, { state: 'OCCUPIED', cargoId: cargo.id });
       }
     }
+
+    const pickupCandidates = cargos.filter(
+      (cargo) =>
+        cargo.sourcePickupLocationName &&
+        locations.includes(cargo.sourcePickupLocationName) &&
+        !out.has(cargo.sourcePickupLocationName),
+    );
+    if (pickupCandidates.length > 0) {
+      const tasks = await this.taskRepo.find({
+        where: { cargoId: In(pickupCandidates.map((cargo) => cargo.id)) },
+        order: { createdAt: 'DESC' },
+      });
+      const latestStatusByCargoId = new Map<string, TaskStatus>();
+      for (const task of tasks) {
+        if (task.cargoId && !latestStatusByCargoId.has(task.cargoId)) {
+          latestStatusByCargoId.set(task.cargoId, task.status);
+        }
+      }
+      for (const cargo of pickupCandidates) {
+        const status = latestStatusByCargoId.get(cargo.id);
+        const stillAtSource =
+          status !== undefined && PICKUP_NOT_YET_LOADED_STATUSES.includes(status);
+        if (stillAtSource) {
+          out.set(cargo.sourcePickupLocationName as string, {
+            state: 'OCCUPIED',
+            cargoId: cargo.id,
+          });
+        }
+      }
+    }
+
     for (const cargo of cargos) {
       const reserved = cargo.reservedLocationName;
       if (reserved && locations.includes(reserved) && !out.has(reserved)) {

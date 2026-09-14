@@ -1,7 +1,7 @@
 import { UserEntity } from './entities/user.entity';
-import type { RoleName } from './entities/role.entity';
 
-export type FeRole = 'admin' | 'operator';
+/** A role key slug (`admin`, `operator`, `viewer`, or a custom one). */
+export type FeRole = string;
 export type UserStatus = 'active' | 'locked' | 'invited' | 'inactive';
 
 export interface AccountUserDto {
@@ -11,8 +11,10 @@ export interface AccountUserDto {
   phone: string;
   shift: string;
   role: FeRole;
+  roleName: string;
   photo: string | null;
   created: string;
+  mustChangePassword: boolean;
 }
 
 export interface AdminUserDto {
@@ -21,6 +23,7 @@ export interface AdminUserDto {
   username: string;
   email: string;
   role: FeRole;
+  roleName: string;
   status: UserStatus;
   phone: string;
   shift: string;
@@ -28,12 +31,8 @@ export interface AdminUserDto {
   lastActive: string | null;
   created: string;
   lockReason: string | null;
+  mustChangePassword: boolean;
 }
-
-export const roleToFe = (name: RoleName): FeRole =>
-  name.toLowerCase() as FeRole;
-export const roleToDb = (role: FeRole): RoleName =>
-  role.toUpperCase() as RoleName;
 
 export function deriveStatus(u: UserEntity): UserStatus {
   if (u.isLocked) return 'locked';
@@ -42,7 +41,11 @@ export function deriveStatus(u: UserEntity): UserStatus {
   return 'inactive';
 }
 
-export function toAccountUser(u: UserEntity, role: FeRole): AccountUserDto {
+export function toAccountUser(
+  u: UserEntity,
+  role: FeRole,
+  roleName: string,
+): AccountUserDto {
   return {
     name: u.fullName,
     username: u.username,
@@ -50,14 +53,17 @@ export function toAccountUser(u: UserEntity, role: FeRole): AccountUserDto {
     phone: u.phone ?? '',
     shift: u.shift ?? '',
     role,
+    roleName,
     photo: u.avatarUrl,
     created: u.createdAt.toISOString(),
+    mustChangePassword: u.mustChangePassword,
   };
 }
 
 export function toAdminUser(
   u: UserEntity,
   role: FeRole,
+  roleName: string,
   online: boolean,
 ): AdminUserDto {
   return {
@@ -66,6 +72,7 @@ export function toAdminUser(
     username: u.username,
     email: u.email,
     role,
+    roleName,
     status: deriveStatus(u),
     phone: u.phone ?? '',
     shift: u.shift ?? '',
@@ -73,5 +80,6 @@ export function toAdminUser(
     lastActive: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
     created: u.createdAt.toISOString(),
     lockReason: u.lockReason ?? null,
+    mustChangePassword: u.mustChangePassword,
   };
 }

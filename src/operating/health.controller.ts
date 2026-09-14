@@ -28,8 +28,7 @@ export class OperatingHealthController {
       kernel: kernelReachable ? 'ok' : 'unreachable',
       kernelSse: {
         connected: this.vehicleStateStore.isConnected(),
-        eventCount: 0,
-        lastEventAt: null,
+        ...this.vehicleStateStore.getEventStats(),
       },
       db: dbOk ? 'ok' : 'unreachable',
       mqtt: this.mqttHealth.isConnected() ? 'ok' : 'unreachable',

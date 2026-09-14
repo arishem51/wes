@@ -194,8 +194,28 @@ export class CargoService {
           'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
           [zone.id],
         );
+        // Same lock pattern as the destination zone above, keyed on the source point instead —
+        // closes the TOCTOU race where two concurrent creates both read "source free" before
+        // either commits. Always acquired zone-then-source in this one call site, so there's no
+        // lock-order inversion with any other transaction to deadlock against.
+        await manager.query(
+          'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
+          [dto.sourcePointName],
+        );
         const cargoRepo = manager.getRepository(CargoEntity);
         await this.assertZoneHasRoom(cargoRepo, zone, capacity);
+
+        const stillOccupied = await cargoRepo.findOne({
+          where: {
+            sourcePointName: dto.sourcePointName,
+            status: CargoStatus.ACTIVE,
+          },
+        });
+        if (stillOccupied) {
+          throw new BadRequestException(
+            `Point "${dto.sourcePointName}" already has cargo waiting for transport (${stillOccupied.itemCode}).`,
+          );
+        }
 
         const saved = await cargoRepo.save(
           cargoRepo.create({
@@ -236,14 +256,21 @@ export class CargoService {
   async list(query: ListCargosQueryDto = {}): Promise<CargoListResponse> {
     const page = query.page ?? DEFAULT_PAGE;
     const limit = query.limit ?? DEFAULT_LIMIT;
+    const plantModelName = query.activeMapOnly ? await this.loadedMapName() : null;
 
-    const [cargos, total] = await this.buildListQuery(query)
+    const [cargos, total] = await this.buildListQuery(query, plantModelName)
       .orderBy('cargo.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
 
-    return { cargos: await this.enrichCargos(cargos), total, page, limit };
+    return {
+      cargos: await this.enrichCargos(cargos),
+      total,
+      page,
+      limit,
+      truncated: page * limit < total,
+    };
   }
 
   async getAssignmentDecision(
@@ -279,8 +306,17 @@ export class CargoService {
 
   private buildListQuery(
     query: ListCargosQueryDto,
+    plantModelName: string | null,
   ): SelectQueryBuilder<CargoEntity> {
     const builder = this.cargoRepo.createQueryBuilder('cargo');
+
+    if (plantModelName) {
+      builder
+        .leftJoin('zones', 'dest_zone', 'dest_zone.id = cargo.destination_zone_id')
+        .andWhere('dest_zone.plant_model_name = :plantModelName', {
+          plantModelName,
+        });
+    }
 
     if (query.status) {
       builder.andWhere('cargo.status = :status', {
@@ -333,6 +369,7 @@ export class CargoService {
     }
 
     await this.cargoRepo.softDelete(id);
+    if (task) this.transportTask.publishUpdated(task);
     return { message: 'Cargo deleted.' };
   }
 
@@ -382,10 +419,12 @@ export class CargoService {
           ?.allocatedResources ?? []
       );
     } catch (err) {
-      this.logger.warn(
-        `Could not read allocated resources for ${vehicleName} — allowing the deletion: ${(err as Error).message}`,
+      // Fail closed: with the live SSE store disconnected and the kernel unreadable, we have no
+      // way to know whether this vehicle is mid-pickup/drop-off — allowing the deletion here
+      // would risk cutting a task out from under a vehicle that's still physically handling it.
+      throw new ServiceUnavailableException(
+        `Không thể xác nhận trạng thái xe ${vehicleName} để xóa hàng an toàn — thử lại khi hệ thống điều khiển phản hồi: ${(err as Error).message}`,
       );
-      return [];
     }
   }
 

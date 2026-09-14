@@ -6,6 +6,7 @@ import { AppModule } from '../app.module';
 import { UsersService } from '../users/users.service';
 import { AgvEntity } from '../agvs/entities/agv.entity';
 import { RoleEntity } from '../users/entities/role.entity';
+import { PermissionCatalogueService } from '../auth/permission-catalogue.service';
 
 const AGV_COUNT = 20;
 
@@ -13,15 +14,28 @@ async function seedRoles(
   roles: Repository<RoleEntity>,
   log: Logger,
 ): Promise<void> {
-  const defaults: Array<Pick<RoleEntity, 'name' | 'description'>> = [
-    { name: 'ADMIN', description: 'System administrator' },
-    { name: 'OPERATOR', description: 'Warehouse operator' },
+  const defaults: Array<
+    Pick<RoleEntity, 'key' | 'name' | 'description' | 'isSystem'>
+  > = [
+    { key: 'admin', name: 'Quản trị viên', description: 'Toàn quyền hệ thống', isSystem: true },
+    {
+      key: 'operator',
+      name: 'Điều hành viên',
+      description: 'Điều hành kho vận',
+      isSystem: true,
+    },
+    {
+      key: 'viewer',
+      name: 'Người xem',
+      description: 'Chỉ xem, không thao tác vận hành',
+      isSystem: true,
+    },
   ];
 
   for (const role of defaults) {
-    await roles.upsert(role, ['name']);
+    await roles.upsert(role, ['key']);
   }
-  log.log(`Ensured roles: ${defaults.map((role) => role.name).join(', ')}`);
+  log.log(`Ensured roles: ${defaults.map((role) => role.key).join(', ')}`);
 }
 
 async function seedAdmin(users: UsersService, log: Logger): Promise<void> {
@@ -79,6 +93,12 @@ async function run() {
     app.get<Repository<RoleEntity>>(getRepositoryToken(RoleEntity)),
     log,
   );
+
+  const catalogue = app.get(PermissionCatalogueService);
+  await catalogue.syncCatalogue();
+  await catalogue.seedSystemGrants();
+  log.log('Ensured permission catalogue + system role grants.');
+
   await seedAdmin(app.get(UsersService), log);
   await seedAgvs(
     app.get<Repository<AgvEntity>>(getRepositoryToken(AgvEntity)),

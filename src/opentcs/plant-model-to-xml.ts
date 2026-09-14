@@ -58,9 +58,12 @@ export function plantModelToXml(raw: unknown): string {
   }
 
   for (const pa of recArray(m.paths)) {
+    const src = esc(pa.srcPointName ?? pa.sourcePoint);
+    const dest = esc(pa.destPointName ?? pa.destinationPoint);
+    const name = typeof pa.name === 'string' && pa.name.trim() !== '' ? esc(pa.name) : `${src} --- ${dest}`;
     const attrs =
-      `name="${esc(pa.name)}" sourcePoint="${esc(pa.srcPointName ?? pa.sourcePoint)}" ` +
-      `destinationPoint="${esc(pa.destPointName ?? pa.destinationPoint)}" ` +
+      `name="${name}" sourcePoint="${src}" ` +
+      `destinationPoint="${dest}" ` +
       `length="${intAttr(pa.length)}" maxVelocity="${intAttr(pa.maxVelocity)}" ` +
       `maxReverseVelocity="${intAttr(pa.maxReverseVelocity)}" locked="${pa.locked === true}"`;
     lines.push(el('path', attrs, propXml(pa.properties, '    ')));

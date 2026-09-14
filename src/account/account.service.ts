@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { TokenService } from '../auth/token.service';
+import { PermissionsService } from '../auth/permissions.service';
 import type { AccountUserDto } from '../users/user.mapper';
 import type {
   ChangePasswordDto,
@@ -8,16 +9,21 @@ import type {
   UpdateProfileDto,
 } from './dto/account.dto';
 
+export type MeDto = AccountUserDto & { permissions: string[] };
+
 @Injectable()
 export class AccountService {
   constructor(
     private readonly users: UsersService,
     private readonly tokens: TokenService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   // UC-83
-  getMe(userId: string): Promise<AccountUserDto> {
-    return this.users.accountOf(userId);
+  async getMe(userId: string): Promise<MeDto> {
+    const account = await this.users.accountOf(userId);
+    const perms = await this.permissions.getRolePermissions(account.role);
+    return { ...account, permissions: [...perms] };
   }
 
   // UC-84
@@ -40,10 +46,14 @@ export class AccountService {
       );
     }
     await this.users.setPassword(userId, dto.newPassword);
+    // Access tokens already fall over on their `iat` vs `passwordChangedAt` check; refresh
+    // tokens don't carry a timestamp comparison, so they must be revoked explicitly here too —
+    // otherwise a stolen/older refresh token could keep minting fresh access tokens forever.
+    await this.tokens.revokeAllRefreshTokens(userId);
   }
 
-  async revokeOtherSessions(userId: string): Promise<void> {
-    await this.tokens.endOtherSessions(userId);
+  async revokeOtherSessions(userId: string, currentSessionId: string | null): Promise<void> {
+    await this.tokens.endOtherSessions(userId, currentSessionId);
   }
 
   async getPreferences(userId: string) {
