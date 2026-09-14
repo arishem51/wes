@@ -6,7 +6,12 @@ import type { CargoResponseDto } from '../cargo/cargo.dto';
 import { CargoStatus } from '../cargo/entities/cargo.entity';
 import { TaskStatus } from '../cargo/entities/transport-task.entity';
 import { TRANSPORT_TASK_EVENTS } from '../cargo/domain/events';
-import type { CargoDto, CreateCargoBody, OperatingCargoStatus } from './dto/operating.dto';
+import type {
+  CargoDto,
+  CargoListDto,
+  CreateCargoBody,
+  OperatingCargoStatus,
+} from './dto/operating.dto';
 
 const LIST_LIMIT = 200;
 
@@ -25,21 +30,28 @@ export class OperatingCargoService {
     return this.ticks.asObservable();
   }
 
-  @OnEvent([
-    TRANSPORT_TASK_EVENTS.CREATED,
-    TRANSPORT_TASK_EVENTS.STATUS_CHANGED,
-    TRANSPORT_TASK_EVENTS.COMPLETED,
-    TRANSPORT_TASK_EVENTS.FAILED,
-  ])
+  @OnEvent(TRANSPORT_TASK_EVENTS.CREATED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.STATUS_CHANGED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.COMPLETED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.FAILED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.UPDATED)
   onTaskChanged(): void {
     this.ticks.next();
   }
 
-  async list(): Promise<CargoDto[]> {
-    const { cargos } = await this.cargo.list({ page: 1, limit: LIST_LIMIT });
-    return cargos
-      .filter((cargo) => cargo.status !== CargoStatus.CANCELLED && !cargo.deletedAt)
-      .map((cargo) => toCargoDto(cargo));
+  async list(): Promise<CargoListDto> {
+    const { cargos, total, truncated } = await this.cargo.list({
+      page: 1,
+      limit: LIST_LIMIT,
+      activeMapOnly: true,
+    });
+    return {
+      cargos: cargos
+        .filter((cargo) => cargo.status !== CargoStatus.CANCELLED && !cargo.deletedAt)
+        .map((cargo) => toCargoDto(cargo)),
+      total,
+      truncated,
+    };
   }
 
   async create(body: CreateCargoBody, userId: string): Promise<CargoDto> {
@@ -92,6 +104,7 @@ function toCargoDto(cargo: CargoResponseDto): CargoDto {
     cargo.taskStatus === TaskStatus.DELIVERY_COMPLETED;
   return {
     cargoId: cargo.id,
+    itemCode: cargo.itemCode,
     status: mapStatus(cargo),
     processingVehicle: cargo.assignedVehicleName,
     pickupAreaWesId: cargo.sourceZoneId,

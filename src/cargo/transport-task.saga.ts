@@ -213,6 +213,7 @@ export class TransportTaskSaga {
         unloadedAt: new Date().toISOString(),
       };
       await this.taskRepo.save(task);
+      this.transportTask.publishUpdated(task);
       this.logger.log(
         `Task ${task.id}: cargo unloaded at drop-off slot, retreat leg running`,
       );

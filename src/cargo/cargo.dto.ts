@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -51,6 +52,13 @@ export class ListCargosQueryDto {
   @Min(1)
   @Max(200)
   limit?: number;
+
+  /** Scope to cargo whose destination zone belongs to the currently loaded plant model, so an
+   *  old map's history can't crowd a still-active cargo out of the page size on a new one. */
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  activeMapOnly?: boolean;
 }
 
 export type CargoVisualState = 'AT_SOURCE' | 'ON_AGV' | 'AT_DESTINATION';
@@ -85,6 +93,9 @@ export interface CargoListResponse {
   total: number;
   page: number;
   limit: number;
+  /** True when `total` exceeds what this page actually returned — the caller cut off cargo
+   *  that's still there, not gone. */
+  truncated: boolean;
 }
 
 export interface CargoAssignmentAlternativeDto {

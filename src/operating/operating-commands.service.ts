@@ -1,6 +1,12 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { AxiosError } from 'axios';
 import { KernelApiService } from '../opentcs/kernel-api.service';
+import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 
 const INTEGRATION_LEVELS = new Set([
@@ -47,7 +53,10 @@ function rethrowKernel(err: unknown, hint?: string): never {
 export class OperatingCommandsService {
   private readonly logger = new Logger(OperatingCommandsService.name);
 
-  constructor(private readonly kernelApi: KernelApiService) {}
+  constructor(
+    private readonly kernelApi: KernelApiService,
+    private readonly vehicleStateStore: VehicleStateStore,
+  ) {}
 
   async createOrder(dto: CreateManualOrderDto): Promise<{ ok: true; name: string }> {
     const destinations = (dto.destinations ?? [])
@@ -96,7 +105,20 @@ export class OperatingCommandsService {
     return { ok: true };
   }
 
+  /**
+   * Disconnecting a vehicle hands it back to the kernel cleanly: withdraw whatever order it's
+   * running (so resources/reservations release properly) and set it TO_BE_IGNORED before the
+   * comm adapter actually goes down — never leave the kernel still planning around a vehicle
+   * wes can no longer talk to.
+   */
   async setCommAdapter(name: string, enabled: boolean): Promise<{ ok: true }> {
+    if (!enabled) {
+      const vehicle = this.vehicleStateStore.get(name);
+      if (vehicle?.transportOrder) {
+        await this.kernelApi.withdrawVehicleOrder(name, true);
+      }
+      await this.kernelApi.setVehicleIntegrationLevel(name, 'TO_BE_IGNORED');
+    }
     await this.kernelApi.setVehicleAdapterEnabled(name, enabled);
     return { ok: true };
   }
@@ -137,31 +159,61 @@ export class OperatingCommandsService {
   }
 
   /**
-   * Fleet pause / resume — the least destructive reading of "stop all" / "run all": pause (or
-   * unpause) every vehicle without touching orders. `run-all` also lifts the integration level
-   * to TO_BE_UTILIZED so a vehicle that was only being respected can take work.
+   * Fleet-wide controls:
+   *  - `stop-all` / `run-all` — the least destructive reading of "stop"/"run": pause (or
+   *    unpause) every vehicle without touching orders or connectivity. `run-all` also lifts
+   *    the integration level to TO_BE_UTILIZED so a vehicle that was only being respected can
+   *    take work again.
+   *  - `connect-all` — the counterpart to disconnecting a vehicle (which sets it
+   *    TO_BE_IGNORED): re-enable every vehicle's comm adapter and bring it back to
+   *    TO_BE_UTILIZED, same as reconnecting each one by hand.
    */
-  async fleet(action: 'run-all' | 'stop-all'): Promise<{
-    ok: true;
-    applied: number;
-    failed: number;
+  async fleet(action: 'run-all' | 'stop-all' | 'connect-all'): Promise<{
+    ok: boolean;
+    applied: string[];
+    failed: { name: string; reason: string }[];
   }> {
-    const vehicles = await this.kernelApi
-      .getVehicles()
-      .catch(() => [] as KernelVehicleState[]);
-    const paused = action === 'stop-all';
+    let vehicles: KernelVehicleState[];
+    try {
+      vehicles = await this.kernelApi.getVehicles();
+    } catch (err) {
+      // A total failure to even list vehicles is not "0 vehicles, all succeeded" — the operator
+      // needs to know nothing was attempted, not see a blanket success toast.
+      throw new ServiceUnavailableException(
+        `Không lấy được danh sách xe từ hệ thống điều khiển: ${(err as Error).message}`,
+      );
+    }
 
     const results = await Promise.allSettled(
       vehicles.map(async (vehicle) => {
-        await this.kernelApi.setVehiclePaused(vehicle.name, paused);
+        if (action === 'connect-all') {
+          await this.kernelApi.setVehicleAdapterEnabled(vehicle.name, true);
+          await this.kernelApi.setVehicleIntegrationLevel(vehicle.name, 'TO_BE_UTILIZED');
+          return vehicle.name;
+        }
+        await this.kernelApi.setVehiclePaused(vehicle.name, action === 'stop-all');
         if (action === 'run-all') {
           await this.kernelApi.setVehicleIntegrationLevel(vehicle.name, 'TO_BE_UTILIZED');
         }
+        return vehicle.name;
       }),
     );
 
-    const failed = results.filter((r) => r.status === 'rejected').length;
-    this.logger.log(`Fleet ${action}: ${results.length - failed} applied, ${failed} failed`);
-    return { ok: true, applied: results.length - failed, failed };
+    const applied: string[] = [];
+    const failed: { name: string; reason: string }[] = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        applied.push(result.value);
+      } else {
+        failed.push({
+          name: vehicles[index].name,
+          reason:
+            result.reason instanceof Error ? result.reason.message : String(result.reason),
+        });
+      }
+    });
+
+    this.logger.log(`Fleet ${action}: ${applied.length} applied, ${failed.length} failed`);
+    return { ok: failed.length === 0, applied, failed };
   }
 }

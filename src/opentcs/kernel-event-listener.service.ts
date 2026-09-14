@@ -40,6 +40,9 @@ import { FleetTelemetryService } from './fleet-telemetry.service';
 
 const RETRY_DELAY_MS = 3_000;
 const HEARTBEAT_MS = Number(process.env.DISPATCH_HEARTBEAT_MS ?? 5_000);
+/** Order names are one-shot, so this dedup map only ever grows over a long-running process —
+ *  bound it the same way as the route-progress cache in OperatingOrdersService. */
+const ORDER_SIGNATURE_CACHE_MAX = 500;
 
 interface TCSObjectState {
   name: string;
@@ -337,6 +340,10 @@ export class KernelEventListenerService
     const signature = `${orderState}|${driveOrders.join(',')}`;
     if (seen === signature) return;
     this.lastOrderSignature.set(name, signature);
+    if (this.lastOrderSignature.size > ORDER_SIGNATURE_CACHE_MAX) {
+      const oldest = this.lastOrderSignature.keys().next().value;
+      if (oldest !== undefined) this.lastOrderSignature.delete(oldest);
+    }
 
     const orderFinished = orderState === 'FINISHED';
     if (orderFinished) this.logger.log(`Transport order "${name}" FINISHED`);

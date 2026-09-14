@@ -5,6 +5,7 @@ export const TRANSPORT_TASK_EVENTS = {
   STATUS_CHANGED: 'transport-task.status-changed',
   COMPLETED: 'transport-task.completed',
   FAILED: 'transport-task.failed',
+  UPDATED: 'transport-task.updated',
 } as const;
 
 export const ZONE_EVENTS = {
@@ -45,6 +46,15 @@ export class TransportTaskCompletedEvent {
 }
 
 export class TransportTaskFailedEvent {
+  constructor(
+    readonly taskId: string,
+    readonly cargoId: string | null,
+  ) {}
+}
+
+/** A task's metadata changed without a status transition (e.g. unloaded-at, soft-delete) —
+ *  still needs to reach the same listeners a status change would, so the UI doesn't go stale. */
+export class TransportTaskUpdatedEvent {
   constructor(
     readonly taskId: string,
     readonly cargoId: string | null,
