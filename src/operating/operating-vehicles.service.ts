@@ -3,7 +3,7 @@ import { Observable, from, mergeMap } from 'rxjs';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
 import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
-import { OperatingOrdersService } from './operating-orders.service';
+import { OperatingOrdersService, type RouteStep } from './operating-orders.service';
 import type { VehicleRealtimeDto } from './dto/operating.dto';
 
 /** WES names drop-off orders `DROPOFF-<vehicle>-<destination>-<uuid>` (transport-order-name.ts). */
@@ -26,6 +26,9 @@ function toDto(vehicle: KernelVehicleState): VehicleRealtimeDto {
     paused: vehicle.paused,
     loaded: (transportOrder ?? '').startsWith(LOADED_ORDER_PREFIX),
     routePoints: [],
+    routeProgressPercent: 0,
+    routeSteps: [],
+    allocatedResources: (vehicle.allocatedResources ?? []).flat(),
   };
 }
 
@@ -57,9 +60,9 @@ export class OperatingVehiclesService {
 
   private async withRoute(dto: VehicleRealtimeDto): Promise<VehicleRealtimeDto> {
     if (!dto.transportOrder) return dto;
-    const routePoints = await this.orders
-      .routeRemainingPoints(dto.transportOrder)
-      .catch(() => [] as string[]);
-    return { ...dto, routePoints };
+    const { points, percent, steps } = await this.orders
+      .routeProgress(dto.transportOrder)
+      .catch(() => ({ points: [] as string[], percent: 0, steps: [] as RouteStep[] }));
+    return { ...dto, routePoints: points, routeProgressPercent: percent, routeSteps: steps };
   }
 }
