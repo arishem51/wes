@@ -71,7 +71,11 @@ export interface TransportOrderDto {
 
 export interface OperatingHealthDto {
   kernel: string;
-  kernelSse: { connected: boolean; eventCount: number; lastEventAt: string | null };
+  kernelSse: {
+    connected: boolean;
+    eventCount: number;
+    lastEventAt: string | null;
+  };
   db: string;
   mqtt: string;
 }

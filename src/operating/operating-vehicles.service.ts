@@ -6,7 +6,6 @@ import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { OperatingOrdersService } from './operating-orders.service';
 import type { VehicleRealtimeDto } from './dto/operating.dto';
 
-/** WES names drop-off orders `DROPOFF-<vehicle>-<destination>-<uuid>` (transport-order-name.ts). */
 const LOADED_ORDER_PREFIX = 'DROPOFF-';
 
 function toDto(vehicle: KernelVehicleState): VehicleRealtimeDto {
@@ -16,7 +15,9 @@ function toDto(vehicle: KernelVehicleState): VehicleRealtimeDto {
     x: vehicle.precisePosition?.x ?? null,
     y: vehicle.precisePosition?.y ?? null,
     orientationAngle:
-      typeof vehicle.orientationAngle === 'number' ? vehicle.orientationAngle : null,
+      typeof vehicle.orientationAngle === 'number'
+        ? vehicle.orientationAngle
+        : null,
     currentPosition: vehicle.currentPosition ?? null,
     state: vehicle.state,
     procState: vehicle.procState,
@@ -29,12 +30,6 @@ function toDto(vehicle: KernelVehicleState): VehicleRealtimeDto {
   };
 }
 
-/**
- * `GET /vehicles` snapshot for first paint; `GET /vehicles/stream` (SSE) pushes one updated
- * vehicle per kernel event afterwards. Both are enriched with the vehicle's remaining route
- * points. Source is the shared `VehicleStateStore` (fed by the always-on kernel SSE listener) —
- * this module never opens a second SSE connection to the kernel.
- */
 @Injectable()
 export class OperatingVehiclesService {
   constructor(
@@ -45,7 +40,8 @@ export class OperatingVehiclesService {
 
   async snapshot(): Promise<VehicleRealtimeDto[]> {
     const stored = this.store.getAll();
-    const source = stored.length > 0 ? stored : await this.kernelApi.getVehicleStates();
+    const source =
+      stored.length > 0 ? stored : await this.kernelApi.getVehicleStates();
     return Promise.all(source.map((vehicle) => this.withRoute(toDto(vehicle))));
   }
 
@@ -55,7 +51,9 @@ export class OperatingVehiclesService {
     );
   }
 
-  private async withRoute(dto: VehicleRealtimeDto): Promise<VehicleRealtimeDto> {
+  private async withRoute(
+    dto: VehicleRealtimeDto,
+  ): Promise<VehicleRealtimeDto> {
     if (!dto.transportOrder) return dto;
     const routePoints = await this.orders
       .routeRemainingPoints(dto.transportOrder)

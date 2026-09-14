@@ -17,14 +17,8 @@ import { OperatingCommandsController } from './commands.controller';
 import { OperatingAreasController } from './areas.controller';
 import { OperatingCargoController } from './cargo.controller';
 import { OperatingHealthController } from './health.controller';
+import { OperatingStreamController } from './stream.controller';
 
-/**
- * Backend surface for the operating screen (`wes-new-client-v2`): kernel projections + thin
- * write-side controls, plus adapters that present wes Zones as "Areas" and wes cargo in the
- * client's flat shape. No cargo/zone business logic lives here — writes go through
- * `ZoneService` / `CargoService`; reads through `KernelApiService` and the shared
- * `VehicleStateStore`. Never opens its own kernel SSE connection.
- */
 @Module({
   imports: [
     OpenTcsModule,
@@ -40,6 +34,7 @@ import { OperatingHealthController } from './health.controller';
     OperatingAreasController,
     OperatingCargoController,
     OperatingHealthController,
+    OperatingStreamController,
   ],
   providers: [
     OperatingPlantModelService,

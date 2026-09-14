@@ -17,7 +17,9 @@ interface RawOrder {
   currentDriveOrderIndex?: number;
   currentRouteStepIndex?: number;
   driveOrders?: {
-    route?: { steps?: { routeIndex?: number; destinationPoint?: string }[] } | null;
+    route?: {
+      steps?: { routeIndex?: number; destinationPoint?: string }[];
+    } | null;
   }[];
 }
 
@@ -44,12 +46,17 @@ function toDto(order: RawOrder): TransportOrderDto {
  */
 @Injectable()
 export class OperatingOrdersService {
-  private readonly routePointsCache = new Map<string, { points: string[]; at: number }>();
+  private readonly routePointsCache = new Map<
+    string,
+    { points: string[]; at: number }
+  >();
 
   constructor(private readonly kernelApi: KernelApiService) {}
 
   async list(): Promise<TransportOrderDto[]> {
-    const raw = ((await this.kernelApi.getTransportOrdersRaw()) as RawOrder[] | null) ?? [];
+    const raw =
+      ((await this.kernelApi.getTransportOrdersRaw()) as RawOrder[] | null) ??
+      [];
     return raw.map(toDto);
   }
 
@@ -64,7 +71,8 @@ export class OperatingOrdersService {
    */
   async routeRemainingPoints(orderName: string): Promise<string[]> {
     const cached = this.routePointsCache.get(orderName);
-    if (cached && Date.now() - cached.at < ROUTE_POINTS_TTL_MS) return cached.points;
+    if (cached && Date.now() - cached.at < ROUTE_POINTS_TTL_MS)
+      return cached.points;
 
     const order = (await this.kernelApi
       .getTransportOrderRaw(orderName)
@@ -77,7 +85,11 @@ export class OperatingOrdersService {
       (order.driveOrders ?? []).forEach((driveOrder, driveIndex) => {
         if (driveIndex < currentDrive) return;
         for (const step of driveOrder.route?.steps ?? []) {
-          if (driveIndex === currentDrive && (step.routeIndex ?? 0) <= currentStep) continue;
+          if (
+            driveIndex === currentDrive &&
+            (step.routeIndex ?? 0) <= currentStep
+          )
+            continue;
           if (step.destinationPoint) points.push(step.destinationPoint);
         }
       });

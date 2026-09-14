@@ -10,7 +10,8 @@ const INTEGRATION_LEVELS = new Set([
   'TO_BE_UTILIZED',
 ] as const);
 
-type IntegrationLevel = typeof INTEGRATION_LEVELS extends Set<infer T> ? T : never;
+type IntegrationLevel =
+  typeof INTEGRATION_LEVELS extends Set<infer T> ? T : never;
 
 const POINT_OPERATIONS = new Set(['MOVE', 'NOP']);
 
@@ -32,7 +33,9 @@ function rethrowKernel(err: unknown, hint?: string): never {
           : '';
     const msg = raw || err.message;
     throw new BadRequestException(
-      hint ? `Hệ thống điều khiển từ chối (${msg}). ${hint}` : `Hệ thống điều khiển từ chối: ${msg}`,
+      hint
+        ? `Hệ thống điều khiển từ chối (${msg}). ${hint}`
+        : `Hệ thống điều khiển từ chối: ${msg}`,
     );
   }
   throw err;
@@ -49,7 +52,9 @@ export class OperatingCommandsService {
 
   constructor(private readonly kernelApi: KernelApiService) {}
 
-  async createOrder(dto: CreateManualOrderDto): Promise<{ ok: true; name: string }> {
+  async createOrder(
+    dto: CreateManualOrderDto,
+  ): Promise<{ ok: true; name: string }> {
     const destinations = (dto.destinations ?? [])
       .filter((destination) => destination.name)
       .map((destination) => ({
@@ -61,10 +66,13 @@ export class OperatingCommandsService {
     }
 
     try {
-      const created = await this.kernelApi.createManualTransportOrder(destinations, {
-        intendedVehicle: dto.intendedVehicle || undefined,
-        type: dto.type,
-      });
+      const created = await this.kernelApi.createManualTransportOrder(
+        destinations,
+        {
+          intendedVehicle: dto.intendedVehicle || undefined,
+          type: dto.type,
+        },
+      );
       return { ok: true, name: created.name };
     } catch (err) {
       rethrowKernel(
@@ -83,11 +91,17 @@ export class OperatingCommandsService {
     return { ok: true };
   }
 
-  async setIntegrationLevel(name: string, value: string): Promise<{ ok: true }> {
+  async setIntegrationLevel(
+    name: string,
+    value: string,
+  ): Promise<{ ok: true }> {
     if (!INTEGRATION_LEVELS.has(value as IntegrationLevel)) {
       throw new BadRequestException(`Mức tích hợp không hợp lệ: ${value}`);
     }
-    await this.kernelApi.setVehicleIntegrationLevel(name, value as IntegrationLevel);
+    await this.kernelApi.setVehicleIntegrationLevel(
+      name,
+      value as IntegrationLevel,
+    );
     return { ok: true };
   }
 
@@ -101,7 +115,10 @@ export class OperatingCommandsService {
     return { ok: true };
   }
 
-  async withdrawVehicle(name: string, immediate: boolean): Promise<{ ok: true }> {
+  async withdrawVehicle(
+    name: string,
+    immediate: boolean,
+  ): Promise<{ ok: true }> {
     await this.kernelApi.withdrawVehicleOrder(name, immediate);
     return { ok: true };
   }
@@ -114,7 +131,9 @@ export class OperatingCommandsService {
     if (!point) throw new BadRequestException('Thiếu điểm đến.');
     const op = operation || 'MOVE';
     if (!POINT_OPERATIONS.has(op)) {
-      throw new BadRequestException(`Điểm đến là 1 point — operation phải là MOVE hoặc NOP.`);
+      throw new BadRequestException(
+        `Điểm đến là 1 point — operation phải là MOVE hoặc NOP.`,
+      );
     }
     try {
       const created = await this.kernelApi.createManualTransportOrder(
@@ -155,13 +174,18 @@ export class OperatingCommandsService {
       vehicles.map(async (vehicle) => {
         await this.kernelApi.setVehiclePaused(vehicle.name, paused);
         if (action === 'run-all') {
-          await this.kernelApi.setVehicleIntegrationLevel(vehicle.name, 'TO_BE_UTILIZED');
+          await this.kernelApi.setVehicleIntegrationLevel(
+            vehicle.name,
+            'TO_BE_UTILIZED',
+          );
         }
       }),
     );
 
     const failed = results.filter((r) => r.status === 'rejected').length;
-    this.logger.log(`Fleet ${action}: ${results.length - failed} applied, ${failed} failed`);
+    this.logger.log(
+      `Fleet ${action}: ${results.length - failed} applied, ${failed} failed`,
+    );
     return { ok: true, applied: results.length - failed, failed };
   }
 }

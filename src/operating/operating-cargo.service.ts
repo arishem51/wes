@@ -6,7 +6,11 @@ import type { CargoResponseDto } from '../cargo/cargo.dto';
 import { CargoStatus } from '../cargo/entities/cargo.entity';
 import { TaskStatus } from '../cargo/entities/transport-task.entity';
 import { TRANSPORT_TASK_EVENTS } from '../cargo/domain/events';
-import type { CargoDto, CreateCargoBody, OperatingCargoStatus } from './dto/operating.dto';
+import type {
+  CargoDto,
+  CreateCargoBody,
+  OperatingCargoStatus,
+} from './dto/operating.dto';
 
 const LIST_LIMIT = 200;
 
@@ -25,12 +29,10 @@ export class OperatingCargoService {
     return this.ticks.asObservable();
   }
 
-  @OnEvent([
-    TRANSPORT_TASK_EVENTS.CREATED,
-    TRANSPORT_TASK_EVENTS.STATUS_CHANGED,
-    TRANSPORT_TASK_EVENTS.COMPLETED,
-    TRANSPORT_TASK_EVENTS.FAILED,
-  ])
+  @OnEvent(TRANSPORT_TASK_EVENTS.CREATED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.STATUS_CHANGED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.COMPLETED)
+  @OnEvent(TRANSPORT_TASK_EVENTS.FAILED)
   onTaskChanged(): void {
     this.ticks.next();
   }
@@ -38,7 +40,9 @@ export class OperatingCargoService {
   async list(): Promise<CargoDto[]> {
     const { cargos } = await this.cargo.list({ page: 1, limit: LIST_LIMIT });
     return cargos
-      .filter((cargo) => cargo.status !== CargoStatus.CANCELLED && !cargo.deletedAt)
+      .filter(
+        (cargo) => cargo.status !== CargoStatus.CANCELLED && !cargo.deletedAt,
+      )
       .map((cargo) => toCargoDto(cargo));
   }
 
@@ -57,7 +61,11 @@ export class OperatingCargoService {
   async cancel(id: string): Promise<CargoDto> {
     const before = await this.cargo.findOne(id);
     await this.cargo.remove(id);
-    return { ...toCargoDto(before), status: 'FAILED', doneAt: new Date().toISOString() };
+    return {
+      ...toCargoDto(before),
+      status: 'FAILED',
+      doneAt: new Date().toISOString(),
+    };
   }
 }
 
@@ -98,7 +106,8 @@ function toCargoDto(cargo: CargoResponseDto): CargoDto {
     pickupPointName: cargo.sourcePointName,
     pickupLocationName: cargo.sourcePickupLocationName,
     targetStoreAreaWesId: cargo.destinationZoneId,
-    dropPointName: cargo.visual.state === 'AT_DESTINATION' ? cargo.visual.pointName : null,
+    dropPointName:
+      cargo.visual.state === 'AT_DESTINATION' ? cargo.visual.pointName : null,
     dropLocationName: cargo.destinationLocationName,
     failureReason: cargo.blockedReason,
     createdAt: cargo.createdAt.toISOString(),

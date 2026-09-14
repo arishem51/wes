@@ -31,12 +31,18 @@ export class OperatingCommandsController {
   }
 
   @Post('orders/:name/withdraw')
-  withdrawOrder(@Param('name') name: string, @Query('immediate') immediate: string) {
+  withdrawOrder(
+    @Param('name') name: string,
+    @Query('immediate') immediate: string,
+  ) {
     return this.commands.withdrawOrder(name, bool(immediate));
   }
 
   @Put('vehicles/:name/integration-level')
-  setIntegrationLevel(@Param('name') name: string, @Query('value') value: string) {
+  setIntegrationLevel(
+    @Param('name') name: string,
+    @Query('value') value: string,
+  ) {
     return this.commands.setIntegrationLevel(name, value);
   }
 
@@ -51,7 +57,10 @@ export class OperatingCommandsController {
   }
 
   @Post('vehicles/:name/withdraw')
-  withdrawVehicle(@Param('name') name: string, @Query('immediate') immediate: string) {
+  withdrawVehicle(
+    @Param('name') name: string,
+    @Query('immediate') immediate: string,
+  ) {
     return this.commands.withdrawVehicle(name, bool(immediate));
   }
 

@@ -46,18 +46,23 @@ export class OperatingPlantModelService {
   constructor(private readonly kernelApi: KernelApiService) {}
 
   async points(): Promise<PlantModelPointsDto> {
-    const model = (await this.kernelApi.getRawPlantModel()) as
-      | Record<string, unknown>
-      | null;
+    const model = (await this.kernelApi.getRawPlantModel()) as Record<
+      string,
+      unknown
+    > | null;
     const points = ((model?.points as RawPoint[] | undefined) ?? []).filter(
-      (point): point is RawPoint & { name: string } => typeof point.name === 'string',
+      (point): point is RawPoint & { name: string } =>
+        typeof point.name === 'string',
     );
     const locations = (model?.locations as RawLocation[] | undefined) ?? [];
-    const locationTypes = (model?.locationTypes as RawLocationType[] | undefined) ?? [];
+    const locationTypes =
+      (model?.locationTypes as RawLocationType[] | undefined) ?? [];
 
     const chargeTypeNames = new Set(
       locationTypes
-        .filter((lt) => (lt.allowedOperations ?? []).includes(this.kernelApi.chargeOperation))
+        .filter((lt) =>
+          (lt.allowedOperations ?? []).includes(this.kernelApi.chargeOperation),
+        )
         .map((lt) => lt.name)
         .filter((n): n is string => typeof n === 'string'),
     );
@@ -66,7 +71,8 @@ export class OperatingPlantModelService {
     const chargePointNames = new Set<string>();
     for (const location of locations) {
       const typeName = location.typeName ?? location.type;
-      const isChargeLocation = typeof typeName === 'string' && chargeTypeNames.has(typeName);
+      const isChargeLocation =
+        typeof typeName === 'string' && chargeTypeNames.has(typeName);
       for (const link of location.links ?? []) {
         if (!link.pointName) continue;
         linkedPointNames.add(link.pointName);
@@ -94,9 +100,10 @@ export class OperatingPlantModelService {
   }
 
   async paths(): Promise<PlantModelPathDto[]> {
-    const model = (await this.kernelApi.getRawPlantModel()) as
-      | Record<string, unknown>
-      | null;
+    const model = (await this.kernelApi.getRawPlantModel()) as Record<
+      string,
+      unknown
+    > | null;
     const paths = (model?.paths as RawPath[] | undefined) ?? [];
     return paths
       .filter(
@@ -127,15 +134,21 @@ export class OperatingPlantModelService {
   }
 
   async locationTypes(): Promise<PlantModelLocationTypeDto[]> {
-    const model = (await this.kernelApi.getRawPlantModel()) as
-      | Record<string, unknown>
-      | null;
+    const model = (await this.kernelApi.getRawPlantModel()) as Record<
+      string,
+      unknown
+    > | null;
     const types = (model?.locationTypes as RawLocationType[] | undefined) ?? [];
     return types
-      .filter((type): type is RawLocationType & { name: string } => typeof type.name === 'string')
+      .filter(
+        (type): type is RawLocationType & { name: string } =>
+          typeof type.name === 'string',
+      )
       .map((type) => ({
         name: type.name,
-        allowedOperations: Array.isArray(type.allowedOperations) ? type.allowedOperations : [],
+        allowedOperations: Array.isArray(type.allowedOperations)
+          ? type.allowedOperations
+          : [],
       }));
   }
 }

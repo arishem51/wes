@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Observable, Subject } from 'rxjs';
 import { ZoneService } from '../zones/zone.service';
-import { ZoneType } from '../zones/entities/zone.entity';
+import { ZoneStatus, ZoneType } from '../zones/entities/zone.entity';
 import { LOCATION_PREFIX, pointNameOf } from '../zones/domain/location-naming';
 import type { ZoneListItemResponse } from '../zones/zone.dto';
 import { CargoEntity, CargoStatus } from '../cargo/entities/cargo.entity';
@@ -57,7 +57,9 @@ export class OperatingAreasService {
     const zones = await this.zones.list({ allMaps: false });
     if (zones.length === 0) return [];
     const slotState = await this.slotStateByLocation(
-      zones.flatMap((zone) => zone.members.map((member) => member.locationName)),
+      zones.flatMap((zone) =>
+        zone.members.map((member) => member.locationName),
+      ),
     );
     return zones.map((zone) => this.toArea(zone, slotState));
   }
@@ -83,7 +85,10 @@ export class OperatingAreasService {
     return area;
   }
 
-  async replaceMembers(id: string, body: ReplaceAreaMembersBody): Promise<AreaDto> {
+  async replaceMembers(
+    id: string,
+    body: ReplaceAreaMembersBody,
+  ): Promise<AreaDto> {
     const existing = await this.oneArea(id);
     await this.assertNoActiveCargo(id, 'sửa');
 
@@ -91,7 +96,10 @@ export class OperatingAreasService {
     const zone = await this.zones.create({
       name: body.name?.trim() || existing.name,
       type: existing.kind === 'STORE' ? ZoneType.DROPOFF : ZoneType.PICKUP,
-      color: existing.color && HEX6.test(existing.color) ? existing.color : undefined,
+      color:
+        existing.color && HEX6.test(existing.color)
+          ? existing.color
+          : undefined,
       members: this.toZoneMembers(body.members),
     });
     const area = await this.oneArea(zone.id);
@@ -131,16 +139,30 @@ export class OperatingAreasService {
   }
 
   private async oneArea(id: string): Promise<AreaDto> {
-    const area = (await this.list()).find((candidate) => candidate.wesId === id);
-    if (!area) throw new NotFoundException('Khu vực không tồn tại hoặc không thuộc bản đồ đang tải.');
+    const area = (await this.list()).find(
+      (candidate) => candidate.wesId === id,
+    );
+    if (!area)
+      throw new NotFoundException(
+        'Khu vực không tồn tại hoặc không thuộc bản đồ đang tải.',
+      );
     return area;
   }
 
-  private async assertNoActiveCargo(zoneId: string, verb: string): Promise<void> {
+  private async assertNoActiveCargo(
+    zoneId: string,
+    verb: string,
+  ): Promise<void> {
     const inFlight = await this.cargoRepo.count({
       where: [
-        { sourceZoneId: zoneId, status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]) },
-        { destinationZoneId: zoneId, status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]) },
+        {
+          sourceZoneId: zoneId,
+          status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]),
+        },
+        {
+          destinationZoneId: zoneId,
+          status: In([CargoStatus.ACTIVE, CargoStatus.DELIVERED]),
+        },
       ],
     });
     if (inFlight > 0) {
@@ -192,11 +214,13 @@ export class OperatingAreasService {
       name: zone.name,
       kind,
       operation:
-        kind === 'STORE' ? this.kernelApi.unloadOperation : this.kernelApi.loadOperation,
+        kind === 'STORE'
+          ? this.kernelApi.unloadOperation
+          : this.kernelApi.loadOperation,
       maxVehicles: null,
       color: zone.color,
       plantModelName: zone.plantModelName,
-      status: zone.status === 'STALE' ? 'STALE' : 'ACTIVE',
+      status: zone.status === ZoneStatus.STALE ? 'STALE' : 'ACTIVE',
       members: zone.members.map((member) => {
         const slot = slotState.get(member.locationName);
         return {

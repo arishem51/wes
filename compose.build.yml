@@ -1,15 +1,20 @@
+name: ${COMPOSE_PROJECT_NAME:-wes-dev}
+
 services:
   opentcs:
+    image: wes-opentcs:${OPENTCS_TAG:-latest}
     build:
       context: ../opentcs-integration-FMS
       dockerfile: Dockerfile
 
   backend:
+    image: wes-be:${BE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
 
   frontend:
+    image: wes-fe:${FE_TAG:-latest}
     build:
       context: ../wes-client-v2
       dockerfile: Dockerfile

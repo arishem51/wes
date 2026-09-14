@@ -82,6 +82,12 @@ docker compose --env-file deploy/.env.dev \
 
 Ba image được push là `${DOCKERHUB_NAMESPACE}/wes-fe:${IMAGE_TAG}`, `${DOCKERHUB_NAMESPACE}/wes-be:${IMAGE_TAG}` và `${DOCKERHUB_NAMESPACE}/wes-opentcs:${IMAGE_TAG}`. Frontend image build Vite thành static artifact rồi dùng Nginx để serve; image runtime không chạy Vite dev server.
 
+docker tag wes-opentcs:latest aubot/wes-opentcs:latest
+docker tag wes-opentcs:latest aubot/wes-opentcs:e76a435
+
+docker push aubot/wes-opentcs:latest
+docker push aubot/wes-opentcs:e76a435
+
 ## Khởi động và cập nhật trên server
 
 ```bash
