@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { KernelApiService } from '../../opentcs/kernel-api.service';
 import type {
+  PlantModelLocationDto,
   PlantModelLocationTypeDto,
   PlantModelPathDto,
   PlantModelPointDto,
@@ -131,6 +132,26 @@ export class OperatingPlantModelService {
           oneWay: maxReverseVelocity === 0 && maxVelocity > 0,
         } satisfies PlantModelPathDto;
       });
+  }
+
+  async locations(): Promise<PlantModelLocationDto[]> {
+    const model = (await this.kernelApi.getRawPlantModel()) as Record<
+      string,
+      unknown
+    > | null;
+    const locations = (model?.locations as RawLocation[] | undefined) ?? [];
+    return locations
+      .filter(
+        (location): location is RawLocation & { name: string } =>
+          typeof location.name === 'string',
+      )
+      .map((location) => ({
+        name: location.name,
+        type: location.typeName ?? location.type ?? '',
+        pointNames: (location.links ?? [])
+          .map((link) => link.pointName)
+          .filter((name): name is string => typeof name === 'string'),
+      }));
   }
 
   async locationTypes(): Promise<PlantModelLocationTypeDto[]> {

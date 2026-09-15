@@ -70,6 +70,12 @@ export class OperatingCommandsController {
     return this.commands.withdrawVehicle(name, bool(immediate));
   }
 
+  @Post('vehicles/:name/stop-charging')
+  @RequirePermissions('vehicle.stop_charging')
+  stopCharging(@Param('name') name: string) {
+    return this.commands.stopCharging(name);
+  }
+
   @Post('vehicles/:name/send-to-point')
   @RequirePermissions('vehicle.send_to_point')
   sendToPoint(
