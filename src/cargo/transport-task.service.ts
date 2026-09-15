@@ -14,6 +14,7 @@ import {
   TransportTaskStatusChangedEvent,
   TransportTaskCompletedEvent,
   TransportTaskFailedEvent,
+  TransportTaskUpdatedEvent,
 } from './domain/events';
 
 export interface StatusChangeLog {
@@ -49,6 +50,14 @@ export class TransportTaskService {
     this.eventEmitter.emit(
       TRANSPORT_TASK_EVENTS.CREATED,
       new TransportTaskCreatedEvent(task.id, task.cargoId),
+    );
+  }
+
+  /** Metadata-only change (no status transition) that other clients still need to see. */
+  publishUpdated(task: TransportTaskEntity): void {
+    this.eventEmitter.emit(
+      TRANSPORT_TASK_EVENTS.UPDATED,
+      new TransportTaskUpdatedEvent(task.id, task.cargoId),
     );
   }
 

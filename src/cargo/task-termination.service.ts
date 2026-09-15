@@ -26,6 +26,13 @@ export class TaskTerminationService {
     private readonly transportTask: TransportTaskService,
   ) {}
 
+  /**
+   * Fail-closed: if the kernel can't confirm an in-flight order was actually withdrawn (kernel
+   * unreachable/timeout — anything other than "the order was already gone"), this throws and
+   * `task.status` is left untouched, rather than recording FAILED/CANCELLED over a load the
+   * vehicle might still be carrying out. The caller sees a clear error and can retry once the
+   * kernel is reachable again.
+   */
   async terminate(
     task: TransportTaskEntity,
     to: TaskStatus,
@@ -46,14 +53,8 @@ export class TaskTerminationService {
     task: TransportTaskEntity,
   ): Promise<void> {
     for (const orderName of this.unfinishedOrderNames(task)) {
-      try {
-        await this.transportOrders.cancel(orderName);
-        this.logger.log(`Task ${task.id}: withdrew ${orderName}`);
-      } catch (err) {
-        this.logger.error(
-          `Task ${task.id}: could not withdraw ${orderName} — ${(err as Error).message}`,
-        );
-      }
+      await this.transportOrders.cancel(orderName);
+      this.logger.log(`Task ${task.id}: withdrew ${orderName}`);
     }
   }
 

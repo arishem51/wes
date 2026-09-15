@@ -34,11 +34,27 @@ export class ZoneEntity {
   @Column({ type: 'varchar', length: 9, nullable: true })
   color!: string | null;
 
+  /** Kernel operation performed at this zone's locations (e.g. "Load"/"Unload"/"Charge"), chosen
+   *  per-zone at create/edit time from the location type's allowed operations. NULL falls back to
+   *  the system-wide `loadOperation`/`unloadOperation` default for the zone's kind. */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  operation!: string | null;
+
+  /** Optional cap on concurrently-servicing vehicles for this zone. Stored as entered; not yet
+   *  enforced anywhere in dispatch/assignment. */
+  @Column({ name: 'max_vehicles', type: 'integer', nullable: true })
+  maxVehicles!: number | null;
+
   /** Unique sequential ID used to name openTCS locations. NULL for PICKUP zones. */
   @Column({ name: 'kernel_id', type: 'integer', nullable: true, unique: true })
   kernelId!: number | null;
 
-  /** openTCS plant model this zone was drawn on. NULL for zones created before map scoping. */
+  /**
+   * openTCS plant model name this zone was drawn on. NULL for zones created before map scoping.
+   * Kept as metadata for kernel reconciliation (matching the live kernel's reported name); the
+   * authoritative "which map record does this zone belong to" is `mapRecordId` below — a name
+   * can be shared by more than one uploaded record, `mapRecordId` cannot.
+   */
   @Column({
     name: 'plant_model_name',
     type: 'varchar',
@@ -46,6 +62,12 @@ export class ZoneEntity {
     nullable: true,
   })
   plantModelName!: string | null;
+
+  /** The `map_records` row this zone belongs to. NULL for zones not yet resolved to one — see
+   *  `resolveBackfillMatch`; a `NULL` here means "no map currently claims this zone's geometry",
+   *  not "belongs to every map". */
+  @Column({ name: 'map_record_id', type: 'uuid', nullable: true })
+  mapRecordId!: string | null;
 
   @Column({
     type: 'enum',

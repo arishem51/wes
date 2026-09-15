@@ -16,9 +16,11 @@ describe('columnUpToMainline', () => {
   });
 
   it('takes the whole chain when it never reaches a mainline', () => {
-    expect(
-      columnUpToMainline(['D1'], ['W1', 'W2'], new Set()),
-    ).toEqual(['D1', 'W1', 'W2']);
+    expect(columnUpToMainline(['D1'], ['W1', 'W2'], new Set())).toEqual([
+      'D1',
+      'W1',
+      'W2',
+    ]);
   });
 });
 
@@ -34,8 +36,8 @@ describe('standsWithoutAnOrder', () => {
       standsWithoutAnOrder({
         name: 'V1',
         currentPosition: 'W1',
-        procState: procState as string,
-        transportOrder: transportOrder as string | null | undefined,
+        procState: procState,
+        transportOrder: transportOrder,
       }),
     ).toBe(expected);
   });

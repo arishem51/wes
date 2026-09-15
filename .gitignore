@@ -59,5 +59,10 @@ wes_ui_format
 # generated text mirror of the Drive reports (rebuild: python scripts/sync-specs.py)
 report/specs/
 
+# one-off audit run artifacts (logs, source snapshots — regenerate via the .cjs scripts if needed)
+report/audit-*-r2/
+report/audit-*.cjs
+*.local.bak
+
 # Extracted client distributions
 /downloads/*/

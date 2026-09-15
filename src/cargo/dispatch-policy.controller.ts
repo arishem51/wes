@@ -9,8 +9,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/jwt-payload';
 import { DispatchPolicyService } from './dispatch-policy.service';
@@ -19,8 +19,8 @@ import {
   UpdateDispatchPolicyDto,
 } from './dispatch-policy.dto';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('dispatch.manage')
 @Controller('dispatch-policies')
 export class DispatchPolicyController {
   constructor(private readonly service: DispatchPolicyService) {}

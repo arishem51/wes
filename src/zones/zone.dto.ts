@@ -11,6 +11,7 @@ import {
   IsUUID,
   Matches,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { ZoneEntity, ZoneStatus, ZoneType } from './entities/zone.entity';
@@ -44,6 +45,16 @@ export class CreateZoneDto {
   })
   color?: string;
 
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  operation?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxVehicles?: number;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -66,11 +77,28 @@ export class ListZonesQueryDto {
 }
 
 export class UpdateZoneDto {
+  @IsOptional()
   @IsString()
   @Matches(HEX_COLOR_REGEX, {
     message: 'color phải là mã hex hợp lệ (#RRGGBB).',
   })
-  color!: string;
+  color?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  operation?: string;
+
+  /** `null` explicitly clears a previously-set cap; `undefined` leaves it unchanged. */
+  @ValidateIf((o: UpdateZoneDto) => o.maxVehicles != null)
+  @IsInt()
+  @Min(1)
+  maxVehicles?: number | null;
 }
 
 export interface ZoneMemberResponse {
@@ -84,7 +112,10 @@ export interface ZoneResponse {
   type: ZoneType;
   status: ZoneStatus;
   color: string | null;
+  operation: string | null;
+  maxVehicles: number | null;
   plantModelName: string | null;
+  mapRecordId: string | null;
   createdAt: Date;
   members: ZoneMemberResponse[];
 }
@@ -101,7 +132,10 @@ export function toZoneResponse(zone: ZoneEntity): ZoneResponse {
     type: zone.type,
     status: zone.status,
     color: zone.color,
+    operation: zone.operation,
+    maxVehicles: zone.maxVehicles,
     plantModelName: zone.plantModelName,
+    mapRecordId: zone.mapRecordId,
     createdAt: zone.createdAt,
     members: [...zone.members]
       .sort((a, b) => a.positionIndex - b.positionIndex)

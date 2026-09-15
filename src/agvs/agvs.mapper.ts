@@ -44,6 +44,7 @@ export function toAgvDto(
     sufficientBatteryThreshold: agv.sufficientBatteryThreshold,
     initialPosition: agv.initialPosition,
     config: agv.config,
+    plantModelName: agv.plantModelName,
     createdAt: agv.createdAt,
     createdById: agv.createdById,
     kernelStatus,

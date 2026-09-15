@@ -223,6 +223,7 @@ export interface AgvDto {
   sufficientBatteryThreshold: number;
   initialPosition: string | null;
   config: Record<string, unknown>;
+  plantModelName: string | null;
   createdAt: Date;
   createdById: string | null;
   kernelStatus: AgvKernelStatus;

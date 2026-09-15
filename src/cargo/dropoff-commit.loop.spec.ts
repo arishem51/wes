@@ -93,7 +93,14 @@ function makeLoop(
     metadata: {
       assignedVehicleName: member.vehicle,
       dropoffOrderName: `DROPOFF-${member.vehicle}-old`,
-      ...(member.approach ? { approachPointName: member.approach } : {}),
+      // `ApproachOrderService.aim` always sets these two fields together — a vehicle already
+      // aimed somewhere never has one without the other, so the fixture shouldn't either.
+      ...(member.approach
+        ? {
+            approachPointName: member.approach,
+            approachOrderName: `APPROACH-${member.vehicle}-active`,
+          }
+        : {}),
       ...(member.unloaded ? { unloadedAt: '2026-08-18T00:00:00.000Z' } : {}),
     },
   }));
@@ -933,6 +940,7 @@ describe('DropoffCommitLoop queue seating', () => {
           cargoId: 'cargo-2',
           position: 'W-D',
           cargo: { reservedLocationName: 'W-D' },
+          approach: 'W-D',
         },
       ],
       commits: { 'cargo-2': null },
@@ -956,6 +964,7 @@ describe('DropoffCommitLoop queue seating stays put', () => {
           cargoId: 'cargo-2',
           position: 'W-D2',
           cargo: { reservedLocationName: 'W-D' },
+          approach: 'W-D',
         },
         {
           vehicle: 'V3',
@@ -963,6 +972,7 @@ describe('DropoffCommitLoop queue seating stays put', () => {
           cargoId: 'cargo-3',
           position: 'W-D',
           cargo: { reservedLocationName: 'W-D2' },
+          approach: 'W-D2',
         },
       ],
       commits: { 'cargo-2': null, 'cargo-3': null },

@@ -9,11 +9,12 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AgvsController } from '../src/agvs/agvs.controller';
 import { AgvsService } from '../src/agvs/agvs.service';
+import { AgvHistoryService } from '../src/agvs/agv-history.service';
 import { AgvEntity } from '../src/agvs/entities/agv.entity';
 import { KernelApiService } from '../src/opentcs/kernel-api.service';
 import { VehicleStateStore } from '../src/opentcs/vehicle-state.store';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../src/auth/guards/roles.guard';
+import { PermissionsGuard } from '../src/auth/guards/permissions.guard';
 
 const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
   id: 'agv-1',
@@ -28,6 +29,7 @@ const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
   criticalBatteryThreshold: 20,
   sufficientBatteryThreshold: 60,
   config: {},
+  plantModelName: null,
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'),
   createdById: 'user-1',
@@ -69,7 +71,7 @@ describe('AgvsController (e2e)', () => {
     save: jest.Mock;
     remove: jest.Mock;
   };
-  let kernelApi: { getVehicles: jest.Mock };
+  let kernelApi: { getVehicles: jest.Mock; getPlantModelName: jest.Mock };
 
   beforeEach(async () => {
     repo = {
@@ -80,23 +82,31 @@ describe('AgvsController (e2e)', () => {
       save: jest.fn(),
       remove: jest.fn(),
     };
-    kernelApi = { getVehicles: jest.fn().mockResolvedValue([]) };
+    kernelApi = {
+      getVehicles: jest.fn().mockResolvedValue([]),
+      getPlantModelName: jest.fn().mockResolvedValue(null),
+    };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [AgvsController],
       providers: [
         AgvsService,
+        { provide: AgvHistoryService, useValue: { errorFrequency: jest.fn() } },
         { provide: getRepositoryToken(AgvEntity), useValue: repo },
         { provide: KernelApiService, useValue: kernelApi },
         {
           provide: VehicleStateStore,
-          useValue: { getAll: () => [], isConnected: () => true },
+          useValue: {
+            getAll: () => [],
+            get: () => undefined,
+            isConnected: () => true,
+          },
         },
       ],
     })
       .overrideGuard(JwtAuthGuard)
       .useClass(AllowAllGuard)
-      .overrideGuard(RolesGuard)
+      .overrideGuard(PermissionsGuard)
       .useClass(AllowAllGuard)
       .compile();
 
@@ -141,7 +151,6 @@ describe('AgvsController (e2e)', () => {
         .query({ search: 'AGV-001' })
         .expect(200);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       const callArg: { where?: unknown[] } = repo.findAndCount.mock.calls[0][0];
       expect(callArg.where).toHaveLength(2);
     });

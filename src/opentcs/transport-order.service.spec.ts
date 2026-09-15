@@ -5,12 +5,18 @@ function makeService() {
   const kernelApi = {
     createTransportOrder: jest.fn().mockResolvedValue(undefined),
     withdrawTransportOrder: jest.fn().mockResolvedValue(undefined),
+    getTransportOrderStateStrict: jest.fn(),
   };
   return {
     service: new TransportOrderService(kernelApi as never),
     kernelApi,
   };
 }
+
+const conflict = () =>
+  Object.assign(new Error('conflict'), { response: { status: 409 } });
+const notFound = () =>
+  Object.assign(new Error('gone'), { response: { status: 404 } });
 
 describe('TransportOrderService.issue', () => {
   it('names the order after the kind, the vehicle and where it is aimed', async () => {
@@ -129,6 +135,82 @@ describe('TransportOrderService.issue', () => {
   });
 });
 
+describe('TransportOrderService.issue with idempotencyKey', () => {
+  const pickup = {
+    kind: ORDER_KIND.PICKUP,
+    vehicleName: 'V1',
+    aimedAt: 'LOC-1',
+    destinations: [{ locationName: 'LOC-1', operation: 'PICK_UP' }],
+    taskId: 'task-1',
+    idempotencyKey: 'task-1',
+  } as const;
+
+  it('always names the order the same way for the same key, unlike a random retry', async () => {
+    const { service } = makeService();
+
+    expect(await service.issue(pickup)).toBe(await service.issue(pickup));
+  });
+
+  it('treats a name conflict as already-done when the existing order is still in flight', async () => {
+    const { service, kernelApi } = makeService();
+    kernelApi.createTransportOrder.mockRejectedValueOnce(conflict());
+    kernelApi.getTransportOrderStateStrict.mockResolvedValue('BEING_PROCESSED');
+
+    const orderName = await service.issue(pickup);
+
+    expect(orderName).toMatch(/^PICKUP-V1-LOC-1-/);
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('mints a fresh name instead of resurrecting a conflicting order that already finished', async () => {
+    const { service, kernelApi } = makeService();
+    let firstAttemptName = '';
+    kernelApi.createTransportOrder.mockImplementationOnce((name: string) => {
+      firstAttemptName = name;
+      return Promise.reject(conflict());
+    });
+    kernelApi.createTransportOrder.mockResolvedValueOnce(undefined);
+    kernelApi.getTransportOrderStateStrict.mockResolvedValue('FINISHED');
+
+    const orderName = await service.issue(pickup);
+
+    expect(orderName).not.toBe(firstAttemptName);
+    expect(orderName).toMatch(/^PICKUP-V1-LOC-1-/);
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(2);
+  });
+
+  it('mints a fresh name when the conflicting order is already gone (404 on lookup)', async () => {
+    const { service, kernelApi } = makeService();
+    kernelApi.createTransportOrder.mockRejectedValueOnce(conflict());
+    kernelApi.getTransportOrderStateStrict.mockResolvedValue(null);
+
+    const orderName = await service.issue(pickup);
+
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(2);
+    expect(orderName).toMatch(/^PICKUP-V1-LOC-1-/);
+  });
+
+  it('fails closed when it cannot even ask the kernel about the conflicting order', async () => {
+    const { service, kernelApi } = makeService();
+    kernelApi.createTransportOrder.mockRejectedValueOnce(conflict());
+    kernelApi.getTransportOrderStateStrict.mockRejectedValue(
+      new Error('kernel down'),
+    );
+
+    await expect(service.issue(pickup)).rejects.toThrow('kernel down');
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry-with-fresh-name for a non-409 failure', async () => {
+    const { service, kernelApi } = makeService();
+    kernelApi.createTransportOrder.mockRejectedValueOnce(notFound());
+
+    await expect(service.issue(pickup)).rejects.toThrow();
+    expect(kernelApi.getTransportOrderStateStrict).not.toHaveBeenCalled();
+    expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('TransportOrderService.cancel', () => {
   it('withdraws without pre-empting the vehicle by default', async () => {
     const { service, kernelApi } = makeService();
@@ -157,5 +239,12 @@ describe('TransportOrderService.cancel', () => {
     kernelApi.withdrawTransportOrder.mockRejectedValueOnce(new Error('boom'));
 
     await expect(service.cancel('PICKUP-V1-LOC-1')).rejects.toThrow('boom');
+  });
+
+  it('treats an already-gone order (404) as nothing left to withdraw, not a failure', async () => {
+    const { service, kernelApi } = makeService();
+    kernelApi.withdrawTransportOrder.mockRejectedValueOnce(notFound());
+
+    await expect(service.cancel('PICKUP-V1-LOC-1')).resolves.toBeUndefined();
   });
 });

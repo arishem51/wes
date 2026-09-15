@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThan, Repository } from 'typeorm';
 import { createHash, randomBytes } from 'node:crypto';
@@ -29,11 +30,15 @@ export class TokenService {
   }
 
   // ── Refresh tokens ──────────────────────────────────────────────────────────
-  async issueRefreshToken(userId: string): Promise<string> {
+  async issueRefreshToken(
+    userId: string,
+    sessionId: string | null = null,
+  ): Promise<string> {
     const raw = randomBytes(40).toString('hex');
     await this.refreshTokens.save(
       this.refreshTokens.create({
         userId,
+        sessionId,
         tokenHash: sha256(raw),
         expiresAt: new Date(Date.now() + this.refreshTtlMs),
       }),
@@ -41,18 +46,34 @@ export class TokenService {
     return raw;
   }
 
-  /** Validate + rotate; returns the userId if valid, else null. */
-  async rotateRefreshToken(
-    raw: string,
-  ): Promise<{ userId: string; token: string } | null> {
-    const row = await this.refreshTokens.findOne({
-      where: { tokenHash: sha256(raw), isRevoked: false },
-    });
-    if (!row || row.expiresAt.getTime() < Date.now()) return null;
-    row.isRevoked = true;
-    await this.refreshTokens.save(row);
-    const token = await this.issueRefreshToken(row.userId);
-    return { userId: row.userId, token };
+  /**
+   * Validate + rotate atomically: the conditional UPDATE only flips a row that is still
+   * `is_revoked = false`, so two concurrent callers racing the same raw token can never both
+   * succeed — the loser gets 0 affected rows instead of silently reusing an already-rotated
+   * token. Returns null if the token is unknown, already used, or expired.
+   */
+  async rotateRefreshToken(raw: string): Promise<{
+    userId: string;
+    token: string;
+    sessionId: string | null;
+  } | null> {
+    const result = await this.refreshTokens
+      .createQueryBuilder()
+      .update(RefreshTokenEntity)
+      .set({ isRevoked: true })
+      .where('token_hash = :hash', { hash: sha256(raw) })
+      .andWhere('is_revoked = false')
+      .andWhere('expires_at > now()')
+      .returning(['id', 'user_id', 'session_id'])
+      .execute();
+    const [row] = result.raw as {
+      id: string;
+      user_id: string;
+      session_id: string | null;
+    }[];
+    if (!row) return null;
+    const token = await this.issueRefreshToken(row.user_id, row.session_id);
+    return { userId: row.user_id, token, sessionId: row.session_id };
   }
 
   async revokeRefreshToken(raw: string): Promise<void> {
@@ -83,24 +104,34 @@ export class TokenService {
     return raw;
   }
 
-  /** Returns userId if the reset token is valid + unused, marking it used. */
+  /**
+   * Returns userId if the reset token is valid + unused, marking it used — atomically, so two
+   * concurrent requests with the same raw token can't both read it as unused before either
+   * writes (see `rotateRefreshToken` for the same pattern).
+   */
   async consumeResetToken(raw: string): Promise<string | null> {
-    const row = await this.resetTokens.findOne({
-      where: { tokenHash: sha256(raw), usedAt: IsNull() },
-    });
-    if (!row || row.expiresAt.getTime() < Date.now()) return null;
-    row.usedAt = new Date();
-    await this.resetTokens.save(row);
-    return row.userId;
+    const result = await this.resetTokens
+      .createQueryBuilder()
+      .update(PasswordResetTokenEntity)
+      .set({ usedAt: () => 'now()' })
+      .where('token_hash = :hash', { hash: sha256(raw) })
+      .andWhere('used_at IS NULL')
+      .andWhere('expires_at > now()')
+      .returning(['user_id'])
+      .execute();
+    const [row] = result.raw as { user_id: string }[];
+    return row?.user_id ?? null;
   }
 
   // ── Sessions ────────────────────────────────────────────────────────────────
+  /** Returns the new session's id — embedded in the access/refresh token pair so logout and
+   *  revoke-this-session act on the exact device that asked, not on every device at once. */
   async startSession(
     userId: string,
     ip: string | null,
     userAgent: string | null,
-  ): Promise<void> {
-    await this.sessions.save(
+  ): Promise<string> {
+    const session = await this.sessions.save(
       this.sessions.create({
         userId,
         ipAddress: ip,
@@ -108,8 +139,26 @@ export class TokenService {
         loginAt: new Date(),
       }),
     );
+    return session.id;
   }
 
+  /** True if the session exists and hasn't been logged out/revoked. */
+  async sessionActive(sessionId: string): Promise<boolean> {
+    const session = await this.sessions.findOne({
+      where: { id: sessionId, logoutAt: IsNull() },
+    });
+    return !!session;
+  }
+
+  /** End exactly one session — used by a normal logout, which must never end other devices. */
+  async endSession(sessionId: string): Promise<void> {
+    await this.sessions.update(
+      { id: sessionId, logoutAt: IsNull() },
+      { logoutAt: new Date() },
+    );
+  }
+
+  /** Admin-forced: end every session for the user (lock/remove/force-reset). */
   async endAllSessions(userId: string): Promise<void> {
     await this.sessions.update(
       { userId, logoutAt: IsNull() },
@@ -117,19 +166,22 @@ export class TokenService {
     );
   }
 
-  /** End every active session except the most recent one (keep current device). */
-  async endOtherSessions(userId: string): Promise<void> {
+  /** End every other active session, excluding the caller's own (by id, not "most recent"). */
+  async endOtherSessions(
+    userId: string,
+    currentSessionId: string | null,
+  ): Promise<void> {
     const active = await this.sessions.find({
       where: { userId, logoutAt: IsNull() },
-      order: { loginAt: 'DESC' },
     });
-    const others = active.slice(1);
+    const others = active.filter((s) => s.id !== currentSessionId);
     await Promise.all(
       others.map((s) => this.sessions.update(s.id, { logoutAt: new Date() })),
     );
   }
 
-  /** Housekeeping helper (not scheduled): drop expired refresh tokens. */
+  /** Drops expired refresh tokens — otherwise the table only ever grows. */
+  @Cron(CronExpression.EVERY_HOUR)
   async purgeExpired(): Promise<void> {
     await this.refreshTokens.delete({ expiresAt: LessThan(new Date()) });
   }

@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
@@ -29,6 +30,17 @@ async function bootstrap() {
       forbidNonWhitelisted: false,
     }),
   );
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('WES API')
+    .setDescription(
+      'WES backend — Maps (Map Library, kernel plant model), Operating (vehicles, orders, areas, cargo) and administration (RBAC, users, tokens).',
+    )
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, swaggerDocument);
 
   await app.listen(process.env.PORT ?? 3000);
 }

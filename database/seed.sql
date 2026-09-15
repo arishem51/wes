@@ -28,18 +28,25 @@ VALUES
   ('dang.ngo',   'dang.ngo@wes.vn',   crypt('Wes@1234', gen_salt('bf', 10)), 'Ngô Hải Đăng',   '0909 012 345', 'Ca A (06–14h)',       FALSE, FALSE, FALSE, NULL, NOW() - INTERVAL '46 days',    NOW() - INTERVAL '300 days')
 ON CONFLICT (username) DO NOTHING;
 
+-- ── Roles (idempotent — real grants are seeded by `npm run seed`) ───────────
+INSERT INTO roles (name, key, description, is_system) VALUES
+  ('Quản trị viên', 'admin',    'Toàn quyền hệ thống',              TRUE),
+  ('Điều hành viên','operator', 'Điều hành kho vận',                TRUE),
+  ('Người xem',     'viewer',   'Chỉ xem, không thao tác vận hành', TRUE)
+ON CONFLICT (key) DO NOTHING;
+
 -- ── Role assignment (one role per user) ──────────────────────────────────────
 INSERT INTO user_roles (user_id, role_id)
 SELECT u.id, r.id
 FROM users u CROSS JOIN roles r
-WHERE r.name = 'ADMIN'
+WHERE r.key = 'admin'
   AND u.username IN ('quan.tran', 'ha.nguyen', 'nhu.duong')
 ON CONFLICT (user_id, role_id) DO NOTHING;
 
 INSERT INTO user_roles (user_id, role_id)
 SELECT u.id, r.id
 FROM users u CROSS JOIN roles r
-WHERE r.name = 'OPERATOR'
+WHERE r.key = 'operator'
   AND u.username IN ('dung.le', 'trang.pham', 'linh.vu', 'mai.bui', 'nam.do',
                      'tuan.hoang', 'hang.cao', 'bao.dang', 'dang.ngo')
 ON CONFLICT (user_id, role_id) DO NOTHING;

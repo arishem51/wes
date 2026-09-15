@@ -1,30 +1,35 @@
 import { Module } from '@nestjs/common';
+import { MapRecordCoreModule } from '../maps/map-record-core.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
 import { CargoModule } from '../cargo/cargo.module';
 import { ZoneModule } from '../zones/zone.module';
+import { UsersModule } from '../users/users.module';
 import { CargoEntity } from '../cargo/entities/cargo.entity';
-import { OperatingPlantModelService } from './operating-plant-model.service';
-import { OperatingOrdersService } from './operating-orders.service';
-import { OperatingVehiclesService } from './operating-vehicles.service';
-import { OperatingCommandsService } from './operating-commands.service';
-import { OperatingAreasService } from './operating-areas.service';
-import { OperatingCargoService } from './operating-cargo.service';
-import { OperatingPlantModelController } from './plant-model.controller';
-import { OperatingVehiclesController } from './vehicles.controller';
-import { OperatingOrdersController } from './orders.controller';
-import { OperatingCommandsController } from './commands.controller';
-import { OperatingAreasController } from './areas.controller';
-import { OperatingCargoController } from './cargo.controller';
-import { OperatingHealthController } from './health.controller';
-import { OperatingStreamController } from './stream.controller';
+import { TransportTaskEntity } from '../cargo/entities/transport-task.entity';
+import { OperatingPlantModelService } from './application/operating-plant-model.service';
+import { OperatingOrdersService } from './application/operating-orders.service';
+import { OperatingVehiclesService } from './application/operating-vehicles.service';
+import { OperatingCommandsService } from './application/operating-commands.service';
+import { OperatingAreasService } from './application/operating-areas.service';
+import { OperatingCargoService } from './application/operating-cargo.service';
+import { OperatingPlantModelController } from './api/plant-model.controller';
+import { OperatingVehiclesController } from './api/vehicles.controller';
+import { OperatingOrdersController } from './api/orders.controller';
+import { OperatingCommandsController } from './api/commands.controller';
+import { OperatingAreasController } from './api/areas.controller';
+import { OperatingCargoController } from './api/cargo.controller';
+import { OperatingHealthController } from './api/health.controller';
+import { OperatingStreamController } from './api/stream.controller';
 
 @Module({
   imports: [
     OpenTcsModule,
+    MapRecordCoreModule,
     CargoModule,
     ZoneModule,
-    TypeOrmModule.forFeature([CargoEntity]),
+    UsersModule,
+    TypeOrmModule.forFeature([CargoEntity, TransportTaskEntity]),
   ],
   controllers: [
     OperatingPlantModelController,

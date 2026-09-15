@@ -35,7 +35,7 @@
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Create the database and apply the schema
 #   (Docker:  docker compose up -d   — auto-applies schema.sql)
@@ -48,7 +48,7 @@ psql -d wes -f database/seed.sql
 # Configure environment
 copy .env.example .env        # then edit PGPASSWORD / DATABASE_URL
 
-# Seed the initial admin (quan.tran / Wes@1234)
+# Seed the initial admin (admin / Wes@1234)
 npm run seed
 
 # Run the API → http://localhost:3000/api
@@ -59,12 +59,12 @@ npm run start:dev
 
 ```bash
 cd frontend
-npm install
+pnpm install
 npm run dev                   # http://localhost:5173
 ```
 
 The frontend calls the real backend (proxied `/api` → `:3000`). Sign in with a
-seeded account — e.g. `quan.tran`, or any `database/seed.sql`
+seeded account — e.g. `admin`, or any `database/seed.sql`
 account — all use password `Wes@1234`.
 
 ### Default scripts

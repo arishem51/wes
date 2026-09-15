@@ -24,6 +24,8 @@ export class VehicleStateStore {
   private readonly fingerprints = new Map<string, string>();
   private readonly updates = new Subject<KernelVehicleState>();
   private connected = false;
+  private eventCount = 0;
+  private lastEventAt: Date | null = null;
 
   setConnected(value: boolean): void {
     this.connected = value;
@@ -31,6 +33,16 @@ export class VehicleStateStore {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  /** How many de-duplicated vehicle updates have actually reached subscribers, and when the last
+   *  one was — lets `/operating/health` tell "connected but stale" apart from "connected and
+   *  flowing", instead of a fixed `connected: boolean` that can't distinguish the two. */
+  getEventStats(): { eventCount: number; lastEventAt: string | null } {
+    return {
+      eventCount: this.eventCount,
+      lastEventAt: this.lastEventAt?.toISOString() ?? null,
+    };
   }
 
   set(name: string, state: KernelVehicleState): void {
@@ -44,6 +56,8 @@ export class VehicleStateStore {
     }
     this.fingerprints.set(name, fingerprint);
     this.states.set(name, state);
+    this.eventCount += 1;
+    this.lastEventAt = new Date();
     this.updates.next(state);
   }
 

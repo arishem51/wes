@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AgvsService } from './agvs.service';
 import { AgvEntity } from './entities/agv.entity';
@@ -28,6 +32,7 @@ const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
   criticalBatteryThreshold: 20,
   sufficientBatteryThreshold: 60,
   config: {},
+  plantModelName: null,
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'),
   createdById: 'user-1',
@@ -39,7 +44,10 @@ describe('AgvsService', () => {
   let repo: MockRepo;
   let kernelApi: {
     getVehicles: jest.Mock;
+    getVehicleStates: jest.Mock;
+    getPlantModelName: jest.Mock;
     setVehicleIntegrationLevel: jest.Mock;
+    setVehicleAdapterEnabled: jest.Mock;
   };
   let vehicleStore: {
     getAll: jest.Mock;
@@ -58,7 +66,10 @@ describe('AgvsService', () => {
     };
     kernelApi = {
       getVehicles: jest.fn(),
+      getVehicleStates: jest.fn().mockResolvedValue([]),
+      getPlantModelName: jest.fn().mockResolvedValue(null),
       setVehicleIntegrationLevel: jest.fn().mockResolvedValue(undefined),
+      setVehicleAdapterEnabled: jest.fn().mockResolvedValue(undefined),
     };
     // Kernel status is derived from the SSE-backed VehicleStateStore, not a
     // REST call. Default to reachable/empty; individual tests override.
@@ -143,6 +154,19 @@ describe('AgvsService', () => {
       const callArg: { where?: unknown[] } = repo.findAndCount.mock.calls[0][0];
       expect(callArg.where).toHaveLength(2);
     });
+
+    it('lists AGVs across every map, unscoped by the loaded plant model', async () => {
+      const onMapA = makeAgv({ id: 'a', plantModelName: 'map-a' });
+      const onMapB = makeAgv({ id: 'b', plantModelName: 'map-b' });
+      const legacy = makeAgv({ id: 'c', plantModelName: null });
+      repo.findAndCount.mockResolvedValue([[onMapA, onMapB, legacy], 3]);
+
+      const result = await service.list();
+
+      expect(kernelApi.getPlantModelName).not.toHaveBeenCalled();
+      expect(result.agvs.map((a) => a.id)).toEqual(['a', 'b', 'c']);
+      expect(result.total).toBe(3);
+    });
   });
 
   describe('findOne', () => {
@@ -213,12 +237,129 @@ describe('AgvsService', () => {
   });
 
   describe('create', () => {
+    beforeEach(() => {
+      repo.create.mockImplementation((input: unknown) => input);
+      repo.save.mockImplementation((entity) => Promise.resolve(entity));
+    });
+
     it('throws ConflictException when code already exists', async () => {
       repo.findOne.mockResolvedValueOnce(makeAgv());
 
       await expect(
         service.create({ code: 'AGV-001', name: 'New AGV' }, 'user-1'),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('throws ConflictException when the same code already exists on the same map', async () => {
+      kernelApi.getPlantModelName.mockResolvedValue('map-a');
+      repo.findOne.mockResolvedValueOnce(
+        makeAgv({ code: 'AGV-001', plantModelName: 'map-a' }),
+      );
+
+      await expect(
+        service.create({ code: 'AGV-001', name: 'New AGV' }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('allows the same code already registered under a different map', async () => {
+      kernelApi.getPlantModelName.mockResolvedValue('map-a');
+      kernelApi.getVehicleStates.mockResolvedValue([{ name: 'New AGV' }]);
+      repo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+      const result = await service.create(
+        { code: 'AGV-001', name: 'New AGV' },
+        'user-1',
+      );
+
+      expect(repo.findOne).toHaveBeenNthCalledWith(1, {
+        where: { code: 'AGV-001', plantModelName: 'map-a' },
+      });
+      expect(result.plantModelName).toBe('map-a');
+    });
+
+    it('creates without checking the kernel when no map is currently loaded', async () => {
+      repo.findOne.mockResolvedValue(null);
+      kernelApi.getPlantModelName.mockResolvedValue(null);
+
+      const result = await service.create(
+        { code: 'AGV-002', name: 'New AGV' },
+        'user-1',
+      );
+
+      expect(kernelApi.getVehicleStates).not.toHaveBeenCalled();
+      expect(result.plantModelName).toBeNull();
+    });
+
+    it('throws BadRequestException when the loaded map does not know the vehicle name', async () => {
+      repo.findOne.mockResolvedValue(null);
+      kernelApi.getPlantModelName.mockResolvedValue('map-a');
+      kernelApi.getVehicleStates.mockResolvedValue([{ name: 'AGV-OTHER' }]);
+
+      await expect(
+        service.create({ code: 'AGV-002', name: 'New AGV' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('stamps the currently loaded map name onto a newly created AGV', async () => {
+      repo.findOne.mockResolvedValue(null);
+      kernelApi.getPlantModelName.mockResolvedValue('map-a');
+      kernelApi.getVehicleStates.mockResolvedValue([{ name: 'New AGV' }]);
+
+      const result = await service.create(
+        { code: 'AGV-002', name: 'New AGV' },
+        'user-1',
+      );
+
+      expect(result.plantModelName).toBe('map-a');
+    });
+
+    it('allows the same vehicle name already registered under a different map', async () => {
+      kernelApi.getPlantModelName.mockResolvedValue('map-a');
+      kernelApi.getVehicleStates.mockResolvedValue([{ name: 'New AGV' }]);
+      // First findOne is the code-conflict check, second is the name-conflict
+      // check scoped to map-a — an existing row on map-b never matches it.
+      repo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+      const result = await service.create(
+        { code: 'AGV-002', name: 'New AGV' },
+        'user-1',
+      );
+
+      expect(result.plantModelName).toBe('map-a');
+    });
+
+    it('throws ConflictException when the same name already exists on the same map', async () => {
+      kernelApi.getPlantModelName.mockResolvedValue('map-a');
+      kernelApi.getVehicleStates.mockResolvedValue([{ name: 'New AGV' }]);
+      repo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(
+          makeAgv({ name: 'New AGV', plantModelName: 'map-a' }),
+        );
+
+      await expect(
+        service.create({ code: 'AGV-002', name: 'New AGV' }, 'user-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('does not treat a same-named legacy AGV with no map as a conflict', async () => {
+      // A legacy row (plantModelName: null) exists for this name, but the
+      // name-conflict lookup is scoped to the exact current map now, so it
+      // never matches — the mock returning null for both findOne calls
+      // simulates the DB genuinely finding no row for that scoped query.
+      kernelApi.getPlantModelName.mockResolvedValue('map-a');
+      kernelApi.getVehicleStates.mockResolvedValue([{ name: 'New AGV' }]);
+      repo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+      const result = await service.create(
+        { code: 'AGV-002', name: 'New AGV' },
+        'user-1',
+      );
+
+      expect(repo.findOne).toHaveBeenNthCalledWith(2, {
+        where: { name: 'New AGV', plantModelName: 'map-a' },
+      });
+      expect(result.plantModelName).toBe('map-a');
     });
   });
 

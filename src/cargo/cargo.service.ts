@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { ActiveMapRecordService } from '../maps/infrastructure/active-map-record.service';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import {
   TransportTaskEntity,
@@ -133,6 +134,7 @@ export class CargoService {
     private readonly vehicleStore: VehicleStateStore,
     private readonly taskTermination: TaskTerminationService,
     private readonly deliverySlotEngine: DeliverySlotEngine,
+    private readonly activeMapRecords: ActiveMapRecordService,
   ) {}
 
   async create(dto: CreateCargoDto, userId: string): Promise<CargoEntity> {
@@ -157,13 +159,13 @@ export class CargoService {
       );
     }
 
-    const loadedMapName = await this.loadedMapName();
+    const loadedMapId = await this.loadedMapId();
     const zone = await this.zoneRepo.findOne({
       where: {
         id: dto.destinationZoneId,
         type: ZoneType.DROPOFF,
         status: ZoneStatus.ACTIVE,
-        plantModelName: loadedMapName,
+        mapRecordId: loadedMapId,
       },
       relations: { members: true },
     });
@@ -175,7 +177,7 @@ export class CargoService {
 
     const sourceZoneId = await this.resolvePickupZoneId(
       pickupLocationName,
-      loadedMapName,
+      loadedMapId,
     );
 
     const capacity = await this.reachableCapacityOf(zone);
@@ -194,8 +196,28 @@ export class CargoService {
           'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
           [zone.id],
         );
+        // Same lock pattern as the destination zone above, keyed on the source point instead —
+        // closes the TOCTOU race where two concurrent creates both read "source free" before
+        // either commits. Always acquired zone-then-source in this one call site, so there's no
+        // lock-order inversion with any other transaction to deadlock against.
+        await manager.query(
+          'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
+          [dto.sourcePointName],
+        );
         const cargoRepo = manager.getRepository(CargoEntity);
         await this.assertZoneHasRoom(cargoRepo, zone, capacity);
+
+        const stillOccupied = await cargoRepo.findOne({
+          where: {
+            sourcePointName: dto.sourcePointName,
+            status: CargoStatus.ACTIVE,
+          },
+        });
+        if (stillOccupied) {
+          throw new BadRequestException(
+            `Point "${dto.sourcePointName}" already has cargo waiting for transport (${stillOccupied.itemCode}).`,
+          );
+        }
 
         const saved = await cargoRepo.save(
           cargoRepo.create({
@@ -236,14 +258,21 @@ export class CargoService {
   async list(query: ListCargosQueryDto = {}): Promise<CargoListResponse> {
     const page = query.page ?? DEFAULT_PAGE;
     const limit = query.limit ?? DEFAULT_LIMIT;
+    const mapRecordId = query.activeMapOnly ? await this.loadedMapId() : null;
 
-    const [cargos, total] = await this.buildListQuery(query)
+    const [cargos, total] = await this.buildListQuery(query, mapRecordId)
       .orderBy('cargo.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
 
-    return { cargos: await this.enrichCargos(cargos), total, page, limit };
+    return {
+      cargos: await this.enrichCargos(cargos),
+      total,
+      page,
+      limit,
+      truncated: page * limit < total,
+    };
   }
 
   async getAssignmentDecision(
@@ -279,8 +308,21 @@ export class CargoService {
 
   private buildListQuery(
     query: ListCargosQueryDto,
+    mapRecordId: string | null,
   ): SelectQueryBuilder<CargoEntity> {
     const builder = this.cargoRepo.createQueryBuilder('cargo');
+
+    if (mapRecordId) {
+      builder
+        .leftJoin(
+          'zones',
+          'dest_zone',
+          'dest_zone.id = cargo.destination_zone_id',
+        )
+        .andWhere('dest_zone.map_record_id = :mapRecordId', {
+          mapRecordId,
+        });
+    }
 
     if (query.status) {
       builder.andWhere('cargo.status = :status', {
@@ -333,6 +375,7 @@ export class CargoService {
     }
 
     await this.cargoRepo.softDelete(id);
+    if (task) this.transportTask.publishUpdated(task);
     return { message: 'Cargo deleted.' };
   }
 
@@ -382,10 +425,12 @@ export class CargoService {
           ?.allocatedResources ?? []
       );
     } catch (err) {
-      this.logger.warn(
-        `Could not read allocated resources for ${vehicleName} — allowing the deletion: ${(err as Error).message}`,
+      // Fail closed: with the live SSE store disconnected and the kernel unreadable, we have no
+      // way to know whether this vehicle is mid-pickup/drop-off — allowing the deletion here
+      // would risk cutting a task out from under a vehicle that's still physically handling it.
+      throw new ServiceUnavailableException(
+        `Không thể xác nhận trạng thái xe ${vehicleName} để xóa hàng an toàn — thử lại khi hệ thống điều khiển phản hồi: ${(err as Error).message}`,
       );
-      return [];
     }
   }
 
@@ -416,19 +461,19 @@ export class CargoService {
     }
   }
 
-  private async loadedMapName(): Promise<string> {
-    const name = await this.kernelApi.getPlantModelName();
-    if (!name) {
+  private async loadedMapId(): Promise<string> {
+    const id = await this.activeMapRecords.resolveId();
+    if (!id) {
       throw new ServiceUnavailableException(
         'Không thể đọc bản đồ đang tải trên hệ thống điều khiển.',
       );
     }
-    return name;
+    return id;
   }
 
   private async resolvePickupZoneId(
     pickupLocationName: string,
-    loadedMapName: string,
+    loadedMapId: string,
   ): Promise<string | null> {
     const zone = await this.zoneRepo
       .createQueryBuilder('z')
@@ -437,7 +482,7 @@ export class CargoService {
       })
       .where('z.type = :type', { type: ZoneType.PICKUP })
       .andWhere('z.status = :status', { status: ZoneStatus.ACTIVE })
-      .andWhere('z.plantModelName = :map', { map: loadedMapName })
+      .andWhere('z.mapRecordId = :map', { map: loadedMapId })
       .getOne();
     return zone?.id ?? null;
   }

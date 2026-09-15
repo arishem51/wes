@@ -45,6 +45,10 @@ export class PickupOrderService {
           },
         ],
         taskId: task.id,
+        // A task gets exactly one PICKUP order, ever (never re-aimed/reissued like APPROACH or
+        // DROPOFF) — safe to key it on the task id, so a retry after a lost response reaches the
+        // same kernel order instead of creating a second, duplicate pickup for the same task.
+        idempotencyKey: task.id,
       });
     } catch (err) {
       this.logger.error(

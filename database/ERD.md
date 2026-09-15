@@ -81,8 +81,8 @@ erDiagram
     varchar mac_address
     boolean is_dispatch_enabled
     boolean is_ignored
-    smallint operational_battery_threshold
-    smallint charging_battery_threshold
+    smallint critical_battery_threshold
+    smallint sufficient_battery_threshold
     timestamptz created_at
     timestamptz updated_at
   }
