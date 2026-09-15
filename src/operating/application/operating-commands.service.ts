@@ -9,6 +9,8 @@ import { KernelApiService } from '../../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../../opentcs/vehicle-state.store';
 import type { KernelVehicleState } from '../../opentcs/domain/kernel-model';
 import type { CreateManualOrderDto } from '../dto/operating.dto';
+import { OperatingPlantModelService } from './operating-plant-model.service';
+import { resolveOrderDestination } from '../domain/order-destination';
 
 const INTEGRATION_LEVELS = new Set([
   'TO_BE_IGNORED',
@@ -54,20 +56,45 @@ export class OperatingCommandsService {
   constructor(
     private readonly kernelApi: KernelApiService,
     private readonly vehicleStateStore: VehicleStateStore,
+    private readonly plantModel: OperatingPlantModelService,
   ) {}
 
+  /**
+   * The operator only ever picks a point and an action — never a kernel Location name (see
+   * `resolveOrderDestination`). Resolved here, once per order, from the live plant model, so
+   * every caller of `createOrder` (the manual-order dialog, and anything else that reaches it)
+   * gets the same point-only contract without duplicating the lookup.
+   */
   async createOrder(
     dto: CreateManualOrderDto,
   ): Promise<{ ok: true; name: string }> {
-    const destinations = (dto.destinations ?? [])
-      .filter((destination) => destination.name)
-      .map((destination) => ({
-        locationName: destination.name,
-        operation: destination.operation || 'MOVE',
-      }));
-    if (destinations.length === 0) {
+    const requested = (dto.destinations ?? []).filter(
+      (destination) => destination.name,
+    );
+    if (requested.length === 0) {
       throw new BadRequestException('Cần ít nhất 1 điểm đến.');
     }
+
+    const [locations, locationTypes] = await Promise.all([
+      this.plantModel.locations(),
+      this.plantModel.locationTypes(),
+    ]);
+
+    const destinations = requested.map((destination) => {
+      const operation = destination.operation || 'MOVE';
+      const locationName = resolveOrderDestination(
+        destination.name,
+        operation,
+        locations,
+        locationTypes,
+      );
+      if (!locationName) {
+        throw new BadRequestException(
+          `Điểm "${destination.name}" không có Location nào hỗ trợ operation "${operation}".`,
+        );
+      }
+      return { locationName, operation };
+    });
 
     try {
       const created = await this.kernelApi.createManualTransportOrder(
@@ -79,10 +106,7 @@ export class OperatingCommandsService {
       );
       return { ok: true, name: created.name };
     } catch (err) {
-      rethrowKernel(
-        err,
-        'Kiểm tra: MOVE/NOP chỉ dùng cho điểm; tới Location phải chọn operation của LocationType đó.',
-      );
+      rethrowKernel(err);
     }
   }
 
