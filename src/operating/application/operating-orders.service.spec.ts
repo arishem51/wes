@@ -75,3 +75,19 @@ describe('OperatingOrdersService.routeProgress', () => {
     expect(kernelApi.getTransportOrderRaw).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('OperatingOrdersService.changes$', () => {
+  it('emits once per onOrderChanged() call, for any subscriber', async () => {
+    const service = new OperatingOrdersService(
+      {} as unknown as KernelApiService,
+    );
+    const received: void[] = [];
+    const sub = service.changes$.subscribe((v) => received.push(v));
+
+    service.onOrderChanged();
+    service.onOrderChanged();
+    sub.unsubscribe();
+
+    expect(received).toHaveLength(2);
+  });
+});

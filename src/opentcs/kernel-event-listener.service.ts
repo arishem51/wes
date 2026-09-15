@@ -345,6 +345,7 @@ export class KernelEventListenerService
       const [oldest] = this.lastOrderSignature.keys();
       if (oldest !== undefined) this.lastOrderSignature.delete(oldest);
     }
+    this.eventEmitter.emit(FMS_EVENTS.TRANSPORT_ORDER_CHANGED, name);
 
     const orderFinished = orderState === 'FINISHED';
     if (orderFinished) this.logger.log(`Transport order "${name}" FINISHED`);
