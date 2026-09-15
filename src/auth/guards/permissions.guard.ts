@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { REQUIRE_PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
 import type { AuthUser } from '../jwt-payload';
+import { createAppAbility } from '../ability';
 
 /**
  * Denies the request unless `req.user.perms` (resolved by `JwtStrategy` from the caller's role)
@@ -24,12 +25,10 @@ export class PermissionsGuard implements CanActivate {
     if (!required || required.length === 0) return true;
 
     const user = context.switchToHttp().getRequest<{ user?: AuthUser }>().user;
-    const held = new Set(user?.perms ?? []);
-    const missing = required.filter((p) => !held.has(p));
+    const ability = createAppAbility(user?.perms ?? []);
+    const missing = required.filter((p) => !ability.can(p, 'Capability'));
     if (missing.length) {
-      throw new ForbiddenException(
-        `Thiếu quyền: ${missing.join(', ')}`,
-      );
+      throw new ForbiddenException(`Thiếu quyền: ${missing.join(', ')}`);
     }
     return true;
   }

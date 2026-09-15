@@ -5,16 +5,22 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { RoleEntity } from '../users/entities/role.entity';
 import { RolePermissionEntity } from '../users/entities/role-permission.entity';
+import { RoleMapScopeEntity } from '../users/entities/role-map-scope.entity';
 import { UserRoleEntity } from '../users/entities/user-role.entity';
+import { MapRecordEntity } from '../maps/infrastructure/entities/map-record.entity';
 import { PermissionsService } from '../auth/permissions.service';
 import {
   PERMISSION_CATALOGUE,
   type PermissionCluster,
 } from '../auth/permission.catalogue';
-import type { CreateRoleDto, UpdateRoleDto } from './dto/rbac.dto';
+import type {
+  CreateRoleDto,
+  UpdateRoleDto,
+  SetRoleMapScopeDto,
+} from './dto/rbac.dto';
 
 export interface RoleDto {
   id: number;
@@ -24,6 +30,8 @@ export interface RoleDto {
   isSystem: boolean;
   userCount: number;
   permissions: string[];
+  /** Map record ids this role is restricted to; `null` = unrestricted (sees/acts on every map). */
+  mapScope: string[] | null;
 }
 
 const CATALOGUE_KEYS = new Set(PERMISSION_CATALOGUE.map((p) => p.key));
@@ -36,8 +44,12 @@ export class RbacService {
     private readonly roles: Repository<RoleEntity>,
     @InjectRepository(RolePermissionEntity)
     private readonly rolePermissions: Repository<RolePermissionEntity>,
+    @InjectRepository(RoleMapScopeEntity)
+    private readonly roleMapScopes: Repository<RoleMapScopeEntity>,
     @InjectRepository(UserRoleEntity)
     private readonly userRoles: Repository<UserRoleEntity>,
+    @InjectRepository(MapRecordEntity)
+    private readonly mapRecords: Repository<MapRecordEntity>,
     private readonly permissions: PermissionsService,
   ) {}
 
@@ -70,9 +82,10 @@ export class RbacService {
   }
 
   async list(): Promise<RoleDto[]> {
-    const [roles, grants, counts] = await Promise.all([
+    const [roles, grants, scopes, counts] = await Promise.all([
       this.roles.find({ order: { isSystem: 'DESC', name: 'ASC' } }),
       this.rolePermissions.find(),
+      this.roleMapScopes.find(),
       this.userRoles
         .createQueryBuilder('ur')
         .select('ur.role_id', 'roleId')
@@ -87,7 +100,15 @@ export class RbacService {
       arr.push(g.permissionKey);
       grantsByRole.set(g.roleId, arr);
     }
-    const countByRole = new Map(counts.map((c) => [Number(c.roleId), Number(c.count)]));
+    const scopeByRole = new Map<number, string[]>();
+    for (const s of scopes) {
+      const arr = scopeByRole.get(s.roleId) ?? [];
+      arr.push(s.mapRecordId);
+      scopeByRole.set(s.roleId, arr);
+    }
+    const countByRole = new Map(
+      counts.map((c) => [Number(c.roleId), Number(c.count)]),
+    );
 
     return roles.map((r) => ({
       id: r.id,
@@ -97,6 +118,7 @@ export class RbacService {
       isSystem: r.isSystem,
       userCount: countByRole.get(r.id) ?? 0,
       permissions: (grantsByRole.get(r.id) ?? []).sort(),
+      mapScope: scopeByRole.get(r.id)?.sort() ?? null,
     }));
   }
 
@@ -132,7 +154,8 @@ export class RbacService {
     }
     if (dto.name !== undefined || dto.description !== undefined) {
       if (dto.name !== undefined) role.name = dto.name;
-      if (dto.description !== undefined) role.description = dto.description || null;
+      if (dto.description !== undefined)
+        role.description = dto.description || null;
       await this.roles.save(role);
     }
     this.permissions.refresh();
@@ -154,6 +177,52 @@ export class RbacService {
     await this.rolePermissions.delete({ roleId: id });
     await this.roles.delete(id);
     this.permissions.refresh();
+  }
+
+  /**
+   * Restrict a role to exactly this set of maps (AUTH-3). An empty array clears the scope back
+   * to unrestricted — that's the intended way to un-scope a role, not an error.
+   */
+  async setMapScope(id: number, dto: SetRoleMapScopeDto): Promise<RoleDto> {
+    const role = await this.roles.findOne({ where: { id } });
+    if (!role) throw new NotFoundException('Không tìm thấy vai trò.');
+    if (role.key === 'admin') {
+      throw new BadRequestException(
+        'Vai trò quản trị luôn không giới hạn — không gán được phạm vi bản đồ.',
+      );
+    }
+
+    const mapRecordIds = [...new Set(dto.mapRecordIds)];
+    if (mapRecordIds.length > 0) {
+      const found = await this.mapRecords.find({
+        where: { id: In(mapRecordIds) },
+        select: { id: true },
+      });
+      const foundIds = new Set(found.map((m) => m.id));
+      const unknown = mapRecordIds.filter((mapId) => !foundIds.has(mapId));
+      if (unknown.length) {
+        throw new BadRequestException(
+          `Bản đồ không tồn tại: ${unknown.join(', ')}`,
+        );
+      }
+    }
+
+    await this.roleMapScopes.manager.transaction(async (manager) => {
+      // Serialize replacements of the same role; a failed insert rolls back its delete.
+      await manager.getRepository(RoleEntity).findOneOrFail({
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const scopes = manager.getRepository(RoleMapScopeEntity);
+      await scopes.delete({ roleId: id });
+      if (mapRecordIds.length > 0) {
+        await scopes.insert(
+          mapRecordIds.map((mapRecordId) => ({ roleId: id, mapRecordId })),
+        );
+      }
+    });
+    this.permissions.refresh();
+    return this.oneOrFail(id);
   }
 
   private async writeGrants(roleId: number, keys: string[]): Promise<void> {

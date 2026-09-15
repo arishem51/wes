@@ -3,6 +3,7 @@ import {
   IsArray,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   MaxLength,
   MinLength,
@@ -50,6 +51,13 @@ export class UpdateRoleDto {
   @ArrayUnique()
   @IsString({ each: true })
   permissions?: string[];
+}
+
+export class SetRoleMapScopeDto {
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  mapRecordIds!: string[];
 }
 
 export class IssueTokenDto {

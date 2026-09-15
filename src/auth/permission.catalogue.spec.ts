@@ -35,7 +35,9 @@ describe('permission catalogue', () => {
   });
 
   it('admin is granted every permission', () => {
-    expect([...SYSTEM_ROLE_GRANTS.admin].sort()).toEqual([...ALL_PERMISSION_KEYS].sort());
+    expect([...SYSTEM_ROLE_GRANTS.admin].sort()).toEqual(
+      [...ALL_PERMISSION_KEYS].sort(),
+    );
   });
 
   it('every @RequirePermissions key in a controller exists in the catalogue', () => {

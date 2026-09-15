@@ -10,7 +10,9 @@ export class RolePermissionEntity {
   @PrimaryColumn({ name: 'permission_key', type: 'varchar', length: 64 })
   permissionKey!: string;
 
-  @ManyToOne(() => RoleEntity, (r) => r.rolePermissions, { onDelete: 'CASCADE' })
+  @ManyToOne(() => RoleEntity, (r) => r.rolePermissions, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'role_id' })
   role!: RoleEntity;
 }

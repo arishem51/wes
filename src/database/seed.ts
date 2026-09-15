@@ -17,7 +17,12 @@ async function seedRoles(
   const defaults: Array<
     Pick<RoleEntity, 'key' | 'name' | 'description' | 'isSystem'>
   > = [
-    { key: 'admin', name: 'Quản trị viên', description: 'Toàn quyền hệ thống', isSystem: true },
+    {
+      key: 'admin',
+      name: 'Quản trị viên',
+      description: 'Toàn quyền hệ thống',
+      isSystem: true,
+    },
     {
       key: 'operator',
       name: 'Điều hành viên',

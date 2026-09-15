@@ -1,8 +1,6 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class ScopeAgvCodeUniquenessToMap1811000000000
-  implements MigrationInterface
-{
+export class ScopeAgvCodeUniquenessToMap1811000000000 implements MigrationInterface {
   name = 'ScopeAgvCodeUniquenessToMap1811000000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {

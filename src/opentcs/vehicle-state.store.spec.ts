@@ -1,7 +1,9 @@
 import { VehicleStateStore } from './vehicle-state.store';
 import type { KernelVehicleState } from './domain/kernel-model';
 
-function vehicleState(overrides: Partial<KernelVehicleState> = {}): KernelVehicleState {
+function vehicleState(
+  overrides: Partial<KernelVehicleState> = {},
+): KernelVehicleState {
   return {
     name: 'V1',
     state: 'IDLE',
@@ -12,7 +14,7 @@ function vehicleState(overrides: Partial<KernelVehicleState> = {}): KernelVehicl
     currentPosition: null,
     transportOrder: null,
     ...overrides,
-  } as KernelVehicleState;
+  };
 }
 
 describe('VehicleStateStore.getEventStats', () => {

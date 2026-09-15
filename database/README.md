@@ -35,7 +35,7 @@
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Create the database and apply the schema
 #   (Docker:  docker compose up -d   — auto-applies schema.sql)
@@ -62,7 +62,7 @@ npm run start:dev
 
 ```bash
 cd frontend
-npm install
+pnpm install
 npm run dev                   # http://localhost:5173
 ```
 

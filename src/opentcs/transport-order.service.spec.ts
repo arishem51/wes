@@ -13,8 +13,10 @@ function makeService() {
   };
 }
 
-const conflict = () => Object.assign(new Error('conflict'), { response: { status: 409 } });
-const notFound = () => Object.assign(new Error('gone'), { response: { status: 404 } });
+const conflict = () =>
+  Object.assign(new Error('conflict'), { response: { status: 409 } });
+const notFound = () =>
+  Object.assign(new Error('gone'), { response: { status: 404 } });
 
 describe('TransportOrderService.issue', () => {
   it('names the order after the kind, the vehicle and where it is aimed', async () => {
@@ -191,7 +193,9 @@ describe('TransportOrderService.issue with idempotencyKey', () => {
   it('fails closed when it cannot even ask the kernel about the conflicting order', async () => {
     const { service, kernelApi } = makeService();
     kernelApi.createTransportOrder.mockRejectedValueOnce(conflict());
-    kernelApi.getTransportOrderStateStrict.mockRejectedValue(new Error('kernel down'));
+    kernelApi.getTransportOrderStateStrict.mockRejectedValue(
+      new Error('kernel down'),
+    );
 
     await expect(service.issue(pickup)).rejects.toThrow('kernel down');
     expect(kernelApi.createTransportOrder).toHaveBeenCalledTimes(1);

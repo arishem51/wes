@@ -9,7 +9,9 @@ export class AddApiTokenHash1807000000000 implements MigrationInterface {
   name = 'AddApiTokenHash1807000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "api_tokens" ALTER COLUMN "jti" DROP NOT NULL`);
+    await queryRunner.query(
+      `ALTER TABLE "api_tokens" ALTER COLUMN "jti" DROP NOT NULL`,
+    );
     await queryRunner.query(
       `ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "token_hash" varchar(64)`,
     );
@@ -23,6 +25,8 @@ export class AddApiTokenHash1807000000000 implements MigrationInterface {
     await queryRunner.query(
       `ALTER TABLE "api_tokens" DROP COLUMN IF EXISTS "token_hash"`,
     );
-    await queryRunner.query(`ALTER TABLE "api_tokens" ALTER COLUMN "jti" SET NOT NULL`);
+    await queryRunner.query(
+      `ALTER TABLE "api_tokens" ALTER COLUMN "jti" SET NOT NULL`,
+    );
   }
 }

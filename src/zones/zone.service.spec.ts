@@ -1,4 +1,8 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { ZoneService } from './zone.service';
@@ -8,14 +12,21 @@ import { KernelApiService } from '../opentcs/kernel-api.service';
 import { CargoEntity } from '../cargo/entities/cargo.entity';
 import { ZoneLocationWriter } from './zone-location.writer';
 import { ZoneUsageQuery } from './zone-usage.query';
+import { ActiveMapRecordService } from '../maps/infrastructure/active-map-record.service';
+
+/** The `map_records.id` `ActiveMapRecordService` resolves to in these tests by default. */
+const ACTIVE_RECORD_ID = 'active-record-1';
 
 const makeZone = (overrides: Partial<ZoneEntity> = {}): ZoneEntity => ({
   id: 'zone-1',
   name: 'Dropoff A',
   type: ZoneType.DROPOFF,
   color: '#2563eb',
+  operation: null,
+  maxVehicles: null,
   kernelId: 1,
   plantModelName: 'runtime-map',
+  mapRecordId: ACTIVE_RECORD_ID,
   status: ZoneStatus.ACTIVE,
   members: [],
   createdAt: new Date('2026-01-01'),
@@ -79,6 +90,7 @@ describe('ZoneService.sync', () => {
     setVehicleAdapterEnabled: jest.Mock;
     setVehicleIntegrationLevel: jest.Mock;
   };
+  let activeMapRecords: { resolveId: jest.Mock };
 
   beforeEach(async () => {
     zoneRepo = makeRepo();
@@ -95,6 +107,9 @@ describe('ZoneService.sync', () => {
       setVehicleAdapterEnabled: jest.fn().mockResolvedValue(undefined),
       setVehicleIntegrationLevel: jest.fn().mockResolvedValue(undefined),
     };
+    activeMapRecords = {
+      resolveId: jest.fn().mockResolvedValue(ACTIVE_RECORD_ID),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -108,6 +123,7 @@ describe('ZoneService.sync', () => {
         { provide: KernelApiService, useValue: kernelApi },
         ZoneLocationWriter,
         ZoneUsageQuery,
+        { provide: ActiveMapRecordService, useValue: activeMapRecords },
         {
           provide: getRepositoryToken(CargoEntity),
           useValue: {
@@ -336,6 +352,7 @@ describe('ZoneService.sync', () => {
     const otherMap = makeZone({
       id: 'z-other',
       plantModelName: 'another-map',
+      mapRecordId: 'other-record',
       status: ZoneStatus.ACTIVE,
       members: [makeMember('location_P1', 0)],
     });
@@ -362,6 +379,7 @@ describe('ZoneService.sync', () => {
     const otherMap = makeZone({
       id: 'z-other',
       plantModelName: 'another-map',
+      mapRecordId: 'other-record',
       status: ZoneStatus.ACTIVE,
       members: [makeMember('location_P2', 0)],
     });
@@ -384,6 +402,7 @@ describe('ZoneService.sync', () => {
   it('never claims an unassigned zone, even when all its points exist here', async () => {
     const unassigned = makeZone({
       plantModelName: null,
+      mapRecordId: null,
       status: ZoneStatus.ACTIVE,
       members: [makeMember('location_P1', 0)],
     });
@@ -407,10 +426,14 @@ describe('ZoneService.assignToLoadedMap', () => {
   let service: ZoneService;
   let zoneRepo: RepoMock;
   let kernelApi: { getRawPlantModel: jest.Mock };
+  let activeMapRecords: { resolveId: jest.Mock };
 
   beforeEach(async () => {
     zoneRepo = makeRepo();
     kernelApi = { getRawPlantModel: jest.fn() };
+    activeMapRecords = {
+      resolveId: jest.fn().mockResolvedValue(ACTIVE_RECORD_ID),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -421,6 +444,7 @@ describe('ZoneService.assignToLoadedMap', () => {
         { provide: KernelApiService, useValue: kernelApi },
         ZoneLocationWriter,
         ZoneUsageQuery,
+        { provide: ActiveMapRecordService, useValue: activeMapRecords },
         {
           provide: getRepositoryToken(CargoEntity),
           useValue: {
@@ -440,9 +464,10 @@ describe('ZoneService.assignToLoadedMap', () => {
     service = module.get(ZoneService);
   });
 
-  it('stamps the loaded map onto the requested zones', async () => {
+  it('stamps the loaded map record onto the requested zones', async () => {
     const zone = makeZone({
       plantModelName: null,
+      mapRecordId: null,
       members: [makeMember('location_P1', 0)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
@@ -454,11 +479,13 @@ describe('ZoneService.assignToLoadedMap', () => {
 
     expect(result).toEqual({ plantModelName: 'runtime-map', assigned: 1 });
     expect(zone.plantModelName).toBe('runtime-map');
+    expect(zone.mapRecordId).toBe(ACTIVE_RECORD_ID);
   });
 
   it('refuses a zone whose points are not on the loaded map', async () => {
     const zone = makeZone({
       plantModelName: null,
+      mapRecordId: null,
       members: [makeMember('location_P9', 0)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
@@ -475,6 +502,7 @@ describe('ZoneService.assignToLoadedMap', () => {
   it('reassigns a zone that was stamped with the wrong map', async () => {
     const zone = makeZone({
       plantModelName: 'wrong-map',
+      mapRecordId: 'wrong-record',
       members: [makeMember('location_P1', 0)],
     });
     zoneRepo.find.mockResolvedValue([zone]);
@@ -485,5 +513,332 @@ describe('ZoneService.assignToLoadedMap', () => {
     await service.assignToLoadedMap(['zone-1']);
 
     expect(zone.plantModelName).toBe('runtime-map');
+    expect(zone.mapRecordId).toBe(ACTIVE_RECORD_ID);
+  });
+
+  it('refuses to assign when the loaded map does not resolve to a library record (external/unknown)', async () => {
+    activeMapRecords.resolveId.mockResolvedValue(null);
+    const zone = makeZone({ members: [makeMember('location_P1', 0)] });
+    zoneRepo.find.mockResolvedValue([zone]);
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({ pointNames: ['P1'], locations: [] }),
+    );
+
+    await expect(service.assignToLoadedMap(['zone-1'])).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(zoneRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('ZoneService.create', () => {
+  let service: ZoneService;
+  let zoneRepo: RepoMock & { findOneOrFail: jest.Mock };
+  let kernelApi: {
+    getRawPlantModel: jest.Mock;
+    putRawPlantModel: jest.Mock;
+    getVehicleStates: jest.Mock;
+    setVehicleAdapterEnabled: jest.Mock;
+    setVehicleIntegrationLevel: jest.Mock;
+  };
+  let activeMapRecords: { resolveId: jest.Mock };
+  let zoneEntityCreate: jest.Mock;
+
+  beforeEach(async () => {
+    zoneRepo = {
+      ...makeRepo(),
+      findOneOrFail: jest.fn((opts: { where: { id: string } }) =>
+        Promise.resolve(makeZone({ id: opts.where.id, type: ZoneType.PICKUP })),
+      ),
+    };
+    zoneRepo.find.mockResolvedValue([]); // pickDefaultColor()'s lookup of existing zone colors
+    kernelApi = {
+      getRawPlantModel: jest.fn(),
+      putRawPlantModel: jest.fn().mockResolvedValue(undefined),
+      getVehicleStates: jest.fn().mockResolvedValue([]),
+      setVehicleAdapterEnabled: jest.fn().mockResolvedValue(undefined),
+      setVehicleIntegrationLevel: jest.fn().mockResolvedValue(undefined),
+    };
+    activeMapRecords = {
+      resolveId: jest.fn().mockResolvedValue(ACTIVE_RECORD_ID),
+    };
+
+    const memberRepo = makeRepo();
+    zoneEntityCreate = jest.fn((v: unknown) => v);
+    const dataSource = {
+      transaction: jest.fn(async (cb: (manager: unknown) => Promise<unknown>) =>
+        cb({
+          getRepository: (entity: unknown) =>
+            entity === ZoneEntity
+              ? {
+                  create: zoneEntityCreate,
+                  save: (v: { id?: string }) => ({ id: 'zone-1', ...v }),
+                }
+              : { create: (v: unknown) => v, save: (v: unknown[]) => v },
+          query: jest.fn(),
+        }),
+      ),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ZoneService,
+        { provide: getDataSourceToken(), useValue: dataSource },
+        { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
+        { provide: getRepositoryToken(ZoneMemberEntity), useValue: memberRepo },
+        { provide: KernelApiService, useValue: kernelApi },
+        ZoneLocationWriter,
+        ZoneUsageQuery,
+        { provide: ActiveMapRecordService, useValue: activeMapRecords },
+        {
+          provide: getRepositoryToken(CargoEntity),
+          useValue: { createQueryBuilder: jest.fn() },
+        },
+      ],
+    }).compile();
+
+    service = module.get(ZoneService);
+  });
+
+  it('stamps a new PICKUP zone with the currently active map record', async () => {
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({
+        pointNames: ['P1'],
+        locations: [{ name: 'location_P1', links: ['P1'] }],
+      }),
+    );
+
+    await service.create({
+      name: 'Pickup A',
+      type: ZoneType.PICKUP,
+      members: [{ locationName: 'location_P1', positionIndex: 0 }],
+    });
+
+    expect(zoneEntityCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ mapRecordId: ACTIVE_RECORD_ID }),
+    );
+  });
+
+  it('stores operation and maxVehicles when provided at creation', async () => {
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({
+        pointNames: ['P1'],
+        locations: [{ name: 'location_P1', links: ['P1'] }],
+      }),
+    );
+
+    await service.create({
+      name: 'Pickup A',
+      type: ZoneType.PICKUP,
+      operation: 'Charge',
+      maxVehicles: 2,
+      members: [{ locationName: 'location_P1', positionIndex: 0 }],
+    });
+
+    expect(zoneEntityCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'Charge', maxVehicles: 2 }),
+    );
+  });
+
+  it('rejects unresolved maps before saving a new zone', async () => {
+    activeMapRecords.resolveId.mockResolvedValue(null);
+    kernelApi.getRawPlantModel.mockResolvedValue(
+      makePlantModel({
+        pointNames: ['P1'],
+        locations: [{ name: 'location_P1', links: ['P1'] }],
+      }),
+    );
+
+    await expect(
+      service.create({
+        name: 'Pickup A',
+        type: ZoneType.PICKUP,
+        members: [{ locationName: 'location_P1', positionIndex: 0 }],
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+    expect(zoneEntityCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('ZoneService.update', () => {
+  let service: ZoneService;
+  let zoneRepo: RepoMock & { findOne: jest.Mock };
+
+  beforeEach(async () => {
+    zoneRepo = { ...makeRepo(), findOne: jest.fn() };
+    zoneRepo.findOne.mockResolvedValue(makeZone());
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ZoneService,
+        { provide: getDataSourceToken(), useValue: {} },
+        { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
+        { provide: getRepositoryToken(ZoneMemberEntity), useValue: makeRepo() },
+        {
+          provide: KernelApiService,
+          useValue: { getRawPlantModel: jest.fn(), putRawPlantModel: jest.fn() },
+        },
+        ZoneLocationWriter,
+        ZoneUsageQuery,
+        {
+          provide: ActiveMapRecordService,
+          useValue: { resolveId: jest.fn().mockResolvedValue(ACTIVE_RECORD_ID) },
+        },
+        {
+          provide: getRepositoryToken(CargoEntity),
+          useValue: { createQueryBuilder: jest.fn() },
+        },
+      ],
+    }).compile();
+
+    service = module.get(ZoneService);
+  });
+
+  it('renames a zone when name is provided', async () => {
+    await service.update('zone-1', { name: 'Kho mới' });
+
+    expect(zoneRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Kho mới' }),
+    );
+  });
+
+  it('updates color when provided, independently of name', async () => {
+    await service.update('zone-1', { color: '#abcdef' });
+
+    expect(zoneRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ color: '#abcdef', name: 'Dropoff A' }),
+    );
+  });
+
+  it('updates both name and color together', async () => {
+    await service.update('zone-1', { name: 'Kho mới', color: '#abcdef' });
+
+    expect(zoneRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Kho mới', color: '#abcdef' }),
+    );
+  });
+
+  it('leaves the existing name untouched when name is omitted', async () => {
+    await service.update('zone-1', { color: '#abcdef' });
+
+    const saved = zoneRepo.save.mock.calls[0][0] as ZoneEntity;
+    expect(saved.name).toBe('Dropoff A');
+  });
+
+  it('persists a per-zone operation override', async () => {
+    await service.update('zone-1', { operation: 'Charge' });
+
+    expect(zoneRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'Charge' }),
+    );
+  });
+
+  it('persists a maxVehicles cap', async () => {
+    await service.update('zone-1', { maxVehicles: 3 });
+
+    expect(zoneRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ maxVehicles: 3 }),
+    );
+  });
+
+  it('explicitly clears maxVehicles when given null, distinct from omitting it', async () => {
+    zoneRepo.findOne.mockResolvedValue(makeZone({ maxVehicles: 5 }));
+
+    await service.update('zone-1', { maxVehicles: null });
+
+    expect(zoneRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ maxVehicles: null }),
+    );
+  });
+
+  it('leaves maxVehicles untouched when omitted entirely', async () => {
+    zoneRepo.findOne.mockResolvedValue(makeZone({ maxVehicles: 5 }));
+
+    await service.update('zone-1', { name: 'Kho mới' });
+
+    const saved = zoneRepo.save.mock.calls[0][0] as ZoneEntity;
+    expect(saved.maxVehicles).toBe(5);
+  });
+
+  it('rejects an update outside the caller\'s map scope', async () => {
+    zoneRepo.findOne.mockResolvedValue(makeZone({ mapRecordId: 'other-record' }));
+
+    await expect(
+      service.update('zone-1', { name: 'Kho mới' }, ['some-other-record']),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(zoneRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('ZoneService.list', () => {
+  let service: ZoneService;
+  let zoneRepo: RepoMock;
+  let activeMapRecords: { resolveId: jest.Mock };
+
+  beforeEach(async () => {
+    zoneRepo = makeRepo();
+    zoneRepo.find.mockResolvedValue([]);
+    activeMapRecords = {
+      resolveId: jest.fn().mockResolvedValue(ACTIVE_RECORD_ID),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ZoneService,
+        { provide: getDataSourceToken(), useValue: { query: jest.fn() } },
+        { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
+        { provide: getRepositoryToken(ZoneMemberEntity), useValue: makeRepo() },
+        {
+          provide: KernelApiService,
+          useValue: { getRawPlantModel: jest.fn() },
+        },
+        ZoneLocationWriter,
+        ZoneUsageQuery,
+        { provide: ActiveMapRecordService, useValue: activeMapRecords },
+        {
+          provide: getRepositoryToken(CargoEntity),
+          useValue: {
+            createQueryBuilder: jest.fn(() => ({
+              select: jest.fn().mockReturnThis(),
+              addSelect: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              andWhere: jest.fn().mockReturnThis(),
+              groupBy: jest.fn().mockReturnThis(),
+              getRawMany: jest.fn().mockResolvedValue([]),
+            })),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get(ZoneService);
+  });
+
+  it('scopes the loaded-map query at the database, not by loading every zone into memory', async () => {
+    await service.list({ allMaps: false });
+
+    expect(activeMapRecords.resolveId).toHaveBeenCalled();
+    expect(zoneRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { mapRecordId: ACTIVE_RECORD_ID } }),
+    );
+  });
+
+  it('never queries at all — no unscoped fallback — when the loaded map has no resolved record', async () => {
+    activeMapRecords.resolveId.mockResolvedValue(null);
+
+    const result = await service.list({ allMaps: false });
+
+    expect(result).toEqual([]);
+    expect(zoneRepo.find).not.toHaveBeenCalled();
+  });
+
+  it('does not filter by map at all when allMaps is requested', async () => {
+    await service.list({ allMaps: true });
+
+    expect(zoneRepo.find).toHaveBeenCalledWith(
+      expect.not.objectContaining({ where: expect.anything() }),
+    );
+    expect(activeMapRecords.resolveId).not.toHaveBeenCalled();
   });
 });

@@ -26,7 +26,9 @@ describe('PermissionsGuard', () => {
 
   it('allows when the user holds every required permission', () => {
     const guard = guardWith(['area.create']);
-    expect(guard.canActivate(ctx({ perms: ['area.create', 'map.view'] }))).toBe(true);
+    expect(guard.canActivate(ctx({ perms: ['area.create', 'map.view'] }))).toBe(
+      true,
+    );
   });
 
   it('denies when a required permission is missing', () => {

@@ -118,7 +118,10 @@ function setup(options: SetupOptions = {}) {
     findPickupLocationForPoint: jest.fn().mockResolvedValue('loc-B'),
     getPlantModelName: jest.fn().mockResolvedValue('runtime-map'),
   };
-  const transportTask = { publishCreated: jest.fn(), publishUpdated: jest.fn() };
+  const transportTask = {
+    publishCreated: jest.fn(),
+    publishUpdated: jest.fn(),
+  };
   const laneSafety = {
     clearLaneForNewCargo: jest.fn().mockResolvedValue(undefined),
   };
@@ -135,10 +138,12 @@ function setup(options: SetupOptions = {}) {
     {} as unknown as VehicleStateStore,
     {} as unknown as TaskTerminationService,
     deliverySlotEngine as unknown as DeliverySlotEngine,
+    { resolveId: jest.fn().mockResolvedValue('record-runtime-map') } as never,
   );
 
   return {
     svc,
+    zoneRepo,
     laneSafety,
     dataSource,
     insertedCargos,
@@ -148,6 +153,38 @@ function setup(options: SetupOptions = {}) {
 }
 
 describe('CargoService.create', () => {
+  it('rejects a destination in another record even when its map name matches', async () => {
+    const { svc, zoneRepo, dataSource, laneSafety } = setup();
+    const otherMapZone = {
+      ...dropoffZone(5),
+      mapRecordId: 'other-record',
+      plantModelName: 'runtime-map',
+    };
+    zoneRepo.findOne.mockImplementation(
+      ({ where }: { where: { mapRecordId?: string } }) =>
+        Promise.resolve(
+          where.mapRecordId === otherMapZone.mapRecordId ? otherMapZone : null,
+        ),
+    );
+
+    await expect(svc.create(DTO, 'user-1')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+    expect(laneSafety.clearLaneForNewCargo).not.toHaveBeenCalled();
+  });
+
+  it('resolves shared pickup location names within the active record', async () => {
+    const { svc, zoneRepo } = setup();
+
+    await svc.create(DTO, 'user-1');
+
+    expect(zoneRepo.createQueryBuilder().andWhere).toHaveBeenCalledWith(
+      'z.mapRecordId = :map',
+      { map: 'record-runtime-map' },
+    );
+  });
+
   it('skips the lane guard when the source point is outside any pickup zone', async () => {
     const { svc, laneSafety, insertedCargos } = setup({ pickupZoneId: null });
 
@@ -236,7 +273,10 @@ describe('CargoService.create', () => {
     );
 
     expect(transactionCargoRepo.findOne).toHaveBeenCalledWith({
-      where: { sourcePointName: DTO.sourcePointName, status: CargoStatus.ACTIVE },
+      where: {
+        sourcePointName: DTO.sourcePointName,
+        status: CargoStatus.ACTIVE,
+      },
     });
     expect(insertedCargos).toHaveLength(0);
   });
@@ -319,6 +359,7 @@ function listSetup(
     {} as unknown as VehicleStateStore,
     {} as unknown as TaskTerminationService,
     deliverySlotEngine as unknown as DeliverySlotEngine,
+    { resolveId: jest.fn().mockResolvedValue('record-runtime-map') } as never,
   );
 
   const listWith = (query: ListCargosQueryDto = {}) => svc.list(query);
@@ -411,12 +452,12 @@ describe('CargoService.list', () => {
 
     await listWith({ activeMapOnly: true });
 
-    expect(kernelApi.getPlantModelName).toHaveBeenCalled();
+    expect(kernelApi.getPlantModelName).not.toHaveBeenCalled();
     const join = conditionMatching('JOIN zones');
     expect(join).toContain('cargo.destination_zone_id');
-    const condition = conditionMatching('plant_model_name');
+    const condition = conditionMatching('map_record_id');
     expect(condition).toBeDefined();
-    expect(parameters.plantModelName).toBe('runtime-map');
+    expect(parameters.mapRecordId).toBe('record-runtime-map');
   });
 
   it('does not join zones at all when activeMapOnly is left off', async () => {
@@ -529,6 +570,7 @@ function decisionSetup(options: DecisionSetupOptions = {}) {
     {} as unknown as VehicleStateStore,
     {} as unknown as TaskTerminationService,
     deliverySlotEngine as unknown as DeliverySlotEngine,
+    { resolveId: jest.fn().mockResolvedValue('record-runtime-map') } as never,
   );
 
   return { svc, transitionRepo };
@@ -688,9 +730,17 @@ function removeSetup(options: RemoveSetupOptions = {}) {
     vehicleStore as unknown as VehicleStateStore,
     taskTermination as unknown as TaskTerminationService,
     deliverySlotEngine as unknown as DeliverySlotEngine,
+    { resolveId: jest.fn().mockResolvedValue('record-runtime-map') } as never,
   );
 
-  return { svc, cargoRepo, taskRepo, taskTermination, kernelApi, transportTask };
+  return {
+    svc,
+    cargoRepo,
+    taskRepo,
+    taskTermination,
+    kernelApi,
+    transportTask,
+  };
 }
 
 const droppingOffTask = (metadata: TransportTaskEntity['metadata'] = {}) =>
@@ -846,7 +896,9 @@ describe('CargoService.remove', () => {
     });
     kernelApi.getVehicleStates.mockRejectedValue(new Error('kernel down'));
 
-    await expect(svc.remove('c-1')).rejects.toThrow(ServiceUnavailableException);
+    await expect(svc.remove('c-1')).rejects.toThrow(
+      ServiceUnavailableException,
+    );
 
     expect(cargoRepo.softDelete).not.toHaveBeenCalled();
   });

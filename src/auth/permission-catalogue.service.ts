@@ -57,7 +57,9 @@ export class PermissionCatalogueService implements OnModuleInit {
     const stale = existing.filter((p) => !known.has(p.key)).map((p) => p.key);
     if (stale.length) {
       await this.permissions.delete(stale);
-      this.logger.log(`Removed ${stale.length} stale permission(s): ${stale.join(', ')}`);
+      this.logger.log(
+        `Removed ${stale.length} stale permission(s): ${stale.join(', ')}`,
+      );
     }
     this.logger.log(`Permission catalogue: ${rows.length} key(s) ensured.`);
   }
@@ -79,7 +81,9 @@ export class PermissionCatalogueService implements OnModuleInit {
       });
       if (count === 0) {
         await this.setRolePermissions(role.id, grantKeys);
-        this.logger.log(`Seeded ${grantKeys.length} grant(s) for role "${key}".`);
+        this.logger.log(
+          `Seeded ${grantKeys.length} grant(s) for role "${key}".`,
+        );
       }
     }
   }

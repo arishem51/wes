@@ -91,7 +91,11 @@ describe('v7-Xuonghientai lane admission over time', () => {
   });
 
   it('seats each newcomer behind whoever already holds a cell in the lane', () => {
-    const layout = layoutOfXuonghientai(['location_0158', 'location_0168', 'location_0178']);
+    const layout = layoutOfXuonghientai([
+      'location_0158',
+      'location_0168',
+      'location_0178',
+    ]);
     const ask = (r: string[], c: string[], f: string[]) =>
       whereToQueue(layout, occupancyOf(r, c, f) as never);
 

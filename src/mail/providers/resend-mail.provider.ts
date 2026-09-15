@@ -11,7 +11,8 @@ export class ResendMailProvider implements MailProvider {
 
   constructor(config: ConfigService) {
     this.apiKey = config.get<string>('RESEND_API_KEY')!.trim();
-    this.from = config.get<string>('MAIL_FROM') ?? 'WES Console <onboarding@resend.dev>';
+    this.from =
+      config.get<string>('MAIL_FROM') ?? 'WES Console <onboarding@resend.dev>';
   }
 
   async send(input: SendMailInput): Promise<void> {

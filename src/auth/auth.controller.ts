@@ -88,7 +88,11 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const cookies = req.cookies as Record<string, string> | undefined;
-    await this.auth.logout(user.sub, user.sid ?? null, cookies?.[REFRESH_COOKIE]);
+    await this.auth.logout(
+      user.sub,
+      user.sid ?? null,
+      cookies?.[REFRESH_COOKIE],
+    );
     res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
     res.clearCookie(ACCESS_COOKIE, { path: '/api' });
     return { ok: true };

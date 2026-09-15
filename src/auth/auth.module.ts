@@ -9,7 +9,6 @@ import { AuthController } from './auth.controller';
 import { TokenService } from './token.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { PermissionsService } from './permissions.service';
 import { PermissionCatalogueService } from './permission-catalogue.service';
@@ -36,7 +35,6 @@ import { MailModule } from '../mail/mail.module';
     TokenService,
     JwtStrategy,
     JwtAuthGuard,
-    RolesGuard,
     PermissionsGuard,
     PermissionsService,
     PermissionCatalogueService,

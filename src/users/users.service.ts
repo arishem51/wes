@@ -38,7 +38,7 @@ export interface ProfilePatch {
 
 export interface AdminListParams {
   search?: string;
-  role?: FeRole | 'all';
+  role?: FeRole;
   status?: AdminUserDto['status'] | 'all';
 }
 
@@ -96,7 +96,9 @@ export class UsersService implements OnModuleInit {
 
   roleNameOf(user: UserEntity): string {
     const role = user.userRoles?.[0]?.role;
-    return role?.name ?? this.roleNameByKey.get(this.feRoleOf(user)) ?? 'Operator';
+    return (
+      role?.name ?? this.roleNameByKey.get(this.feRoleOf(user)) ?? 'Operator'
+    );
   }
 
   private withRoles() {
@@ -136,7 +138,12 @@ export class UsersService implements OnModuleInit {
 
     return all
       .map((u) =>
-        toAdminUser(u, this.feRoleOf(u), this.roleNameOf(u), onlineIds.has(u.id)),
+        toAdminUser(
+          u,
+          this.feRoleOf(u),
+          this.roleNameOf(u),
+          onlineIds.has(u.id),
+        ),
       )
       .filter((u) => {
         if (params.role && params.role !== 'all' && u.role !== params.role)

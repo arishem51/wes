@@ -78,8 +78,9 @@ describe('upsertMemberLocations', () => {
       { locationName: 'location_3004', pointName: '3004', type: 'Drop off' },
     ]);
 
-    expect(
-      pushed().locations.map((location) => location.typeName),
-    ).toEqual(['Drop off', 'Drop off']);
+    expect(pushed().locations.map((location) => location.typeName)).toEqual([
+      'Drop off',
+      'Drop off',
+    ]);
   });
 });

@@ -238,7 +238,7 @@ describe('AgvsService', () => {
 
   describe('create', () => {
     beforeEach(() => {
-      repo.create.mockImplementation((input) => input);
+      repo.create.mockImplementation((input: unknown) => input);
       repo.save.mockImplementation((entity) => Promise.resolve(entity));
     });
 

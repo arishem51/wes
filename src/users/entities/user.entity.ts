@@ -46,7 +46,11 @@ export class UserEntity {
   @Column({ name: 'must_change_password', default: false })
   mustChangePassword!: boolean;
 
-  @Column({ name: 'password_changed_at', type: 'timestamptz', default: () => 'NOW()' })
+  @Column({
+    name: 'password_changed_at',
+    type: 'timestamptz',
+    default: () => 'NOW()',
+  })
   passwordChangedAt!: Date;
 
   @Column({ name: 'lock_reason', type: 'text', nullable: true })

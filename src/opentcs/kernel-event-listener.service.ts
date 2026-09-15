@@ -342,7 +342,7 @@ export class KernelEventListenerService
     if (seen === signature) return;
     this.lastOrderSignature.set(name, signature);
     if (this.lastOrderSignature.size > ORDER_SIGNATURE_CACHE_MAX) {
-      const oldest = this.lastOrderSignature.keys().next().value;
+      const [oldest] = this.lastOrderSignature.keys();
       if (oldest !== undefined) this.lastOrderSignature.delete(oldest);
     }
 

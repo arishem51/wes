@@ -3,13 +3,17 @@ import { UsersService } from '../users/users.service';
 import { TokenService } from '../auth/token.service';
 import { PermissionsService } from '../auth/permissions.service';
 import type { AccountUserDto } from '../users/user.mapper';
+import { createAppAbility, AuthorizationRules } from '../auth/ability';
 import type {
   ChangePasswordDto,
   UpdatePreferencesDto,
   UpdateProfileDto,
 } from './dto/account.dto';
 
-export type MeDto = AccountUserDto & { permissions: string[] };
+export type MeDto = AccountUserDto & {
+  permissions: string[];
+  authorization: { version: 1; rules: AuthorizationRules };
+};
 
 @Injectable()
 export class AccountService {
@@ -23,7 +27,15 @@ export class AccountService {
   async getMe(userId: string): Promise<MeDto> {
     const account = await this.users.accountOf(userId);
     const perms = await this.permissions.getRolePermissions(account.role);
-    return { ...account, permissions: [...perms] };
+    const mapIds = await this.permissions.getRoleMapScope(account.role);
+    return {
+      ...account,
+      permissions: [...perms],
+      authorization: {
+        version: 1,
+        rules: createAppAbility([...perms], mapIds).rules,
+      },
+    };
   }
 
   // UC-84
@@ -52,7 +64,10 @@ export class AccountService {
     await this.tokens.revokeAllRefreshTokens(userId);
   }
 
-  async revokeOtherSessions(userId: string, currentSessionId: string | null): Promise<void> {
+  async revokeOtherSessions(
+    userId: string,
+    currentSessionId: string | null,
+  ): Promise<void> {
     await this.tokens.endOtherSessions(userId, currentSessionId);
   }
 

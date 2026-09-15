@@ -2,7 +2,21 @@
  * Response shapes for the operating screen (`wes-new-client-v2`). These mirror the DTOs the
  * v2 client already consumes (ported 1:1 from the retired `wes-new` backend) so the client
  * needs no type changes — only its API base URL moves to `/api/operating/*`.
+ *
+ * Request bodies (below the response shapes) are `class`es with `class-validator` decorators —
+ * unlike the response interfaces, these are actually run through the global `ValidationPipe`,
+ * and being real classes is also what lets the OpenAPI/Swagger plugin document them.
  */
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
 
 export interface PlantModelPointDto {
   name: string;
@@ -116,23 +130,72 @@ export interface AreaDto {
   members: AreaMemberDto[];
 }
 
-export interface CreateAreaBody {
+export class AreaMemberInput {
+  @IsString()
+  pointName!: string;
+
+  @IsOptional()
+  @IsNumber()
+  priority?: number;
+}
+
+export class CreateAreaBody {
+  @IsOptional()
+  @IsString()
   wesId?: string;
-  name: string;
-  kind: AreaKind;
+
+  @IsString()
+  name!: string;
+
+  @IsIn(['ZONE', 'STORE'])
+  kind!: AreaKind;
+
+  @IsOptional()
+  @IsString()
   operation?: string;
+
+  @IsOptional()
+  @IsNumber()
   maxVehicles?: number;
+
+  @IsOptional()
+  @IsString()
   color?: string;
-  members: { pointName: string; priority?: number }[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AreaMemberInput)
+  members!: AreaMemberInput[];
 }
 
-export interface ReplaceAreaMembersBody {
+export class ReplaceAreaMembersBody {
+  @IsOptional()
+  @IsString()
   name?: string;
-  members: { pointName: string; priority?: number }[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AreaMemberInput)
+  members!: AreaMemberInput[];
 }
 
-export interface UpdateAreaBody {
+export class UpdateAreaBody {
+  @IsOptional()
+  @IsString()
   color?: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  operation?: string;
+
+  /** `null` explicitly clears a previously-set cap; `undefined` leaves it unchanged. */
+  @ValidateIf((o: UpdateAreaBody) => o.maxVehicles != null)
+  @IsNumber()
+  maxVehicles?: number | null;
 }
 
 // --- Cargo (a wes CargoResponseDto mapped to the operating client's shape) -----------------
@@ -170,9 +233,43 @@ export interface CargoListDto {
   truncated: boolean;
 }
 
-export interface CreateCargoBody {
+// --- Manual transport orders (OperatingCommandsController) -------------------------------
+
+export class OrderDestinationInput {
+  @IsString()
+  name!: string;
+
+  @IsString()
+  operation!: string;
+}
+
+export class CreateManualOrderDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderDestinationInput)
+  destinations!: OrderDestinationInput[];
+
+  @IsOptional()
+  @IsString()
+  intendedVehicle?: string;
+
+  @IsOptional()
+  @IsString()
+  type?: string;
+}
+
+export class CreateCargoBody {
+  @IsOptional()
+  @IsString()
   cargoId?: string;
+
+  @IsOptional()
+  @IsString()
   pickupAreaWesId?: string;
-  pickupPointName: string;
-  targetStoreAreaWesId: string;
+
+  @IsString()
+  pickupPointName!: string;
+
+  @IsString()
+  targetStoreAreaWesId!: string;
 }

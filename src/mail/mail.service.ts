@@ -43,7 +43,8 @@ export class MailService {
     const safeName = escapeHtml(mail.name?.trim() || 'WES user');
     const safeLink = escapeHtml(mail.link);
     const intro =
-      mail.intro ?? 'A password reset was requested for your WES Console account.';
+      mail.intro ??
+      'A password reset was requested for your WES Console account.';
     const subject = mail.subject ?? 'WES Console password reset';
 
     await this.provider.send({

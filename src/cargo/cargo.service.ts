@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { ActiveMapRecordService } from '../maps/infrastructure/active-map-record.service';
 import { CargoEntity, CargoStatus } from './entities/cargo.entity';
 import {
   TransportTaskEntity,
@@ -133,6 +134,7 @@ export class CargoService {
     private readonly vehicleStore: VehicleStateStore,
     private readonly taskTermination: TaskTerminationService,
     private readonly deliverySlotEngine: DeliverySlotEngine,
+    private readonly activeMapRecords: ActiveMapRecordService,
   ) {}
 
   async create(dto: CreateCargoDto, userId: string): Promise<CargoEntity> {
@@ -157,13 +159,13 @@ export class CargoService {
       );
     }
 
-    const loadedMapName = await this.loadedMapName();
+    const loadedMapId = await this.loadedMapId();
     const zone = await this.zoneRepo.findOne({
       where: {
         id: dto.destinationZoneId,
         type: ZoneType.DROPOFF,
         status: ZoneStatus.ACTIVE,
-        plantModelName: loadedMapName,
+        mapRecordId: loadedMapId,
       },
       relations: { members: true },
     });
@@ -175,7 +177,7 @@ export class CargoService {
 
     const sourceZoneId = await this.resolvePickupZoneId(
       pickupLocationName,
-      loadedMapName,
+      loadedMapId,
     );
 
     const capacity = await this.reachableCapacityOf(zone);
@@ -256,9 +258,9 @@ export class CargoService {
   async list(query: ListCargosQueryDto = {}): Promise<CargoListResponse> {
     const page = query.page ?? DEFAULT_PAGE;
     const limit = query.limit ?? DEFAULT_LIMIT;
-    const plantModelName = query.activeMapOnly ? await this.loadedMapName() : null;
+    const mapRecordId = query.activeMapOnly ? await this.loadedMapId() : null;
 
-    const [cargos, total] = await this.buildListQuery(query, plantModelName)
+    const [cargos, total] = await this.buildListQuery(query, mapRecordId)
       .orderBy('cargo.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
@@ -306,15 +308,19 @@ export class CargoService {
 
   private buildListQuery(
     query: ListCargosQueryDto,
-    plantModelName: string | null,
+    mapRecordId: string | null,
   ): SelectQueryBuilder<CargoEntity> {
     const builder = this.cargoRepo.createQueryBuilder('cargo');
 
-    if (plantModelName) {
+    if (mapRecordId) {
       builder
-        .leftJoin('zones', 'dest_zone', 'dest_zone.id = cargo.destination_zone_id')
-        .andWhere('dest_zone.plant_model_name = :plantModelName', {
-          plantModelName,
+        .leftJoin(
+          'zones',
+          'dest_zone',
+          'dest_zone.id = cargo.destination_zone_id',
+        )
+        .andWhere('dest_zone.map_record_id = :mapRecordId', {
+          mapRecordId,
         });
     }
 
@@ -455,19 +461,19 @@ export class CargoService {
     }
   }
 
-  private async loadedMapName(): Promise<string> {
-    const name = await this.kernelApi.getPlantModelName();
-    if (!name) {
+  private async loadedMapId(): Promise<string> {
+    const id = await this.activeMapRecords.resolveId();
+    if (!id) {
       throw new ServiceUnavailableException(
         'Không thể đọc bản đồ đang tải trên hệ thống điều khiển.',
       );
     }
-    return name;
+    return id;
   }
 
   private async resolvePickupZoneId(
     pickupLocationName: string,
-    loadedMapName: string,
+    loadedMapId: string,
   ): Promise<string | null> {
     const zone = await this.zoneRepo
       .createQueryBuilder('z')
@@ -476,7 +482,7 @@ export class CargoService {
       })
       .where('z.type = :type', { type: ZoneType.PICKUP })
       .andWhere('z.status = :status', { status: ZoneStatus.ACTIVE })
-      .andWhere('z.plantModelName = :map', { map: loadedMapName })
+      .andWhere('z.mapRecordId = :map', { map: loadedMapId })
       .getOne();
     return zone?.id ?? null;
   }

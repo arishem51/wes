@@ -94,9 +94,15 @@ export class AddRbacPermissions1804000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "role_permissions"`);
     await queryRunner.query(`DELETE FROM "roles" WHERE "key" = 'viewer'`);
     await queryRunner.query(`DROP INDEX IF EXISTS "roles_key_uq"`);
-    await queryRunner.query(`ALTER TABLE "roles" DROP COLUMN IF EXISTS "updated_at"`);
-    await queryRunner.query(`ALTER TABLE "roles" DROP COLUMN IF EXISTS "created_at"`);
-    await queryRunner.query(`ALTER TABLE "roles" DROP COLUMN IF EXISTS "is_system"`);
+    await queryRunner.query(
+      `ALTER TABLE "roles" DROP COLUMN IF EXISTS "updated_at"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "roles" DROP COLUMN IF EXISTS "created_at"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "roles" DROP COLUMN IF EXISTS "is_system"`,
+    );
     await queryRunner.query(`ALTER TABLE "roles" DROP COLUMN IF EXISTS "key"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "permissions"`);
   }

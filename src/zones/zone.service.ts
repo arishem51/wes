@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -16,6 +17,7 @@ import {
 } from '../opentcs/plant-model-locations';
 import { ZoneLocationWriter } from './zone-location.writer';
 import { ZoneUsageQuery } from './zone-usage.query';
+import { ActiveMapRecordService } from '../maps/infrastructure/active-map-record.service';
 import {
   toZoneResponse,
   type CreateZoneDto,
@@ -64,9 +66,29 @@ export class ZoneService {
     private readonly kernelApi: KernelApiService,
     private readonly locationWriter: ZoneLocationWriter,
     private readonly usage: ZoneUsageQuery,
+    private readonly activeMapRecords: ActiveMapRecordService,
   ) {}
 
-  async create(dto: CreateZoneDto): Promise<ZoneResponse> {
+  /** The currently-loaded map's record id, or null if unresolved — for AUTH-3 scope checks. */
+  activeMapRecordId(): Promise<string | null> {
+    return this.activeMapRecords.resolveId();
+  }
+
+  private assertRecordScope(
+    mapRecordId: string | null,
+    mapIds?: string[],
+  ): void {
+    if (
+      mapIds !== undefined &&
+      (!mapRecordId || !mapIds.includes(mapRecordId))
+    ) {
+      throw new ForbiddenException(
+        'Khu vực nằm ngoài phạm vi bản đồ được phép.',
+      );
+    }
+  }
+
+  async create(dto: CreateZoneDto, mapIds?: string[]): Promise<ZoneResponse> {
     this.validateMembers(dto);
 
     const topology = await readPlantTopology(this.kernelApi);
@@ -87,6 +109,13 @@ export class ZoneService {
     const memberLocationNames = dto.members.map(
       (member) => member.locationName,
     );
+    const activeRecordId = await this.activeMapRecords.resolveId();
+    if (!activeRecordId) {
+      throw new ServiceUnavailableException(
+        'Hãy nạp bản đồ từ Thư viện trước khi tạo khu vực.',
+      );
+    }
+    this.assertRecordScope(activeRecordId, mapIds);
 
     const savedZoneId = await this.dataSource.transaction(async (manager) => {
       const zoneRepo = manager.getRepository(ZoneEntity);
@@ -105,8 +134,11 @@ export class ZoneService {
         name: dto.name,
         type: dto.type,
         color,
+        operation: dto.operation ?? null,
+        maxVehicles: dto.maxVehicles ?? null,
         kernelId,
         plantModelName: topology.name,
+        mapRecordId: activeRecordId,
         status: ZoneStatus.ACTIVE,
       });
 
@@ -132,7 +164,11 @@ export class ZoneService {
     return toZoneResponse(saved);
   }
 
-  async update(id: string, dto: UpdateZoneDto): Promise<ZoneResponse> {
+  async update(
+    id: string,
+    dto: UpdateZoneDto,
+    mapIds?: string[],
+  ): Promise<ZoneResponse> {
     const zone = await this.zoneRepo.findOne({
       where: { id },
       relations: { members: true },
@@ -140,7 +176,11 @@ export class ZoneService {
     if (!zone) {
       throw new NotFoundException('Khu vực không tồn tại.');
     }
-    zone.color = dto.color;
+    this.assertRecordScope(zone.mapRecordId, mapIds);
+    if (dto.color !== undefined) zone.color = dto.color;
+    if (dto.name !== undefined) zone.name = dto.name;
+    if (dto.operation !== undefined) zone.operation = dto.operation;
+    if (dto.maxVehicles !== undefined) zone.maxVehicles = dto.maxVehicles;
     return toZoneResponse(await this.zoneRepo.save(zone));
   }
 
@@ -227,16 +267,17 @@ export class ZoneService {
   }
 
   async list(
-    options: { allMaps?: boolean } = {},
+    options: { allMaps?: boolean; mapIds?: string[] } = {},
   ): Promise<ZoneListItemResponse[]> {
-    const allZones = await this.zoneRepo.find({
-      relations: { members: true },
-      order: { createdAt: 'DESC' },
-    });
-
     const zones = options.allMaps
-      ? allZones
-      : await this.onlyZonesOfLoadedMap(allZones);
+      ? await this.zoneRepo.find({
+          ...(options.mapIds !== undefined
+            ? { where: { mapRecordId: In(options.mapIds) } }
+            : {}),
+          relations: { members: true },
+          order: { createdAt: 'DESC' },
+        })
+      : await this.loadedMapZones(options.mapIds);
 
     if (zones.length === 0) return [];
 
@@ -251,7 +292,7 @@ export class ZoneService {
     }));
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, mapIds?: string[]): Promise<void> {
     const zone = await this.zoneRepo.findOne({
       where: { id },
       relations: { members: true },
@@ -260,6 +301,7 @@ export class ZoneService {
       throw new NotFoundException('Khu vực không tồn tại.');
     }
 
+    this.assertRecordScope(zone.mapRecordId, mapIds);
     if (await this.belongsToLoadedMap(zone)) {
       await this.locationWriter.removeUnshared(zone);
     }
@@ -267,17 +309,25 @@ export class ZoneService {
   }
 
   private async belongsToLoadedMap(zone: ZoneEntity): Promise<boolean> {
-    const loadedMapName = await this.kernelApi.getPlantModelName();
-    return loadedMapName !== null && zone.plantModelName === loadedMapName;
+    const activeRecordId = await this.activeMapRecords.resolveId();
+    return activeRecordId !== null && zone.mapRecordId === activeRecordId;
   }
 
-  private async onlyZonesOfLoadedMap(
-    zones: ZoneEntity[],
-  ): Promise<ZoneEntity[]> {
-    if (zones.length === 0) return [];
-    const loadedMapName = await this.kernelApi.getPlantModelName();
-    if (loadedMapName === null) return [];
-    return zones.filter((zone) => zone.plantModelName === loadedMapName);
+  /**
+   * The loaded map's zones, scoped at the query itself — not loaded-then-filtered in memory.
+   * A list endpoint that pulls every row across every map just to discard most of them is
+   * exactly the "list query leaks out-of-scope data" shape the plan's authorization risk section
+   * calls out; this keeps the scoping condition in the WHERE clause instead.
+   */
+  private async loadedMapZones(mapIds?: string[]): Promise<ZoneEntity[]> {
+    const activeRecordId = await this.activeMapRecords.resolveId();
+    if (activeRecordId === null) return [];
+    if (mapIds !== undefined && !mapIds.includes(activeRecordId)) return [];
+    return this.zoneRepo.find({
+      where: { mapRecordId: activeRecordId },
+      relations: { members: true },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   /**
@@ -285,14 +335,26 @@ export class ZoneService {
    * operator action: maps routinely share point names, so a zone whose points
    * all exist in the loaded map is NOT evidence that it was drawn there.
    */
-  async assignToLoadedMap(zoneIds: string[]): Promise<AssignMapResult> {
-    const topology = await readPlantTopology(this.kernelApi);
+  async assignToLoadedMap(
+    zoneIds: string[],
+    mapIds?: string[],
+  ): Promise<AssignMapResult> {
+    const [topology, activeRecordId] = await Promise.all([
+      readPlantTopology(this.kernelApi),
+      this.activeMapRecords.resolveId(),
+    ]);
     if (!topology) {
       throw new ServiceUnavailableException(
         'Không thể đọc bản đồ đang tải trên hệ thống điều khiển.',
       );
     }
+    if (!activeRecordId) {
+      throw new ServiceUnavailableException(
+        `Bản đồ "${topology.name}" đang tải trên hệ thống điều khiển không khớp bản ghi nào trong Thư viện bản đồ của WES — hãy nạp lại đúng bản đồ từ Thư viện trước khi gán khu vực.`,
+      );
+    }
 
+    this.assertRecordScope(activeRecordId, mapIds);
     const zones = await this.zoneRepo.find({
       where: { id: In(zoneIds) },
       relations: { members: true },
@@ -301,6 +363,8 @@ export class ZoneService {
       throw new NotFoundException('Không tìm thấy khu vực nào để gán.');
     }
 
+    // Both the source resources and destination must be allowed, before any write.
+    for (const zone of zones) this.assertRecordScope(zone.mapRecordId, mapIds);
     const offMap = zones.filter(
       (zone) => !this.canRepairZone(zone, topology.pointNames),
     );
@@ -313,6 +377,7 @@ export class ZoneService {
 
     for (const zone of zones) {
       zone.plantModelName = topology.name;
+      zone.mapRecordId = activeRecordId;
       await this.zoneRepo.save(zone);
       this.logger.log(
         `Zone "${zone.name}" (${zone.id}) assigned to map "${topology.name}"`,
@@ -340,10 +405,13 @@ export class ZoneService {
    *   single PUT. If the kernel rejects the write (e.g. read-only/OPERATING), the
    *   zones that needed rebuilding fall back to STALE.
    */
-  async sync(): Promise<SyncResult> {
+  async sync(mapIds?: string[]): Promise<SyncResult> {
     // Sync may rewrite the kernel map, so always read it fresh (not from cache).
     this.kernelApi.invalidatePlantModelCache();
-    const topology = await readPlantTopology(this.kernelApi);
+    const [topology, activeRecordId] = await Promise.all([
+      readPlantTopology(this.kernelApi),
+      this.activeMapRecords.resolveId(),
+    ]);
 
     if (!topology) {
       this.logger.warn('Sync skipped: kernel unreachable');
@@ -358,11 +426,12 @@ export class ZoneService {
       };
     }
 
+    this.assertRecordScope(activeRecordId, mapIds);
     const allZones = await this.zoneRepo.find({ relations: { members: true } });
-    const zones = allZones.filter(
-      (zone) => zone.plantModelName === topology.name,
-    );
-    const unassigned = allZones.filter((zone) => !zone.plantModelName).length;
+    const zones = activeRecordId
+      ? allZones.filter((zone) => zone.mapRecordId === activeRecordId)
+      : [];
+    const unassigned = allZones.filter((zone) => !zone.mapRecordId).length;
     const skippedOtherMaps = allZones.length - zones.length - unassigned;
 
     const plan = this.planFor(zones, topology);

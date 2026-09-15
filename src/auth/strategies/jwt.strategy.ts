@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
@@ -63,7 +67,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Tài khoản không tồn tại.');
     }
     if (auth.isLocked) {
-      throw new UnauthorizedException('Tài khoản đã bị khoá — vui lòng đăng nhập lại.');
+      throw new UnauthorizedException(
+        'Tài khoản đã bị khoá — vui lòng đăng nhập lại.',
+      );
     }
     if (!auth.isActive && !auth.isInvited) {
       throw new UnauthorizedException('Tài khoản không còn hoạt động.');
@@ -74,7 +80,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!isPermanentToken && payload.sid) {
       const active = await this.tokens.sessionActive(payload.sid);
       if (!active) {
-        throw new UnauthorizedException('Phiên đã đăng xuất — vui lòng đăng nhập lại.');
+        throw new UnauthorizedException(
+          'Phiên đã đăng xuất — vui lòng đăng nhập lại.',
+        );
       }
     }
 
@@ -85,7 +93,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!isPermanentToken) {
       // `iat` is whole seconds per the JWT spec; floor passwordChangedAt the same way so a
       // token issued in the same second as the password change isn't falsely rejected.
-      const passwordChangedAtSec = Math.floor(auth.passwordChangedAt.getTime() / 1000);
+      const passwordChangedAtSec = Math.floor(
+        auth.passwordChangedAt.getTime() / 1000,
+      );
       if ((payload.iat ?? 0) < passwordChangedAtSec) {
         throw new UnauthorizedException(
           'Mật khẩu vừa được đổi — vui lòng đăng nhập lại.',
@@ -93,7 +103,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       }
     }
 
-    const mustChangePassword = isPermanentToken ? false : auth.mustChangePassword;
+    const mustChangePassword = isPermanentToken
+      ? false
+      : auth.mustChangePassword;
     if (mustChangePassword && !isAllowedWhileMustChangePassword(req)) {
       throw new ForbiddenException('Bạn phải đổi mật khẩu trước khi tiếp tục.');
     }
@@ -103,6 +115,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // on the very next request, not linger until the token expires.
     const role = auth.roleKey;
     const perms = await this.permissions.getRolePermissions(role);
+    const mapIds = await this.permissions.getRoleMapScope(role);
 
     return {
       sub: payload.sub,
@@ -110,6 +123,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role,
       roles: [role],
       perms: [...perms],
+      mapIds,
       jti: payload.jti,
       sid: payload.sid,
       mustChangePassword,

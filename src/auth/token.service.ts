@@ -52,9 +52,11 @@ export class TokenService {
    * succeed — the loser gets 0 affected rows instead of silently reusing an already-rotated
    * token. Returns null if the token is unknown, already used, or expired.
    */
-  async rotateRefreshToken(
-    raw: string,
-  ): Promise<{ userId: string; token: string; sessionId: string | null } | null> {
+  async rotateRefreshToken(raw: string): Promise<{
+    userId: string;
+    token: string;
+    sessionId: string | null;
+  } | null> {
     const result = await this.refreshTokens
       .createQueryBuilder()
       .update(RefreshTokenEntity)
@@ -64,9 +66,11 @@ export class TokenService {
       .andWhere('expires_at > now()')
       .returning(['id', 'user_id', 'session_id'])
       .execute();
-    const row = result.raw[0] as
-      | { id: string; user_id: string; session_id: string | null }
-      | undefined;
+    const [row] = result.raw as {
+      id: string;
+      user_id: string;
+      session_id: string | null;
+    }[];
     if (!row) return null;
     const token = await this.issueRefreshToken(row.user_id, row.session_id);
     return { userId: row.user_id, token, sessionId: row.session_id };
@@ -115,7 +119,7 @@ export class TokenService {
       .andWhere('expires_at > now()')
       .returning(['user_id'])
       .execute();
-    const row = result.raw[0] as { user_id: string } | undefined;
+    const [row] = result.raw as { user_id: string }[];
     return row?.user_id ?? null;
   }
 
@@ -163,7 +167,10 @@ export class TokenService {
   }
 
   /** End every other active session, excluding the caller's own (by id, not "most recent"). */
-  async endOtherSessions(userId: string, currentSessionId: string | null): Promise<void> {
+  async endOtherSessions(
+    userId: string,
+    currentSessionId: string | null,
+  ): Promise<void> {
     const active = await this.sessions.find({
       where: { userId, logoutAt: IsNull() },
     });

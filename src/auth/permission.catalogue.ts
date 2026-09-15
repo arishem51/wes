@@ -28,6 +28,22 @@ export interface PermissionDef {
 }
 
 export const PERMISSION_CATALOGUE: PermissionDef[] = [
+  {
+    key: 'agvs.manage',
+    cluster: 'admin',
+    dangerous: true,
+    labelVi: 'Quản lý đăng ký AGV',
+    labelEn: 'Manage AGV registry',
+    labelJa: 'AGV登録管理',
+  },
+  {
+    key: 'dispatch.manage',
+    cluster: 'admin',
+    dangerous: true,
+    labelVi: 'Quản lý chính sách điều phối',
+    labelEn: 'Manage dispatch policies',
+    labelJa: '配車ポリシー管理',
+  },
   // ── Cụm: Xem (read-only — every role gets these) ─────────────────────────────
   {
     key: 'map.view',

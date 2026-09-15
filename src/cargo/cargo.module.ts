@@ -1,3 +1,4 @@
+import { MapRecordCoreModule } from '../maps/map-record-core.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CargoEntity } from './entities/cargo.entity';
@@ -51,6 +52,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
       AgvEntity,
     ]),
     OpenTcsModule,
+    MapRecordCoreModule,
   ],
   providers: [
     CargoService,

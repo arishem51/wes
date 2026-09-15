@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { RoleEntity } from '../users/entities/role.entity';
 import { RolePermissionEntity } from '../users/entities/role-permission.entity';
+import { RoleMapScopeEntity } from '../users/entities/role-map-scope.entity';
 import { ApiTokenEntity } from '../users/entities/api-token.entity';
 import { UsersService } from '../users/users.service';
 import { IMPLICIT_VIEW_PERMISSIONS } from './permission.catalogue';
@@ -20,24 +21,31 @@ const STALE_LAST_USED_MS = 5 * 60_000;
 @Injectable()
 export class PermissionsService {
   private cache = new Map<string, Set<string>>();
+  /** `undefined` is a valid cached value (unrestricted) — `.has()` distinguishes that from "not cached yet". */
+  private mapScopeCache = new Map<string, string[] | undefined>();
 
   constructor(
     @InjectRepository(RoleEntity)
     private readonly roles: Repository<RoleEntity>,
     @InjectRepository(RolePermissionEntity)
     private readonly rolePermissions: Repository<RolePermissionEntity>,
+    @InjectRepository(RoleMapScopeEntity)
+    private readonly roleMapScopes: Repository<RoleMapScopeEntity>,
     @InjectRepository(ApiTokenEntity)
     private readonly apiTokens: Repository<ApiTokenEntity>,
     private readonly users: UsersService,
   ) {}
 
-  /** Drop the cache — call after any role / role_permissions mutation. */
+  /** Drop the cache — call after any role / role_permissions / role_map_scopes mutation. */
   refresh(): void {
     this.cache.clear();
+    this.mapScopeCache.clear();
   }
 
   /** Effective permissions for a role key (grants ∪ implicit read permissions). */
-  async getRolePermissions(roleKey: string | null | undefined): Promise<Set<string>> {
+  async getRolePermissions(
+    roleKey: string | null | undefined,
+  ): Promise<Set<string>> {
     const key = roleKey ?? '';
     const cached = this.cache.get(key);
     if (cached) return cached;
@@ -56,8 +64,36 @@ export class PermissionsService {
     return perms;
   }
 
-  async hasPermission(roleKey: string | null | undefined, permission: string): Promise<boolean> {
+  async hasPermission(
+    roleKey: string | null | undefined,
+    permission: string,
+  ): Promise<boolean> {
     return (await this.getRolePermissions(roleKey)).has(permission);
+  }
+
+  /**
+   * Map records a role is restricted to, or `undefined` if the role has no scope rows
+   * (unrestricted — sees/acts on every map, identical to today's behavior). See
+   * `createAppAbility`'s `mapIds` contract in `./ability.ts`.
+   */
+  async getRoleMapScope(
+    roleKey: string | null | undefined,
+  ): Promise<string[] | undefined> {
+    const key = roleKey ?? '';
+    if (this.mapScopeCache.has(key)) return this.mapScopeCache.get(key);
+
+    let scope: string[] | undefined;
+    if (key) {
+      const role = await this.roles.findOne({ where: { key } });
+      if (role) {
+        const rows = await this.roleMapScopes.find({
+          where: { roleId: role.id },
+        });
+        if (rows.length > 0) scope = rows.map((r) => r.mapRecordId);
+      }
+    }
+    this.mapScopeCache.set(key, scope);
+    return scope;
   }
 
   hashToken(raw: string): string {
@@ -86,15 +122,19 @@ export class PermissionsService {
    * directly, bypassing JWT verification entirely (there is no JWT to verify).
    */
   async resolveAuthUserForApiKey(rawToken: string): Promise<AuthUser | null> {
-    const row = await this.apiTokens.findOne({ where: { tokenHash: this.hashToken(rawToken) } });
+    const row = await this.apiTokens.findOne({
+      where: { tokenHash: this.hashToken(rawToken) },
+    });
     if (!row || row.revokedAt) return null;
 
     const auth = await this.users.authStateOf(row.userId);
-    if (!auth || auth.isLocked || (!auth.isActive && !auth.isInvited)) return null;
+    if (!auth || auth.isLocked || (!auth.isActive && !auth.isInvited))
+      return null;
 
     const user = await this.users.findByIdOrFail(row.userId);
     const role = this.users.feRoleOf(user);
     const perms = await this.getRolePermissions(role);
+    const mapIds = await this.getRoleMapScope(role);
     await this.touchLastUsed(row);
 
     return {
@@ -103,12 +143,16 @@ export class PermissionsService {
       role,
       roles: [role],
       perms: [...perms],
+      mapIds,
       mustChangePassword: false,
     };
   }
 
   private async touchLastUsed(row: ApiTokenEntity): Promise<void> {
-    if (!row.lastUsedAt || Date.now() - row.lastUsedAt.getTime() > STALE_LAST_USED_MS) {
+    if (
+      !row.lastUsedAt ||
+      Date.now() - row.lastUsedAt.getTime() > STALE_LAST_USED_MS
+    ) {
       await this.apiTokens.update({ id: row.id }, { lastUsedAt: new Date() });
     }
   }

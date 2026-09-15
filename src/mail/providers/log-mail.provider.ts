@@ -5,9 +5,10 @@ import type { MailProvider, SendMailInput } from '../mail-provider.interface';
 export class LogMailProvider implements MailProvider {
   private readonly logger = new Logger(LogMailProvider.name);
 
-  async send(input: SendMailInput): Promise<void> {
+  send(input: SendMailInput): Promise<void> {
     this.logger.warn(
       `No mail provider configured; email to ${input.to} not sent:\n${input.text}`,
     );
+    return Promise.resolve();
   }
 }

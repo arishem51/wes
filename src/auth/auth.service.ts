@@ -97,13 +97,21 @@ export class AuthService {
     return {
       token: this.signAccess(user, sessionId),
       refreshToken: await this.tokens.issueRefreshToken(user.id, sessionId),
-      user: toAccountUser(user, this.users.feRoleOf(user), this.users.roleNameOf(user)),
+      user: toAccountUser(
+        user,
+        this.users.feRoleOf(user),
+        this.users.roleNameOf(user),
+      ),
     };
   }
 
   // UC-82 — ends only the calling device's session; other devices keep working. Admin-forced
   // lock/remove/reset still goes through `tokens.endAllSessions`.
-  async logout(userId: string, sessionId: string | null, refreshToken?: string): Promise<void> {
+  async logout(
+    userId: string,
+    sessionId: string | null,
+    refreshToken?: string,
+  ): Promise<void> {
     if (refreshToken) await this.tokens.revokeRefreshToken(refreshToken);
     if (sessionId) await this.tokens.endSession(sessionId);
   }
@@ -123,7 +131,11 @@ export class AuthService {
     return {
       token: this.signAccess(user, rotated.sessionId),
       refreshToken: rotated.token,
-      user: toAccountUser(user, this.users.feRoleOf(user), this.users.roleNameOf(user)),
+      user: toAccountUser(
+        user,
+        this.users.feRoleOf(user),
+        this.users.roleNameOf(user),
+      ),
     };
   }
 

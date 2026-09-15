@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { KernelApiService } from './kernel-api.service';
-import { kernelHttpStatus, toTransportOrderException } from './transport-order-error';
+import {
+  kernelHttpStatus,
+  toTransportOrderException,
+} from './transport-order-error';
 import {
   buildOrderName,
   deterministicOrderUuid,
@@ -23,7 +26,12 @@ export class TransportOrderService {
     const uuid = order.idempotencyKey
       ? deterministicOrderUuid(order.kind, order.idempotencyKey)
       : randomUUID();
-    const orderName = buildOrderName(order.kind, order.vehicleName, order.aimedAt, uuid);
+    const orderName = buildOrderName(
+      order.kind,
+      order.vehicleName,
+      order.aimedAt,
+      uuid,
+    );
 
     try {
       await this.createOrder(order, orderName);
@@ -57,7 +65,12 @@ export class TransportOrderService {
       this.logger.warn(
         `Order "${orderName}" already existed but is done (${state ?? 'gone'}) — minting a fresh name for this attempt`,
       );
-      const freshName = buildOrderName(order.kind, order.vehicleName, order.aimedAt, randomUUID());
+      const freshName = buildOrderName(
+        order.kind,
+        order.vehicleName,
+        order.aimedAt,
+        randomUUID(),
+      );
       try {
         await this.createOrder(order, freshName);
       } catch (retryErr) {
@@ -67,7 +80,10 @@ export class TransportOrderService {
     }
   }
 
-  private async createOrder(order: IssueTransportOrder, orderName: string): Promise<void> {
+  private async createOrder(
+    order: IssueTransportOrder,
+    orderName: string,
+  ): Promise<void> {
     await this.kernelApi.createTransportOrder(
       orderName,
       [...order.destinations],
@@ -82,7 +98,10 @@ export class TransportOrderService {
     options: CancelTransportOrder = {},
   ): Promise<void> {
     try {
-      await this.kernelApi.withdrawTransportOrder(orderName, !!options.immediate);
+      await this.kernelApi.withdrawTransportOrder(
+        orderName,
+        !!options.immediate,
+      );
     } catch (err) {
       // 404 (ObjectUnknownException): the order is already gone — nothing left to withdraw,
       // not a failure.

@@ -39,7 +39,10 @@ export class VehicleStateStore {
    *  one was — lets `/operating/health` tell "connected but stale" apart from "connected and
    *  flowing", instead of a fixed `connected: boolean` that can't distinguish the two. */
   getEventStats(): { eventCount: number; lastEventAt: string | null } {
-    return { eventCount: this.eventCount, lastEventAt: this.lastEventAt?.toISOString() ?? null };
+    return {
+      eventCount: this.eventCount,
+      lastEventAt: this.lastEventAt?.toISOString() ?? null,
+    };
   }
 
   set(name: string, state: KernelVehicleState): void {
