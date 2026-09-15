@@ -30,6 +30,7 @@ describe('OperatingCommandsService', () => {
       | 'getVehicles'
       | 'setVehiclePaused'
       | 'createManualTransportOrder'
+      | 'sendInstantAction'
     >
   >;
   let store: VehicleStateStore;
@@ -46,6 +47,7 @@ describe('OperatingCommandsService', () => {
       createManualTransportOrder: jest
         .fn()
         .mockResolvedValue({ name: 'TO-1' }),
+      sendInstantAction: jest.fn().mockResolvedValue(undefined),
     };
     store = new VehicleStateStore();
     plantModel = {
@@ -124,6 +126,18 @@ describe('OperatingCommandsService', () => {
         [{ locationName: 'location_P1', operation: 'Charge' }],
         { intendedVehicle: undefined, type: undefined },
       );
+    });
+  });
+
+  describe('stopCharging', () => {
+    it('sends a VDA5050 "stopCharging" instant action straight to the vehicle', async () => {
+      const result = await service.stopCharging('V1');
+
+      expect(kernelApi.sendInstantAction).toHaveBeenCalledWith(
+        'V1',
+        'stopCharging',
+      );
+      expect(result).toEqual({ ok: true });
     });
   });
 

@@ -47,6 +47,7 @@ export const PERMISSION_POLICIES: Record<
   'vehicle.comm_adapter': ['comm_adapter', 'Vehicle'],
   'vehicle.send_to_point': ['send_to_point', 'Vehicle'],
   'vehicle.withdraw': ['withdraw', 'Vehicle'],
+  'vehicle.stop_charging': ['stop_charging', 'Vehicle'],
   'order.create': ['create', 'Order'],
   'order.withdraw': ['withdraw', 'Order'],
   'cargo.create': ['create', 'Cargo'],

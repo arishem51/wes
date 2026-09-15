@@ -139,6 +139,17 @@ export class OperatingCommandsService {
   }
 
   /**
+   * A VDA5050 instant action — sent straight to the vehicle's comm adapter over MQTT, bypassing
+   * the transport-order/route system entirely (unlike `startCharging`, which only ever happens
+   * as part of a routed order to a Charging-type Location). Takes effect regardless of whatever
+   * order/route state the vehicle is currently in.
+   */
+  async stopCharging(name: string): Promise<{ ok: true }> {
+    await this.kernelApi.sendInstantAction(name, 'stopCharging');
+    return { ok: true };
+  }
+
+  /**
    * Disconnecting a vehicle hands it back to the kernel cleanly: withdraw whatever order it's
    * running (so resources/reservations release properly) and set it TO_BE_IGNORED before the
    * comm adapter actually goes down — never leave the kernel still planning around a vehicle
