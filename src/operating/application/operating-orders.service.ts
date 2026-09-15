@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
+import { Observable, Subject } from 'rxjs';
 import { KernelApiService } from '../../opentcs/kernel-api.service';
+import { FMS_EVENTS } from '../../cargo/domain/events';
 import type { TransportOrderDto } from '../dto/operating.dto';
 import {
   computeRouteProgress,
@@ -34,8 +37,20 @@ export class OperatingOrdersService {
    *  SSE subscriber calls `routeProgress` independently, so without this an N-subscriber tab
    *  count turns into N kernel reads per event on a cold/expired cache entry. */
   private readonly inFlight = new Map<string, Promise<RouteProgress>>();
+  private readonly ticks = new Subject<void>();
 
   constructor(private readonly kernelApi: KernelApiService) {}
+
+  /** Fires whenever any kernel transport order's state actually changes — lets the operating
+   *  screen's Order panel push-update over SSE instead of polling the kernel on a fixed timer. */
+  get changes$(): Observable<void> {
+    return this.ticks.asObservable();
+  }
+
+  @OnEvent(FMS_EVENTS.TRANSPORT_ORDER_CHANGED)
+  onOrderChanged(): void {
+    this.ticks.next();
+  }
 
   async list(): Promise<TransportOrderDto[]> {
     const raw =
