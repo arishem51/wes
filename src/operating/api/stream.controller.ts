@@ -45,7 +45,7 @@ export class OperatingStreamController {
         catchError(() => EMPTY),
       ),
       this.orders.changes$.pipe(
-        map(() => ({ data: { kind: 'order' } })),
+        map((order) => ({ data: { kind: 'order', payload: order } })),
         catchError(() => EMPTY),
       ),
       sseHeartbeat$(SSE_HEARTBEAT_MS, this.users, this.tokens, this.permissions, user),
