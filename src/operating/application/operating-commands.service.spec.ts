@@ -2,6 +2,7 @@ import { OperatingCommandsService } from './operating-commands.service';
 import { KernelApiService } from '../../opentcs/kernel-api.service';
 import { VehicleStateStore } from '../../opentcs/vehicle-state.store';
 import type { KernelVehicleState } from '../../opentcs/domain/kernel-model';
+import type { OperatingPlantModelService } from './operating-plant-model.service';
 
 function vehicle(
   overrides: Partial<KernelVehicleState> = {},
@@ -28,9 +29,12 @@ describe('OperatingCommandsService', () => {
       | 'withdrawVehicleOrder'
       | 'getVehicles'
       | 'setVehiclePaused'
+      | 'createManualTransportOrder'
+      | 'sendInstantAction'
     >
   >;
   let store: VehicleStateStore;
+  let plantModel: jest.Mocked<Pick<OperatingPlantModelService, 'locations' | 'locationTypes'>>;
   let service: OperatingCommandsService;
 
   beforeEach(() => {
@@ -40,12 +44,101 @@ describe('OperatingCommandsService', () => {
       withdrawVehicleOrder: jest.fn().mockResolvedValue(undefined),
       getVehicles: jest.fn().mockResolvedValue([]),
       setVehiclePaused: jest.fn().mockResolvedValue(undefined),
+      createManualTransportOrder: jest
+        .fn()
+        .mockResolvedValue({ name: 'TO-1' }),
+      sendInstantAction: jest.fn().mockResolvedValue(undefined),
     };
     store = new VehicleStateStore();
+    plantModel = {
+      locations: jest.fn().mockResolvedValue([]),
+      locationTypes: jest.fn().mockResolvedValue([]),
+    };
     service = new OperatingCommandsService(
       kernelApi as unknown as KernelApiService,
       store,
+      plantModel as unknown as OperatingPlantModelService,
     );
+  });
+
+  describe('createOrder', () => {
+    it('sends a bare point through unchanged for MOVE/NOP', async () => {
+      await service.createOrder({
+        destinations: [{ name: 'P1', operation: 'MOVE' }],
+      });
+
+      expect(kernelApi.createManualTransportOrder).toHaveBeenCalledWith(
+        [{ locationName: 'P1', operation: 'MOVE' }],
+        { intendedVehicle: undefined, type: undefined },
+      );
+    });
+
+    it('resolves a point + real action to the Location linked to that point supporting it', async () => {
+      plantModel.locations.mockResolvedValue([
+        { name: 'location_P1', type: 'Charging', pointNames: ['P1'] },
+      ]);
+      plantModel.locationTypes.mockResolvedValue([
+        { name: 'Charging', allowedOperations: ['Charge'] },
+      ]);
+
+      await service.createOrder({
+        destinations: [{ name: 'P1', operation: 'Charge' }],
+      });
+
+      expect(kernelApi.createManualTransportOrder).toHaveBeenCalledWith(
+        [{ locationName: 'location_P1', operation: 'Charge' }],
+        { intendedVehicle: undefined, type: undefined },
+      );
+    });
+
+    it('rejects a point + action combination no Location there supports', async () => {
+      plantModel.locations.mockResolvedValue([
+        { name: 'location_P1', type: 'Pick up', pointNames: ['P1'] },
+      ]);
+      plantModel.locationTypes.mockResolvedValue([
+        { name: 'Pick up', allowedOperations: ['liftUp'] },
+      ]);
+
+      await expect(
+        service.createOrder({
+          destinations: [{ name: 'P1', operation: 'Charge' }],
+        }),
+      ).rejects.toThrow(/không có Location nào hỗ trợ/);
+      expect(kernelApi.createManualTransportOrder).not.toHaveBeenCalled();
+    });
+
+    it('rejects with no destinations at all', async () => {
+      await expect(service.createOrder({ destinations: [] })).rejects.toThrow(
+        'Cần ít nhất 1 điểm đến.',
+      );
+    });
+
+    it('passes a real Location name through unchanged (a caller bypassing the point-based UI)', async () => {
+      plantModel.locations.mockResolvedValue([
+        { name: 'location_P1', type: 'Charging', pointNames: ['P1'] },
+      ]);
+
+      await service.createOrder({
+        destinations: [{ name: 'location_P1', operation: 'Charge' }],
+      });
+
+      expect(kernelApi.createManualTransportOrder).toHaveBeenCalledWith(
+        [{ locationName: 'location_P1', operation: 'Charge' }],
+        { intendedVehicle: undefined, type: undefined },
+      );
+    });
+  });
+
+  describe('stopCharging', () => {
+    it('sends a VDA5050 "stopCharging" instant action straight to the vehicle', async () => {
+      const result = await service.stopCharging('V1');
+
+      expect(kernelApi.sendInstantAction).toHaveBeenCalledWith(
+        'V1',
+        'stopCharging',
+      );
+      expect(result).toEqual({ ok: true });
+    });
   });
 
   describe('setCommAdapter(false) — disconnect', () => {

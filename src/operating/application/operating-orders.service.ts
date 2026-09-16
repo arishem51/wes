@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
+import { Observable, Subject } from 'rxjs';
 import { KernelApiService } from '../../opentcs/kernel-api.service';
+import { FMS_EVENTS } from '../../cargo/domain/events';
 import type { TransportOrderDto } from '../dto/operating.dto';
 import {
   computeRouteProgress,
@@ -34,8 +37,25 @@ export class OperatingOrdersService {
    *  SSE subscriber calls `routeProgress` independently, so without this an N-subscriber tab
    *  count turns into N kernel reads per event on a cold/expired cache entry. */
   private readonly inFlight = new Map<string, Promise<RouteProgress>>();
+  private readonly ticks = new Subject<TransportOrderDto>();
 
   constructor(private readonly kernelApi: KernelApiService) {}
+
+  /** Fires the changed order's DTO whenever a kernel transport order's state actually changes —
+   *  lets the operating screen's Order panel patch just that row over SSE instead of the FE
+   *  invalidating and re-fetching the whole list on every tick. */
+  get changes$(): Observable<TransportOrderDto> {
+    return this.ticks.asObservable();
+  }
+
+  @OnEvent(FMS_EVENTS.TRANSPORT_ORDER_CHANGED)
+  async onOrderChanged(name: string): Promise<void> {
+    const raw = (await this.kernelApi
+      .getTransportOrderRaw(name)
+      .catch(() => null)) as RawOrder | null;
+    if (!raw) return;
+    this.ticks.next(toTransportOrderDto(raw));
+  }
 
   async list(): Promise<TransportOrderDto[]> {
     const raw =

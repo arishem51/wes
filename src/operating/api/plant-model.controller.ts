@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ActiveMapScopeGuard } from '../../maps/api/active-map-scope.guard';
 import { OperatingPlantModelService } from '../application/operating-plant-model.service';
 import type {
+  PlantModelLocationDto,
   PlantModelLocationTypeDto,
   PlantModelPathDto,
   PlantModelPointsDto,
@@ -28,5 +29,10 @@ export class OperatingPlantModelController {
   @Get('location-types')
   locationTypes(): Promise<PlantModelLocationTypeDto[]> {
     return this.plantModel.locationTypes();
+  }
+
+  @Get('locations')
+  locations(): Promise<PlantModelLocationDto[]> {
+    return this.plantModel.locations();
   }
 }

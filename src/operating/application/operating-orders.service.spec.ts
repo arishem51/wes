@@ -75,3 +75,50 @@ describe('OperatingOrdersService.routeProgress', () => {
     expect(kernelApi.getTransportOrderRaw).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('OperatingOrdersService.changes$', () => {
+  it('fetches the changed order and emits its mapped DTO', async () => {
+    const kernelApi = {
+      getTransportOrderRaw: jest.fn().mockResolvedValue({
+        name: 'TO-1',
+        type: 'TRANSPORT',
+        state: 'BEING_PROCESSED',
+        processingVehicle: 'V1',
+        intendedVehicle: null,
+        wrappingSequence: null,
+        destinations: [{ locationName: 'L1', operation: 'PICK' }],
+        creationTime: '2026-01-01T00:00:00Z',
+        finishedTime: null,
+      }),
+    };
+    const service = new OperatingOrdersService(
+      kernelApi as unknown as KernelApiService,
+    );
+    const received: unknown[] = [];
+    const sub = service.changes$.subscribe((v) => received.push(v));
+
+    await service.onOrderChanged('TO-1');
+    await service.onOrderChanged('TO-1');
+    sub.unsubscribe();
+
+    expect(kernelApi.getTransportOrderRaw).toHaveBeenCalledWith('TO-1');
+    expect(received).toHaveLength(2);
+    expect(received[0]).toMatchObject({ name: 'TO-1', state: 'BEING_PROCESSED' });
+  });
+
+  it('skips emitting when the kernel fetch fails', async () => {
+    const kernelApi = {
+      getTransportOrderRaw: jest.fn().mockRejectedValue(new Error('down')),
+    };
+    const service = new OperatingOrdersService(
+      kernelApi as unknown as KernelApiService,
+    );
+    const received: unknown[] = [];
+    const sub = service.changes$.subscribe((v) => received.push(v));
+
+    await service.onOrderChanged('TO-1');
+    sub.unsubscribe();
+
+    expect(received).toHaveLength(0);
+  });
+});

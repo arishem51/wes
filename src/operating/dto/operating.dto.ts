@@ -49,6 +49,14 @@ export interface PlantModelLocationTypeDto {
   allowedOperations: string[];
 }
 
+/** A kernel Location and the point(s) it's linked to — the real source for "what can I do at
+ *  this point", independent of WES's own Zone/Store abstraction. */
+export interface PlantModelLocationDto {
+  name: string;
+  type: string;
+  pointNames: string[];
+}
+
 export interface PlantModelPointsDto {
   modelName: string;
   points: PlantModelPointDto[];

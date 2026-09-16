@@ -96,6 +96,13 @@ export const PERMISSION_CATALOGUE: PermissionDef[] = [
     labelEn: 'Withdraw order from vehicle',
     labelJa: '車両からオーダーを取り消す',
   },
+  {
+    key: 'vehicle.stop_charging',
+    cluster: 'vehicle',
+    labelVi: 'Dừng sạc xe ngay lập tức',
+    labelEn: 'Stop vehicle charging immediately',
+    labelJa: '車両の充電を即時停止',
+  },
 
   // ── Cụm: Đơn vận chuyển ─────────────────────────────────────────────────────
   {
@@ -252,6 +259,7 @@ export const SYSTEM_ROLE_GRANTS: Record<string, string[]> = {
     'vehicle.comm_adapter',
     'vehicle.send_to_point',
     'vehicle.withdraw',
+    'vehicle.stop_charging',
     'order.create',
     'order.withdraw',
     'cargo.create',

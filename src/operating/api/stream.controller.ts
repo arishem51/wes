@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { OperatingVehiclesService } from '../application/operating-vehicles.service';
 import { OperatingCargoService } from '../application/operating-cargo.service';
 import { OperatingAreasService } from '../application/operating-areas.service';
+import { OperatingOrdersService } from '../application/operating-orders.service';
 
 const SSE_HEARTBEAT_MS = 15_000;
 
@@ -22,6 +23,7 @@ export class OperatingStreamController {
     private readonly vehicles: OperatingVehiclesService,
     private readonly cargo: OperatingCargoService,
     private readonly areas: OperatingAreasService,
+    private readonly orders: OperatingOrdersService,
     private readonly users: UsersService,
     private readonly tokens: TokenService,
     private readonly permissions: PermissionsService,
@@ -40,6 +42,10 @@ export class OperatingStreamController {
       ),
       this.areas.changes$.pipe(
         map(() => ({ data: { kind: 'area' } })),
+        catchError(() => EMPTY),
+      ),
+      this.orders.changes$.pipe(
+        map((order) => ({ data: { kind: 'order', payload: order } })),
         catchError(() => EMPTY),
       ),
       sseHeartbeat$(SSE_HEARTBEAT_MS, this.users, this.tokens, this.permissions, user),
