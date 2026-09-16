@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { In, IsNull, Not, Repository } from 'typeorm';
 import { KernelApiService } from '../../opentcs/kernel-api.service';
 import { parseOpenTcsXml } from '../../opentcs/map-loader/opentcs-xml.parser';
@@ -14,6 +15,7 @@ import { MapRecordEntity } from '../infrastructure/entities/map-record.entity';
 import { ZoneEntity } from '../../zones/entities/zone.entity';
 import { ZoneService } from '../../zones/zone.service';
 import { ActiveMapRecordService } from '../infrastructure/active-map-record.service';
+import { FMS_EVENTS, FmsMapLoadedEvent } from '../../cargo/domain/events';
 import {
   areasForMap,
   CURRENT_PREVIEW_VERSION,
@@ -41,6 +43,7 @@ export class MapLibraryService {
     private readonly zoneRepo: Repository<ZoneEntity>,
     private readonly zoneService: ZoneService,
     private readonly activeMapRecords: ActiveMapRecordService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /** `mapIds`: the caller's AUTH-3 map scope (`undefined` = unrestricted — see `ability.ts`). */
@@ -223,6 +226,10 @@ export class MapLibraryService {
 
     this.logger.log(
       `Loaded stored map "${saved.name}" (${saved.id}) into the kernel`,
+    );
+    this.eventEmitter.emit(
+      FMS_EVENTS.MAP_LOADED,
+      new FmsMapLoadedEvent(saved.id),
     );
 
     const zones = await this.zoneRepo.find({

@@ -63,6 +63,7 @@ describe('load → active identity → sync', () => {
         { find: () => Promise.resolve([]) } as never,
         zones as never,
         active,
+        { emit: jest.fn() } as never,
       );
       await service.loadLibraryMap('b');
       expect(synced).toEqual(['b']);

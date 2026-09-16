@@ -45,6 +45,7 @@ export function toAgvDto(
     initialPosition: agv.initialPosition,
     config: agv.config,
     plantModelName: agv.plantModelName,
+    mapRecordId: agv.mapRecordId,
     createdAt: agv.createdAt,
     createdById: agv.createdById,
     kernelStatus,

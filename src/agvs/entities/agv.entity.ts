@@ -57,6 +57,11 @@ export class AgvEntity {
   @Column({ type: 'jsonb', default: {} })
   config!: Record<string, unknown>;
 
+  /**
+   * openTCS plant model name reported by the kernel at creation time. Kept as display metadata
+   * only — a name can be shared by more than one uploaded map record, so it is never used to
+   * decide which map this AGV belongs to. See `ZoneEntity.plantModelName` for the same split.
+   */
   @Column({
     name: 'plant_model_name',
     type: 'varchar',
@@ -64,6 +69,12 @@ export class AgvEntity {
     nullable: true,
   })
   plantModelName!: string | null;
+
+  /** The `map_records` row this AGV was registered under — the authoritative "which map does
+   *  this belong to" (see `ZoneEntity.mapRecordId`). NULL for AGVs created before map scoping,
+   *  or while no map record could be resolved for the kernel's currently loaded model. */
+  @Column({ name: 'map_record_id', type: 'uuid', nullable: true })
+  mapRecordId!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

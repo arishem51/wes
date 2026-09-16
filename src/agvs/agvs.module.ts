@@ -9,6 +9,7 @@ import { AgvHistoryService } from './agv-history.service';
 import { VehicleErrorService } from './vehicle-error.service';
 import { AgvsController } from './agvs.controller';
 import { OpenTcsModule } from '../opentcs/opentcs.module';
+import { MapRecordCoreModule } from '../maps/map-record-core.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { OpenTcsModule } from '../opentcs/opentcs.module';
       TransportTaskEntity,
     ]),
     OpenTcsModule,
+    MapRecordCoreModule,
   ],
   providers: [AgvsService, AgvHistoryService, VehicleErrorService],
   controllers: [AgvsController],

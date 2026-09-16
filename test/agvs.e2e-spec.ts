@@ -11,6 +11,7 @@ import { AgvsController } from '../src/agvs/agvs.controller';
 import { AgvsService } from '../src/agvs/agvs.service';
 import { AgvHistoryService } from '../src/agvs/agv-history.service';
 import { AgvEntity } from '../src/agvs/entities/agv.entity';
+import { ActiveMapRecordService } from '../src/maps/infrastructure/active-map-record.service';
 import { KernelApiService } from '../src/opentcs/kernel-api.service';
 import { VehicleStateStore } from '../src/opentcs/vehicle-state.store';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
@@ -30,6 +31,7 @@ const makeAgv = (overrides: Partial<AgvEntity> = {}): AgvEntity => ({
   sufficientBatteryThreshold: 60,
   config: {},
   plantModelName: null,
+  mapRecordId: null,
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'),
   createdById: 'user-1',
@@ -94,6 +96,10 @@ describe('AgvsController (e2e)', () => {
         { provide: AgvHistoryService, useValue: { errorFrequency: jest.fn() } },
         { provide: getRepositoryToken(AgvEntity), useValue: repo },
         { provide: KernelApiService, useValue: kernelApi },
+        {
+          provide: ActiveMapRecordService,
+          useValue: { resolveId: jest.fn().mockResolvedValue(null) },
+        },
         {
           provide: VehicleStateStore,
           useValue: {

@@ -21,11 +21,12 @@ export type AppSubject =
   | 'Agv'
   | 'DispatchPolicy'
   | 'List';
-/** Tagged instance shapes for the two subjects that carry a resource condition (see `PERMISSION_POLICIES`). */
+/** Tagged instance shapes for the subjects that carry a resource condition (see `PERMISSION_POLICIES`). */
 type MapInstance = { id: string } & ForcedSubject<'Map'>;
 type AreaInstance = { mapRecordId: string } & ForcedSubject<'Area'>;
+type CargoInstance = { mapRecordId: string } & ForcedSubject<'Cargo'>;
 export type AppAbility = MongoAbility<
-  [string, AppSubject | MapInstance | AreaInstance]
+  [string, AppSubject | MapInstance | AreaInstance | CargoInstance]
 >;
 export type AuthorizationRules = RawRuleOf<AppAbility>[];
 
@@ -75,7 +76,8 @@ export function createAppAbility(
     if (!policy) continue;
     const [action, subject] = policy;
     const scoped =
-      mapIds !== undefined && (subject === 'Map' || subject === 'Area');
+      mapIds !== undefined &&
+      (subject === 'Map' || subject === 'Area' || subject === 'Cargo');
     rules.push({
       action,
       subject,

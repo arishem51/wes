@@ -24,8 +24,8 @@ export class OperatingCargoController {
   constructor(private readonly cargo: OperatingCargoService) {}
 
   @Get()
-  list(): Promise<CargoListDto> {
-    return this.cargo.list();
+  list(@CurrentUser() user: AuthUser): Promise<CargoListDto> {
+    return this.cargo.list(user.mapIds);
   }
 
   @Post()
@@ -34,12 +34,15 @@ export class OperatingCargoController {
     @Body() body: CreateCargoBody,
     @CurrentUser() user: AuthUser,
   ): Promise<CargoDto> {
-    return this.cargo.create(body, user.sub);
+    return this.cargo.create(body, user.sub, user.mapIds);
   }
 
   @Delete(':id')
   @RequirePermissions('cargo.cancel')
-  cancel(@Param('id') id: string): Promise<CargoDto> {
-    return this.cargo.cancel(id);
+  cancel(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+  ): Promise<CargoDto> {
+    return this.cargo.cancel(id, user.mapIds);
   }
 }

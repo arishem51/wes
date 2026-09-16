@@ -453,14 +453,12 @@ describe('CargoService.list', () => {
     await listWith({ activeMapOnly: true });
 
     expect(kernelApi.getPlantModelName).not.toHaveBeenCalled();
-    const join = conditionMatching('JOIN zones');
-    expect(join).toContain('cargo.destination_zone_id');
-    const condition = conditionMatching('map_record_id');
+    const condition = conditionMatching('cargo.map_record_id');
     expect(condition).toBeDefined();
     expect(parameters.mapRecordId).toBe('record-runtime-map');
   });
 
-  it('does not join zones at all when activeMapOnly is left off', async () => {
+  it('applies no filter at all when activeMapOnly is left off', async () => {
     const { listWith, conditions, kernelApi } = listSetup();
 
     await listWith();

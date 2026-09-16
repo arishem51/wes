@@ -43,4 +43,19 @@ describe('authorization ability', () => {
       ),
     ).toBe(false);
   });
+  it('checks Cargo instances against explicit map scope, same as Area', () => {
+    const ability = createAppAbility(['cargo.create'], ['map-a']);
+    expect(
+      ability.can('create', subject('Cargo', { mapRecordId: 'map-a' })),
+    ).toBe(true);
+    expect(
+      ability.can('create', subject('Cargo', { mapRecordId: 'map-b' })),
+    ).toBe(false);
+    expect(
+      createAppAbility(['cargo.create']).can(
+        'create',
+        subject('Cargo', { mapRecordId: 'map-b' }),
+      ),
+    ).toBe(true);
+  });
 });

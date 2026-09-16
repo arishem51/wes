@@ -228,6 +228,7 @@ export class CargoService {
             destinationZoneId: zone.id,
             destinationLocationName: null,
             sourceZoneId,
+            mapRecordId: loadedMapId,
             status: CargoStatus.ACTIVE,
             createdBy: userId,
           }),
@@ -313,15 +314,7 @@ export class CargoService {
     const builder = this.cargoRepo.createQueryBuilder('cargo');
 
     if (mapRecordId) {
-      builder
-        .leftJoin(
-          'zones',
-          'dest_zone',
-          'dest_zone.id = cargo.destination_zone_id',
-        )
-        .andWhere('dest_zone.map_record_id = :mapRecordId', {
-          mapRecordId,
-        });
+      builder.andWhere('cargo.map_record_id = :mapRecordId', { mapRecordId });
     }
 
     if (query.status) {

@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, IsNull, Repository } from 'typeorm';
 import { AgvEntity } from './entities/agv.entity';
+import { ActiveMapRecordService } from '../maps/infrastructure/active-map-record.service';
 import { KernelApiService } from '../opentcs/kernel-api.service';
 import type { KernelVehicleState } from '../opentcs/domain/kernel-model';
 import { VehicleStateStore } from '../opentcs/vehicle-state.store';
@@ -65,6 +66,7 @@ export class AgvsService {
     private readonly repo: Repository<AgvEntity>,
     private readonly kernelApi: KernelApiService,
     private readonly vehicleStateStore: VehicleStateStore,
+    private readonly activeMapRecords: ActiveMapRecordService,
   ) {}
 
   /**
@@ -121,26 +123,27 @@ export class AgvsService {
 
   private findCodeConflict(
     code: string,
-    plantModelName: string | null,
+    mapRecordId: string | null,
   ): Promise<AgvEntity | null> {
     return this.repo.findOne({
-      where: { code, plantModelName: plantModelName ?? IsNull() },
+      where: { code, mapRecordId: mapRecordId ?? IsNull() },
     });
   }
 
   private findNameConflict(
     name: string,
-    plantModelName: string | null,
+    mapRecordId: string | null,
   ): Promise<AgvEntity | null> {
     return this.repo.findOne({
-      where: { name, plantModelName: plantModelName ?? IsNull() },
+      where: { name, mapRecordId: mapRecordId ?? IsNull() },
     });
   }
 
   async create(dto: CreateAgvDto, userId: string): Promise<AgvDto> {
     const currentMapName = await this.kernelApi.getPlantModelName();
+    const mapRecordId = await this.activeMapRecords.resolveId();
 
-    if (await this.findCodeConflict(dto.code, currentMapName)) {
+    if (await this.findCodeConflict(dto.code, mapRecordId)) {
       throw new ConflictException(`Code "${dto.code}" đã tồn tại.`);
     }
 
@@ -154,7 +157,7 @@ export class AgvsService {
       }
     }
 
-    if (await this.findNameConflict(dto.name, currentMapName)) {
+    if (await this.findNameConflict(dto.name, mapRecordId)) {
       throw new ConflictException(`AGV tên "${dto.name}" đã tồn tại.`);
     }
 
@@ -170,6 +173,7 @@ export class AgvsService {
       initialPosition: dto.initialPosition ?? null,
       config: dto.config ?? {},
       plantModelName: currentMapName,
+      mapRecordId,
       createdById: userId,
     });
     const saved = await this.repo.save(agv);
@@ -183,7 +187,7 @@ export class AgvsService {
     if (dto.name && dto.name !== agv.name) {
       const existing = await this.findNameConflict(
         dto.name,
-        agv.plantModelName,
+        agv.mapRecordId,
       );
       if (existing && existing.id !== id) {
         throw new ConflictException(`AGV tên "${dto.name}" đã tồn tại.`);

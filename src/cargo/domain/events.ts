@@ -21,6 +21,9 @@ export const FMS_EVENTS = {
   DROPOFF_UNLOADED: 'fms.transport-order.dropoff-unloaded',
   VEHICLE_AVAILABLE: 'fms.vehicle.available',
   VEHICLE_ERROR_CHANGED: 'fms.vehicle.error-changed',
+  /** A different map record was just loaded into the kernel — every vehicle/order/cargo/area an
+   *  operating client has cached belongs to the map that was just replaced. */
+  MAP_LOADED: 'fms.map.loaded',
 } as const;
 
 export type TaskLeg = 'PICKUP' | 'APPROACH' | 'DROPOFF';
@@ -105,4 +108,8 @@ export class FmsVehicleErrorChangedEvent {
     readonly transportOrderName: string | null,
     readonly observedAt: string | null,
   ) {}
+}
+
+export class FmsMapLoadedEvent {
+  constructor(readonly mapRecordId: string) {}
 }

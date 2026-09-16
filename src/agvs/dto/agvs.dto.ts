@@ -224,6 +224,7 @@ export interface AgvDto {
   initialPosition: string | null;
   config: Record<string, unknown>;
   plantModelName: string | null;
+  mapRecordId: string | null;
   createdAt: Date;
   createdById: string | null;
   kernelStatus: AgvKernelStatus;

@@ -12,6 +12,7 @@ import { OperatingVehiclesService } from '../application/operating-vehicles.serv
 import { OperatingCargoService } from '../application/operating-cargo.service';
 import { OperatingAreasService } from '../application/operating-areas.service';
 import { OperatingOrdersService } from '../application/operating-orders.service';
+import { OperatingMapSyncService } from '../application/operating-map-sync.service';
 
 const SSE_HEARTBEAT_MS = 15_000;
 
@@ -24,6 +25,7 @@ export class OperatingStreamController {
     private readonly cargo: OperatingCargoService,
     private readonly areas: OperatingAreasService,
     private readonly orders: OperatingOrdersService,
+    private readonly mapSync: OperatingMapSyncService,
     private readonly users: UsersService,
     private readonly tokens: TokenService,
     private readonly permissions: PermissionsService,
@@ -45,7 +47,11 @@ export class OperatingStreamController {
         catchError(() => EMPTY),
       ),
       this.orders.changes$.pipe(
-        map(() => ({ data: { kind: 'order' } })),
+        map((order) => ({ data: { kind: 'order', payload: order } })),
+        catchError(() => EMPTY),
+      ),
+      this.mapSync.changes$.pipe(
+        map(() => ({ data: { kind: 'map' } })),
         catchError(() => EMPTY),
       ),
       sseHeartbeat$(SSE_HEARTBEAT_MS, this.users, this.tokens, this.permissions, user),

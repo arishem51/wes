@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Observable, Subject } from 'rxjs';
 import { CargoService } from '../../cargo/cargo.service';
@@ -6,6 +6,7 @@ import type { CargoResponseDto } from '../../cargo/cargo.dto';
 import { CargoStatus } from '../../cargo/entities/cargo.entity';
 import { TaskStatus } from '../../cargo/entities/transport-task.entity';
 import { TRANSPORT_TASK_EVENTS } from '../../cargo/domain/events';
+import { ActiveMapRecordService } from '../../maps/infrastructure/active-map-record.service';
 import type {
   CargoDto,
   CargoListDto,
@@ -24,7 +25,10 @@ const LIST_LIMIT = 200;
 export class OperatingCargoService {
   private readonly ticks = new Subject<void>();
 
-  constructor(private readonly cargo: CargoService) {}
+  constructor(
+    private readonly cargo: CargoService,
+    private readonly activeMapRecords: ActiveMapRecordService,
+  ) {}
 
   get changes$(): Observable<void> {
     return this.ticks.asObservable();
@@ -39,7 +43,11 @@ export class OperatingCargoService {
     this.ticks.next();
   }
 
-  async list(): Promise<CargoListDto> {
+  /** `mapIds`: the caller's AUTH-3 map scope (`undefined` = unrestricted — see `ability.ts`). */
+  async list(mapIds?: string[]): Promise<CargoListDto> {
+    if (!(await this.mapInScope(mapIds)))
+      return { cargos: [], total: 0, truncated: false };
+
     const { cargos, total, truncated } = await this.cargo.list({
       page: 1,
       limit: LIST_LIMIT,
@@ -56,7 +64,29 @@ export class OperatingCargoService {
     };
   }
 
-  async create(body: CreateCargoBody, userId: string): Promise<CargoDto> {
+  /** True unless the caller is scoped and the currently-loaded map falls outside that scope —
+   *  same check as `OperatingAreasService.mapInScope`; cargo mutations always act against
+   *  whatever map the kernel currently has loaded, the same way an Area edit does. */
+  private async mapInScope(mapIds: string[] | undefined): Promise<boolean> {
+    if (mapIds === undefined) return true;
+    const activeId = await this.activeMapRecords.resolveId();
+    return activeId !== null && mapIds.includes(activeId);
+  }
+
+  private async assertMapInScope(mapIds: string[] | undefined): Promise<void> {
+    if (!(await this.mapInScope(mapIds))) {
+      throw new ForbiddenException(
+        'Vai trò của bạn không được gán quyền thao tác trên bản đồ đang tải.',
+      );
+    }
+  }
+
+  async create(
+    body: CreateCargoBody,
+    userId: string,
+    mapIds?: string[],
+  ): Promise<CargoDto> {
+    await this.assertMapInScope(mapIds);
     const created = await this.cargo.create(
       {
         itemCode: body.cargoId,
@@ -68,7 +98,8 @@ export class OperatingCargoService {
     return toCargoDto(await this.cargo.findOne(created.id));
   }
 
-  async cancel(id: string): Promise<CargoDto> {
+  async cancel(id: string, mapIds?: string[]): Promise<CargoDto> {
+    await this.assertMapInScope(mapIds);
     const before = await this.cargo.findOne(id);
     await this.cargo.remove(id);
     return {

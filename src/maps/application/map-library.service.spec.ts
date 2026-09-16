@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { MapLibraryService } from './map-library.service';
 import { MapRecordEntity } from '../infrastructure/entities/map-record.entity';
@@ -78,6 +79,7 @@ describe('MapLibraryService', () => {
         { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
         { provide: ZoneService, useValue: zoneService },
         { provide: ActiveMapRecordService, useValue: activeMapRecords },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 
@@ -340,6 +342,7 @@ describe('MapLibraryService preview versioning', () => {
         { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
         { provide: ZoneService, useValue: { sync: jest.fn() } },
         { provide: ActiveMapRecordService, useValue: activeMapRecords },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 
@@ -439,6 +442,7 @@ describe('MapLibraryService AUTH-3 map scope', () => {
         { provide: getRepositoryToken(ZoneEntity), useValue: zoneRepo },
         { provide: ZoneService, useValue: { sync: jest.fn() } },
         { provide: ActiveMapRecordService, useValue: activeMapRecords },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 
@@ -602,6 +606,7 @@ describe('MapLibraryService load→sync contract (Gate 4 item 6)', () => {
           provide: ActiveMapRecordService,
           useValue: { resolveId: jest.fn().mockResolvedValue(null) },
         },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 

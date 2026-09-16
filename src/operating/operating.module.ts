@@ -13,6 +13,7 @@ import { OperatingVehiclesService } from './application/operating-vehicles.servi
 import { OperatingCommandsService } from './application/operating-commands.service';
 import { OperatingAreasService } from './application/operating-areas.service';
 import { OperatingCargoService } from './application/operating-cargo.service';
+import { OperatingMapSyncService } from './application/operating-map-sync.service';
 import { OperatingPlantModelController } from './api/plant-model.controller';
 import { OperatingVehiclesController } from './api/vehicles.controller';
 import { OperatingOrdersController } from './api/orders.controller';
@@ -48,6 +49,7 @@ import { OperatingStreamController } from './api/stream.controller';
     OperatingCommandsService,
     OperatingAreasService,
     OperatingCargoService,
+    OperatingMapSyncService,
   ],
 })
 export class OperatingModule {}

@@ -62,6 +62,14 @@ export class CargoEntity {
   @Column({ name: 'destination_zone_id', type: 'uuid', nullable: true })
   destinationZoneId!: string | null;
 
+  /** The `map_records` row active when this cargo was created — stamped once, denormalized so
+   *  the cargo's map identity survives its source/destination `ZoneEntity` being deleted later
+   *  (zones may be removed once no cargo is actively in flight through them; see
+   *  `OperatingAreasService.remove`). Authoritative for "which map does this cargo belong to" —
+   *  same split as `ZoneEntity.mapRecordId`. NULL for cargo created before map scoping. */
+  @Column({ name: 'map_record_id', type: 'uuid', nullable: true })
+  mapRecordId!: string | null;
+
   @Column({
     type: 'enum',
     enum: CargoStatus,
